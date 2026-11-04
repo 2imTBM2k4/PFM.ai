@@ -23,7 +23,10 @@ export function BudgetNotificationWatcher() {
           BUDGET_NOTIFICATION_PREFIX,
         )
       ) {
-        router.navigate('/budgets');
+        router.navigate({
+          pathname: '/budgets',
+          params: { tab: 'budgets' },
+        });
         Notifications.clearLastNotificationResponse();
       }
     };

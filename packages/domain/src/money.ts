@@ -3,6 +3,28 @@ import { roundHalfUp } from './arithmetic';
 export const MAX_AMOUNT_VND = 100_000_000_000;
 
 export type Money = number & { readonly __brand: 'Money' };
+export type Currency = 'VND' | 'USD';
+
+// Convert integer minor units using the number of VND per one USD.
+export function convertMoney(
+  amountMinor: number,
+  from: Currency,
+  to: Currency,
+  vndPerUsd: number | null,
+): number {
+  if (!Number.isSafeInteger(amountMinor)) throw new RangeError('INVALID_MONEY');
+  if (from === to) return amountMinor;
+  if (vndPerUsd === null || !Number.isFinite(vndPerUsd) || vndPerUsd <= 0)
+    throw new RangeError('INVALID_EXCHANGE_RATE');
+  const converted = Math.round(
+    from === 'USD'
+      ? (amountMinor * vndPerUsd) / 100
+      : (amountMinor * 100) / vndPerUsd,
+  );
+  if (!Number.isSafeInteger(converted) || Math.abs(converted) > MAX_AMOUNT_VND)
+    throw new RangeError('CONVERTED_MONEY_OUT_OF_RANGE');
+  return converted;
+}
 
 // Validate a non-negative whole-VND amount within the transaction limit.
 export function toMoney(value: number): Money {

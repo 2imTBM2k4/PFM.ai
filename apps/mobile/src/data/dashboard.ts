@@ -17,6 +17,30 @@ export interface CategoryTotal {
   amount: number;
 }
 
+export interface DailyTotals {
+  date: string;
+  income: number;
+  expense: number;
+}
+
+export async function readDailyTotals(db: Queries, month: string): Promise<DailyTotals[]> {
+  monthKey(`${month}-01`);
+  const [year, number] = month.split('-').map(Number);
+  const end = `${month}-${String(daysInMonth(year, number)).padStart(2, '0')}`;
+  const rows = await db.getAllAsync<DailyTotals>(
+    `SELECT occurred_on AS date,
+      SUM(CASE WHEN kind='income' THEN amount ELSE 0 END) AS income,
+      SUM(CASE WHEN kind='expense' THEN amount ELSE 0 END) AS expense
+     FROM transactions WHERE kind IN ('income','expense') AND occurred_on>=? AND occurred_on<=?
+     GROUP BY occurred_on ORDER BY occurred_on`,
+    `${month}-01`,
+    end,
+  );
+  if (rows.some((row) => !Number.isSafeInteger(row.income) || !Number.isSafeInteger(row.expense)))
+    throw new Error('DAILY_TOTAL_UNSAFE');
+  return rows;
+}
+
 // Read one consistent overview inside the application's serialized database queue.
 export async function readDashboard(db: Queries, month: string) {
   const date = `${month}-01`;

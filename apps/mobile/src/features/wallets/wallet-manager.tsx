@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, MAX_AMOUNT_VND } from '@pfm/domain';
+import { MAX_AMOUNT_VND } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { WalletInput } from '@pfm/contracts';
 import { memo, useCallback, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -8,6 +9,7 @@ import { BackHandler, FlatList, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
+  Divider,
   HelperText,
   IconButton,
   RadioButton,
@@ -17,7 +19,14 @@ import {
   TextInput,
   useTheme,
 } from 'react-native-paper';
-import { Screen, styles } from '@/components/screen';
+import {
+  EmptyStateCard,
+  IconBadge,
+  Screen,
+  StatusPill,
+  styles,
+} from '@/components/screen';
+import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
 import { listWallets, type WalletRow } from '@/data/repository';
@@ -28,6 +37,7 @@ import {
   reorderWallets,
 } from '@/data/wallets';
 import { vi } from '@/messages/vi';
+import { displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
 
 const KINDS = [
@@ -52,6 +62,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
   const newId = useRef<string | null>(null);
   const working = useRef(false);
   const { colors } = useTheme();
+  const palette = useFinancePalette();
   const recurringVersion = useApp((state) => state.recurringVersion);
   const showRows = useCallback((next: WalletRow[]) => {
     setRows(next);
@@ -200,14 +211,16 @@ export function WalletManager({ onClose }: { onClose(): void }) {
       />
     );
   return (
-    <Screen title={vi.manageWallets} scroll={false}>
-      <View style={styles.row}>
-        <Button contentStyle={styles.button} disabled={busy} onPress={back}>
-          {vi.back}
-        </Button>
+    <Screen
+      title={vi.manageWallets}
+      onBack={back}
+      backDisabled={busy}
+      scroll={false}
+      headerRight={
         <Button
           mode="contained"
-          contentStyle={styles.button}
+          icon="plus"
+          contentStyle={styles.compactButton}
           disabled={busy || loading}
           onPress={() => {
             newId.current = uuid.v4();
@@ -218,7 +231,8 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         >
           {vi.addWallet}
         </Button>
-      </View>
+      }
+    >
       <SegmentedButtons
         value={archived ? 'archived' : 'active'}
         onValueChange={(value) => setArchived(value === 'archived')}
@@ -227,9 +241,34 @@ export function WalletManager({ onClose }: { onClose(): void }) {
           { value: 'archived', label: vi.walletArchived },
         ]}
       />
-      {saved && <Text accessibilityLiveRegion="polite">{vi.walletSaved}</Text>}
+      {saved && (
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.incomeSoft,
+              borderColor: palette.income,
+            },
+          ]}
+        >
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ color: palette.incomeInk, fontWeight: '600' }}
+          >
+            {vi.walletSaved}
+          </Text>
+        </View>
+      )}
       {!!error && (
-        <View>
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.dangerSoft,
+              borderColor: palette.danger,
+            },
+          ]}
+        >
           <Text accessibilityRole="alert" style={{ color: colors.error }}>
             {error}
           </Text>
@@ -239,16 +278,22 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         </View>
       )}
       {loading ? (
-        <ActivityIndicator accessibilityLabel={vi.loading} />
+        <View style={{ paddingVertical: 28, alignItems: 'center' }}>
+          <ActivityIndicator size="large" accessibilityLabel={vi.loading} />
+        </View>
       ) : (
         <FlatList
           data={visibleRows}
           keyExtractor={(item) => item.id}
           renderItem={renderWallet}
+          showsVerticalScrollIndicator={false}
           style={styles.fill}
-          contentContainerStyle={{ gap: 16, paddingBottom: 20 }}
+          contentContainerStyle={{ gap: 14, paddingBottom: 24 }}
           ListEmptyComponent={
-            <Text>{archived ? vi.archivedWalletsEmpty : vi.noWallet}</Text>
+            <EmptyStateCard
+              icon="wallet-outline"
+              message={archived ? vi.archivedWalletsEmpty : vi.noWallet}
+            />
           }
         />
       )}
@@ -274,42 +319,88 @@ const WalletItem = memo(function WalletItem({
   onMove(id: string, direction: number): void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const { colors } = useTheme();
+  const palette = useFinancePalette();
+  const visual = walletKindVisual(wallet.kind, palette);
   return (
-    <View style={[styles.panel, { backgroundColor: colors.surface }]}>
+    <View
+      style={[
+        styles.panel,
+        { backgroundColor: palette.surface, borderColor: palette.border },
+      ]}
+    >
       <View style={styles.row}>
-        <Text variant="titleMedium" style={{ flexShrink: 1 }}>
-          {wallet.name}
-        </Text>
-        <Text variant="titleMedium" style={styles.number}>
+        <View style={[styles.inlineRow, { flex: 1 }]}>
+          <IconBadge
+            icon={visual.icon}
+            bg={visual.bg}
+            fg={visual.fg}
+            size={44}
+            iconSize={22}
+          />
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+              {displayWalletName(wallet.name)}
+            </Text>
+            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+              {KINDS.find(({ value }) => value === wallet.kind)?.label}
+            </Text>
+          </View>
+        </View>
+        <Text
+          variant="titleLarge"
+          style={[styles.number, { fontWeight: '700', color: palette.text }]}
+        >
           {formatVnd(wallet.balance)}
         </Text>
       </View>
-      <Text style={{ color: colors.onSurfaceVariant }}>
-        {KINDS.find(({ value }) => value === wallet.kind)?.label}
-      </Text>
+
+      {!!wallet.is_goal_funding && (
+        <StatusPill
+          icon="bullseye-arrow"
+          label={vi.walletGoalFunding}
+          bg={palette.tealSoft}
+          fg={palette.tealInk}
+        />
+      )}
+
+      <Divider style={{ backgroundColor: palette.borderSubtle }} />
+
       {confirming ? (
-        <>
-          <Text>{vi.walletArchiveDescription}</Text>
-          <Button
-            disabled={busy}
-            contentStyle={styles.button}
-            onPress={async () => {
-              if (await onArchive(wallet)) setConfirming(false);
-            }}
-          >
-            {vi.archiveWallet}
-          </Button>
-          <Button
-            disabled={busy}
-            contentStyle={styles.button}
-            onPress={() => setConfirming(false)}
-          >
-            {vi.cancel}
-          </Button>
-        </>
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.warningSoft,
+              borderColor: palette.warning,
+            },
+          ]}
+        >
+          <Text variant="bodySmall" style={{ color: palette.warningInk }}>
+            {vi.walletArchiveDescription}
+          </Text>
+          <View style={styles.row}>
+            <Button
+              mode="contained-tonal"
+              disabled={busy}
+              onPress={async () => {
+                if (await onArchive(wallet)) setConfirming(false);
+              }}
+            >
+              {vi.archiveWallet}
+            </Button>
+            <Button
+              mode="text"
+              disabled={busy}
+              onPress={() => setConfirming(false)}
+            >
+              {vi.cancel}
+            </Button>
+          </View>
+        </View>
       ) : wallet.is_archived ? (
         <Button
+          mode="contained-tonal"
+          icon="restore"
           contentStyle={styles.button}
           disabled={busy}
           onPress={() => onArchive(wallet)}
@@ -318,25 +409,31 @@ const WalletItem = memo(function WalletItem({
         </Button>
       ) : (
         <View style={styles.row}>
-          <Button
-            contentStyle={styles.button}
-            disabled={busy}
-            onPress={() => onEdit(wallet)}
-          >
-            {vi.editWallet}
-          </Button>
-          <Button
-            contentStyle={styles.button}
-            disabled={busy}
-            onPress={() => setConfirming(true)}
-          >
-            {vi.archiveWallet}
-          </Button>
+          <View style={styles.inlineRow}>
+            <Button
+              compact
+              mode="contained-tonal"
+              icon="pencil-outline"
+              disabled={busy}
+              onPress={() => onEdit(wallet)}
+            >
+              {vi.editWallet}
+            </Button>
+            <Button
+              compact
+              mode="text"
+              icon="archive-arrow-down-outline"
+              disabled={busy}
+              onPress={() => setConfirming(true)}
+            >
+              {vi.archiveWallet}
+            </Button>
+          </View>
           <View style={{ flexDirection: 'row' }}>
             <IconButton
               icon="arrow-up"
-              size={20}
-              style={{ minWidth: 48, minHeight: 48 }}
+              size={18}
+              style={{ margin: 0 }}
               accessibilityLabel={vi.moveWalletUp.replace(
                 '{wallet}',
                 wallet.name,
@@ -346,8 +443,8 @@ const WalletItem = memo(function WalletItem({
             />
             <IconButton
               icon="arrow-down"
-              size={20}
-              style={{ minWidth: 48, minHeight: 48 }}
+              size={18}
+              style={{ margin: 0 }}
               accessibilityLabel={vi.moveWalletDown.replace(
                 '{wallet}',
                 wallet.name,
@@ -395,101 +492,133 @@ function WalletForm({
     },
   });
   const { colors } = useTheme();
+  const palette = useFinancePalette();
   const disabled = busy || isSubmitting;
   return (
-    <Screen title={wallet ? vi.editWallet : vi.addWallet}>
-      <Button disabled={disabled} contentStyle={styles.button} onPress={onBack}>
-        {vi.back}
-      </Button>
-      <Controller
-        control={control}
-        name="name"
-        rules={{ validate: (value) => !!value.trim() || vi.walletNameRequired }}
-        render={({ field, fieldState }) => (
-          <View>
-            <TextInput
-              mode="outlined"
-              label={vi.walletName}
-              accessibilityLabel={vi.walletName}
-              value={field.value}
-              onChangeText={field.onChange}
-              onBlur={field.onBlur}
-              error={!!fieldState.error}
-              disabled={disabled}
-            />
-            {!!fieldState.error && (
-              <HelperText type="error">{fieldState.error.message}</HelperText>
-            )}
-          </View>
-        )}
-      />
-      <Controller
-        control={control}
-        name="balance"
-        rules={{
-          validate: (value) =>
-            value === '' ||
-            (/^-?\d+$/.test(value) &&
-              Number.isSafeInteger(Number(value)) &&
-              Math.abs(Number(value)) <= MAX_AMOUNT_VND) ||
-            vi.initialBalanceInvalid,
-        }}
-        render={({ field, fieldState }) => (
-          <View>
-            <TextInput
-              mode="outlined"
-              label={vi.initialBalance}
-              accessibilityLabel={vi.initialBalance}
-              value={field.value}
-              onChangeText={field.onChange}
-              onBlur={field.onBlur}
-              keyboardType="numbers-and-punctuation"
-              maxLength={13}
-              error={!!fieldState.error}
-              disabled={disabled}
-            />
-            <HelperText type={fieldState.error ? 'error' : 'info'}>
-              {fieldState.error?.message ?? vi.initialBalanceHint}
-            </HelperText>
-          </View>
-        )}
-      />
-      <Text accessibilityRole="header" variant="titleMedium">
-        {vi.walletKind}
-      </Text>
-      <Controller
-        control={control}
-        name="kind"
-        render={({ field }) => (
-          <RadioButton.Group value={field.value} onValueChange={field.onChange}>
-            {KINDS.map((kind) => (
-              <RadioButton.Item
-                key={kind.value}
-                value={kind.value}
-                label={kind.label}
-                accessibilityLabel={kind.label}
+    <Screen
+      title={wallet ? vi.editWallet : vi.addWallet}
+      onBack={onBack}
+      backDisabled={disabled}
+    >
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        <Controller
+          control={control}
+          name="name"
+          rules={{
+            validate: (value) => !!value.trim() || vi.walletNameRequired,
+          }}
+          render={({ field, fieldState }) => (
+            <View>
+              <TextInput
+                mode="outlined"
+                label={vi.walletName}
+                accessibilityLabel={vi.walletName}
+                value={field.value}
+                onChangeText={field.onChange}
+                onBlur={field.onBlur}
+                error={!!fieldState.error}
                 disabled={disabled}
-                style={{ minHeight: 48 }}
+                left={<TextInput.Icon icon="wallet-outline" />}
               />
-            ))}
-          </RadioButton.Group>
-        )}
-      />
-      <Controller
-        control={control}
-        name="isGoalFunding"
-        render={({ field }) => (
-          <View style={styles.row}>
-            <Text style={{ flex: 1 }}>{vi.walletGoalFunding}</Text>
-            <Switch
+              {!!fieldState.error && (
+                <HelperText type="error">{fieldState.error.message}</HelperText>
+              )}
+            </View>
+          )}
+        />
+        <Controller
+          control={control}
+          name="balance"
+          rules={{
+            validate: (value) =>
+              value === '' ||
+              (/^-?\d+$/.test(value) &&
+                Number.isSafeInteger(Number(value)) &&
+                Math.abs(Number(value)) <= MAX_AMOUNT_VND) ||
+              vi.initialBalanceInvalid,
+          }}
+          render={({ field, fieldState }) => (
+            <View>
+              <TextInput
+                mode="outlined"
+                label={vi.initialBalance}
+                accessibilityLabel={vi.initialBalance}
+                value={field.value}
+                onChangeText={field.onChange}
+                onBlur={field.onBlur}
+                keyboardType="numbers-and-punctuation"
+                maxLength={13}
+                error={!!fieldState.error}
+                disabled={disabled}
+                left={<TextInput.Icon icon="cash" />}
+              />
+              <HelperText type={fieldState.error ? 'error' : 'info'}>
+                {fieldState.error?.message ?? vi.initialBalanceHint}
+              </HelperText>
+            </View>
+          )}
+        />
+      </View>
+
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        <Text
+          accessibilityRole="header"
+          variant="titleSmall"
+          style={{ fontWeight: '700' }}
+        >
+          {vi.walletKind}
+        </Text>
+        <Controller
+          control={control}
+          name="kind"
+          render={({ field }) => (
+            <RadioButton.Group
               value={field.value}
               onValueChange={field.onChange}
-              accessibilityLabel={vi.walletGoalFunding}
-              disabled={disabled}
-            />
-          </View>
-        )}
-      />
+            >
+              {KINDS.map((kind) => (
+                <RadioButton.Item
+                  key={kind.value}
+                  value={kind.value}
+                  label={kind.label}
+                  accessibilityLabel={kind.label}
+                  disabled={disabled}
+                  style={{ minHeight: 48 }}
+                />
+              ))}
+            </RadioButton.Group>
+          )}
+        />
+        <Divider style={{ backgroundColor: palette.borderSubtle }} />
+        <Controller
+          control={control}
+          name="isGoalFunding"
+          render={({ field }) => (
+            <View style={styles.row}>
+              <Text style={{ flex: 1, fontWeight: '500' }}>
+                {vi.walletGoalFunding}
+              </Text>
+              <Switch
+                value={field.value}
+                onValueChange={field.onChange}
+                accessibilityLabel={vi.walletGoalFunding}
+                disabled={disabled}
+              />
+            </View>
+          )}
+        />
+      </View>
+
       {!!error && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {error}
@@ -497,6 +626,7 @@ function WalletForm({
       )}
       <Button
         mode="contained"
+        icon="check"
         contentStyle={styles.button}
         disabled={disabled}
         loading={disabled}

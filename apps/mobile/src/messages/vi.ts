@@ -1,4 +1,66 @@
-export const vi = {
+import { en } from './en';
+import { activeLanguage } from './language';
+
+export const viMessages = {
+  quickTitle: 'Nhập nhanh giao dịch',
+  quickInput: 'Bạn vừa thu hoặc chi gì?',
+  quickExample: 'Ví dụ: ăn sáng 30k hôm qua',
+  quickReview: 'Kiểm tra và xác nhận',
+  quickPreview: 'Kết quả gợi ý',
+  quickConfirmTitle: 'Xác nhận giao dịch',
+  quickConfirmHint:
+    'Kiểm tra từng khoản trước khi lưu. Bỏ chọn khoản không muốn ghi nhận.',
+  quickChoose: 'Chọn một mục',
+  quickUnknown: 'Chưa xác định — cần chọn loại',
+  quickCheckField: 'Gợi ý cần kiểm tra lại',
+  quickAmountConfirm: 'Tôi xác nhận số tiền bên trên là đúng',
+  quickAssumed:
+    'Số không có đơn vị đã được hiểu là nghìn đồng. Hãy xác nhận lại số tiền.',
+  quickFraction:
+    'Số tiền có phần lẻ hoặc dấu phân cách chưa hợp lệ. Hãy kiểm tra lại.',
+  quickZero: 'Số tiền phải lớn hơn 0.',
+  quickLarge: 'Số tiền vượt giới hạn 100 tỷ đồng.',
+  quickInvalidDate: 'Chưa đọc được ngày hợp lệ. Hãy sửa ngày trước khi lưu.',
+  quickFuture:
+    'Ngày giao dịch nằm trong tương lai. Bạn vẫn có thể xác nhận lưu.',
+  quickMultiple:
+    'Có nhiều khoản tiền; kiểm tra riêng loại, danh mục và số tiền của từng khoản.',
+  quickNoAmount: 'Chưa nhận diện được số tiền. Hãy nhập số tiền khi xác nhận.',
+  quickAmbiguous:
+    'Chưa rõ loại hoặc chiều giao dịch. Hãy chọn lại trước khi lưu.',
+  quickSelect: 'Ghi nhận khoản này',
+  quickDetails: 'Chỉnh sửa / xem giải thích',
+  quickWhy: 'Vì sao có gợi ý này?',
+  quickSave: 'Lưu các khoản đã chọn',
+  quickSaved: 'Đã lưu giao dịch và ghi nhận lựa chọn của bạn.',
+  transactionBalanceAfter: 'Số dư sau giao dịch',
+  quickUndo: 'Hoàn tác nhóm giao dịch vừa lưu',
+  quickUndone: 'Đã hoàn tác giao dịch và phần học từ lần xác nhận đó.',
+  quickUndoHint: 'Hoàn tác áp dụng cho cả nhóm vừa lưu và phần học tương ứng.',
+  quickUndoFailed:
+    'Chưa thể hoàn tác. Dữ liệu có thể đã được chỉnh sửa; không có thay đổi nào được áp dụng.',
+  quickLoadError: 'Không tải được dữ liệu nhập nhanh. Hãy thử lại.',
+  quickParseError:
+    'Không phân tích được câu nhập. Hãy thử sửa nội dung hoặc tải lại dữ liệu.',
+  quickRefreshError:
+    'Đã lưu thay đổi nhưng chưa tải lại được dữ liệu. Không cần lưu lần nữa; hãy nhấn Tải lại.',
+  quickInvalid:
+    'Kiểm tra lại các khoản đã chọn: loại, số tiền, ví, danh mục và ngày.',
+  quickSelectRequired: 'Chọn ít nhất một khoản để lưu.',
+  quickKindRequired: 'Cần chọn loại giao dịch cho khoản chưa xác định.',
+  quickAmountRequired:
+    'Cần tích xác nhận số tiền đã được suy đoán từ số không có đơn vị.',
+  quickDebtRequired: 'Cần chọn khoản nợ hiện có, đúng chiều trả hoặc nhận.',
+  quickCounterpartyRequired:
+    'Nhập tên người hoặc tổ chức cho khoản vay/cho vay mới.',
+  quickCounterparty: 'Tên người / tổ chức — khoản nợ mới',
+  quickNewDebtHint:
+    'Lần vay/cho vay này sẽ tạo một khoản nợ mới. Bạn có thể chỉnh hạn trả trong sổ nợ sau.',
+  quickExistingDebt: 'Khoản nợ cần trả / nhận',
+  quickNoDebt:
+    'Chưa có khoản nợ đang mở phù hợp. Hãy kiểm tra lại loại giao dịch hoặc tạo khoản nợ trong Vay và cho vay.',
+  quickMatchedAmount: 'Số tiền nhận từ',
+  quickSelectedCount: 'Số khoản đã chọn',
   addBudget: 'Thêm ngân sách',
   editBudget: 'Sửa ngân sách',
   saveBudget: 'Lưu ngân sách',
@@ -21,6 +83,7 @@ export const vi = {
   budgetLimit: 'Hạn mức',
   budgetWarning: 'Đã chạm ngưỡng cảnh báo {percent}%.',
   budgetReached: 'Đã đạt hoặc vượt hạn mức tháng.',
+  budgetOver: 'Vượt {amount}',
   budgetPreviousMonth: 'Tháng trước',
   budgetNextMonth: 'Tháng sau',
   budgetNotifications: 'Thông báo ngân sách',
@@ -44,6 +107,7 @@ export const vi = {
   budgetNotificationTestScheduled:
     'Đã đặt thông báo thử sau 5 giây. Về màn hình chính điện thoại để kiểm tra.',
   transactionFilters: 'Tìm kiếm và lọc',
+  filterAdvanced: 'Bộ lọc nâng cao',
   filterText: 'Tìm trong ghi chú',
   filterTextHint:
     'Có thể gõ không dấu, ví dụ an sang. Tìm kiếm chỉ áp dụng cho ghi chú.',
@@ -68,14 +132,26 @@ export const vi = {
   transactionKind: 'Loại giao dịch',
   transactionExpense: 'Chi tiêu',
   transactionIncome: 'Thu nhập',
+  receiptScan: 'Quét hóa đơn',
+  receiptChooseSource: 'Chụp hóa đơn hoặc chọn ảnh có sẵn.',
+  receiptTakePhoto: 'Chụp ảnh',
+  receiptChoosePhoto: 'Chọn ảnh',
+  receiptCameraDenied: 'Cần cấp quyền camera để chụp hóa đơn.',
+  receiptConsentTitle: 'Gửi ảnh hóa đơn tới AI?',
+  receiptConsentBody: 'Ảnh sẽ đi qua máy chủ PFM.ai tới nhà cung cấp AI để đọc giao dịch. Ảnh có thể chứa tên, số điện thoại hoặc số tài khoản; ứng dụng không thể tự xóa chắc chắn các thông tin này. Hãy che thông tin nhạy cảm trước khi chụp. Ảnh không được lưu vào giao dịch.',
+  receiptConsentAgree: 'Đồng ý gửi ảnh',
+  receiptConsentWithdraw: 'Thu hồi đồng ý gửi ảnh hóa đơn',
+  receiptConsentWithdrawn: 'Đã thu hồi. Lần quét tiếp theo sẽ hỏi lại trước khi gửi ảnh.',
+  receiptTooLarge: 'Ảnh quá lớn sau khi xử lý. Hãy chụp lại gần hóa đơn hơn.',
+  receiptScanFailed: 'Không thể đọc hóa đơn. Vui lòng thử lại hoặc nhập tay.',
   transactionTransfer: 'Chuyển ví',
   transactionWallet: 'Ví',
   transactionSourceWallet: 'Ví chuyển đi',
   transactionDestination: 'Ví nhận',
   transactionCategory: 'Danh mục',
   transactionUncategorized: 'Chưa phân loại',
-  transactionDate: 'Ngày giao dịch (YYYY-MM-DD)',
-  transactionDateInvalid: 'Nhập ngày hợp lệ, ví dụ 2026-10-27.',
+  transactionDate: 'Ngày giao dịch',
+  transactionDateInvalid: 'Chọn ngày giao dịch hợp lệ.',
   transactionFutureWarning:
     'Ngày giao dịch nằm trong tương lai. Hãy kiểm tra lại; bạn vẫn có thể lưu.',
   transactionNote: 'Ghi chú',
@@ -224,11 +300,15 @@ export const vi = {
   deleteError:
     'Chưa xóa hết dữ liệu trên thiết bị. Hãy thử lại để hoàn tất việc xóa.',
   cancel: 'Hủy',
+  close: 'Đóng',
+  clear: 'Xóa',
+  datePickerChoose: 'Chọn ngày',
+  datePickerToday: 'Hôm nay',
   appName: 'PFM.ai',
   overview: 'Tổng quan',
   transactions: 'Giao dịch',
   budgets: 'Ngân sách',
-  chat: 'Trợ lý AI',
+  chat: 'Trò chuyện',
   settings: 'Cài đặt',
   loading: 'Đang mở dữ liệu trên máy…',
   retry: 'Thử lại',
@@ -263,17 +343,30 @@ export const vi = {
   security: 'Mã hóa và sao lưu',
   securityDescription:
     'Chưa bật mã hóa cơ sở dữ liệu và chưa kết nối Google Drive trong bản thử nghiệm.',
-  chatDisconnected: 'AI chưa kết nối',
+  chatDisconnected: 'Trợ lý chạy trên máy',
   chatExplanation:
-    'Bạn có thể gửi và lưu tin nhắn trên máy để thử thao tác. Chưa có phản hồi từ AI; tin nhắn không được gửi đến dịch vụ bên ngoài.',
+    'Ghi giao dịch hoặc hỏi tư vấn tại đây. Giao dịch cần xác nhận trước khi lưu; câu trả lời được tạo trên máy và không gửi ra ngoài.',
   chatEmpty:
-    'Chưa có tin nhắn. Nhập nội dung bên dưới để thử lưu cuộc trò chuyện trên máy.',
-  chatInput: 'Tin nhắn của bạn',
-  send: 'Lưu tin nhắn',
+    'Thử “ăn sáng 30k” để ghi giao dịch, hoặc “Tháng này tôi chi bao nhiêu?” để hỏi tư vấn.',
+  chatInput: 'Ghi giao dịch hoặc hỏi tư vấn',
+  chatInputHint: 'Nhập giao dịch hoặc câu hỏi…',
+  chatRouteAdvice: 'Câu hỏi tư vấn · Gợi ý trên máy',
+  chatRouteTransaction: 'Gợi ý ghi giao dịch',
+  chatRouteMultiple: 'khoản giao dịch cần xác nhận riêng',
+  chatRouteAmbiguous: 'Chưa rõ ý; cần chọn ghi giao dịch hay hỏi tư vấn',
+  chatRouteRestricted: 'Yêu cầu bị hạn chế · Chỉ hỗ trợ tiêu chí chung',
+  chatRouteOutOfScope: 'Ngoài phạm vi tài chính cá nhân',
+  chatChooseRoute: 'Bạn muốn xử lý nội dung này thế nào?',
+  chatChooseTransaction: 'Ghi giao dịch',
+  chatChooseAdvice: 'Hỏi tư vấn',
+  chatChangeRoute: 'Chọn cách xử lý khác',
+  chatAdviceSaved:
+    'Đã lưu câu hỏi trên máy. Câu trả lời được tạo cục bộ và không gửi dữ liệu ra ngoài.',
+  send: 'Gửi',
   chatLimit: 'Tối đa 500 ký tự. Chỉ lưu trên thiết bị này.',
   chatLoadError: 'Không tải được tin nhắn. Hãy thử lại.',
   loadOlder: 'Tải tin nhắn cũ hơn',
-  localMessage: 'Đã lưu trên máy · AI chưa kết nối',
+  localMessage: 'Tin nhắn lưu trên máy',
   transactionPending:
     'Phần nhập thu, chi và chuyển ví đang được triển khai ở giai đoạn 2.',
   budgetPending:
@@ -289,8 +382,8 @@ export const vi = {
   debtLent: 'Tôi cho vay',
   debtBorrow: 'Nhận tiền vay',
   debtLend: 'Cho vay',
-  debtRepayPaid: 'Trả tiền vay',
-  debtRepayReceived: 'Nhận tiền trả nợ',
+  debtRepayPaid: 'Trả nợ vay',
+  debtRepayReceived: 'Nhận trả nợ',
   debtRepayment: 'Ghi nhận trả nợ',
   debtCounterparty: 'Người cho vay / người vay',
   debtDue: 'Ngày đến hạn',
@@ -318,7 +411,7 @@ export const vi = {
   debtInvalidBalance:
     'Thay đổi này không hợp lệ: tiền trả không được vượt số còn nợ; không thể giảm hoặc xóa tiền gốc xuống thấp hơn tổng đã trả. Loại giao dịch và khoản nợ liên quan phải được giữ nguyên.',
   debtFormInvalid:
-    'Kiểm tra tên người liên quan, ví, số tiền nguyên đồng và ngày hợp lệ theo YYYY-MM-DD.',
+    'Kiểm tra tên người liên quan, ví, số tiền nguyên đồng và ngày hợp lệ.',
   scheduledReminderChannel: 'Nhắc lịch và hạn nợ',
   overviewTitle: 'Tổng quan',
   overviewCurrentMonth: 'Tháng hiện tại',
@@ -339,13 +432,16 @@ export const vi = {
   overviewChartLegend:
     'Xanh dương: thu · Cam: chi. Vuốt ngang biểu đồ để xem các tháng.',
   overviewNoHistory: 'Chưa có thu chi trong sáu tháng này.',
-  overviewBudgets: 'Ngân sách trong tháng',
+  overviewBudgets: 'Ngân sách tháng',
   overviewNoBudgets: 'Chưa có ngân sách đang áp dụng trong tháng này.',
   overviewOpenBudgets: 'Xem ngân sách',
   overviewCurrentGoals: 'Mục tiêu hiện tại',
-  overviewRecent: 'Giao dịch gần đây trong tháng',
+  overviewRecent: 'Giao dịch gần đây',
   overviewNoTransactions: 'Chưa có giao dịch trong tháng này.',
   overviewOpenTransactions: 'Xem giao dịch',
+  overviewAnalysis: 'Phân tích chi tiêu',
+  overviewAnalysisHint: 'Xem biểu đồ danh mục và sáu tháng',
+  viewAll: 'Xem tất cả',
   overviewDebtTransaction: 'Vay hoặc trả nợ',
   recurringTitle: 'Giao dịch định kỳ',
   recurringDescription:
@@ -360,8 +456,8 @@ export const vi = {
   recurringFrequency: 'Chu kỳ lặp',
   recurringLegacyInterval: 'chu kỳ/lần',
   recurringLegacyHint: 'Giữ nguyên nhịp của lịch cũ',
-  recurringStart: 'Ngày bắt đầu (YYYY-MM-DD)',
-  recurringEnd: 'Ngày kết thúc (để trống nếu không có)',
+  recurringStart: 'Ngày bắt đầu',
+  recurringEnd: 'Ngày kết thúc',
   recurringFormHint:
     'Lịch bắt đầu trong quá khứ sẽ tạo bù các kỳ đến hôm nay. Sửa lịch giữ nguyên giao dịch đã tạo.',
   recurringPause: 'Tạm dừng',
@@ -406,7 +502,7 @@ export const vi = {
     'Chọn ví: tiến độ bằng toàn bộ số dư hiện tại của ví. Nhập tay: chỉ dùng số tiền bạn nhập. Theo dõi mục tiêu không chuyển hay giữ riêng tiền trong ví.',
   goalDeadline: 'Hạn mục tiêu',
   goalDeadlineHint:
-    'Nhập YYYY-MM-DD hoặc để trống nếu chưa có hạn. Mục tiêu quá hạn tính phần còn thiếu trong một tháng.',
+    'Chọn ngày hoặc để trống nếu chưa có hạn. Mục tiêu quá hạn tính phần còn thiếu trong một tháng.',
   goalNoDeadline: 'Chưa có hạn; chỉ theo dõi tiến độ.',
   goalAchieved: 'Đã đạt mục tiêu',
   goalMonthly: 'Cần dành mỗi tháng',
@@ -416,4 +512,127 @@ export const vi = {
   goalLoadError: 'Không tải được mục tiêu. Hãy thử lại.',
   goalRefreshError:
     'Đã lưu thay đổi nhưng chưa tải lại được danh sách. Hãy thử tải lại.',
+  aiIntroTitle: 'Trợ lý tài chính của bạn',
+  aiIntroSubtitle:
+    'Ghi chép thu chi bằng câu tự nhiên hoặc đặt câu hỏi về ngân sách, mục tiêu và chi tiêu của bạn.',
+  aiChipBudgetPlanner: 'Lập ngân sách',
+  aiChipGoalTracker: 'Mục tiêu',
+  aiChipSpendingInsights: 'Phân tích chi tiêu',
+  aiTyping: 'PFM.ai đang chuẩn bị gợi ý trên máy…',
+  aiViewIntro: 'Màn giới thiệu trợ lý',
+  aiViewChat: 'Lịch sử trò chuyện',
+  aiHistory: 'Lịch sử',
+  aiHistoryEmpty: 'Chưa có cuộc trò chuyện nào.',
+  aiHistoryMessages: 'tin nhắn',
+  aiNewChat: 'Cuộc trò chuyện mới',
+  aiSelectDelete: 'Chọn xóa',
+  aiDeleteSelected: 'Xóa đã chọn',
+  aiDeleteChats: 'Xóa cuộc trò chuyện',
+  aiDeleteChatsConfirm: 'Xóa vĩnh viễn các cuộc trò chuyện đã chọn?',
+  aiDelete: 'Xóa',
+  aiChartTitle: 'Phân bổ chi tiêu theo danh mục (%)',
+  aiQuickAttach: 'Điền mẫu giao dịch nhanh',
+  aiQuickImageSample: 'Gợi ý từ hóa đơn ảnh',
+  aiQuickVoiceSample: 'Gợi ý nhập giọng nói',
+  // Stage 4: Quick Natural Entry inside Add Transaction & Instant Search/Detail
+  txNaturalTitle: 'Nhập nhanh bằng câu tự nhiên',
+  txNaturalHint: 'Ví dụ: ăn sáng 30k, cà phê 25k hoặc lương 15tr',
+  txNaturalParseBtn: 'Phân tích & Xác nhận',
+  txSearchPlaceholder: 'Tìm kiếm theo ghi chú, danh mục, số tiền…',
+  txFilterAll: 'Tất cả',
+  txDetailTitle: 'Chi tiết giao dịch',
+  // Stage 5: Stats & Analytics Screen
+  statsTabTitle: 'Thống kê',
+  budgetsTabTitle: 'Ngân sách',
+  statsRange1M: '1 Tháng',
+  statsRange3M: '3 Tháng',
+  statsRange6M: '6 Tháng',
+  statsIncomeVsExpense: 'Biểu đồ Thu nhập & Chi tiêu',
+  statsCategoryAllocation: 'Phân bổ chi tiêu theo danh mục',
+  statsSavingsRate: 'Tỷ lệ tiết kiệm ròng',
+  statsNetLabel: 'Tiết kiệm',
+  statsNoExpenseData: 'Chưa có khoản chi tiêu nào trong giai đoạn đã chọn.',
+  // Stage 6: Settings (Language, Currency, Theme, Seed Data, CSV Import/Export, Notifications)
+  settingsPreferencesTitle: 'Tuỳ chỉnh hiển thị',
+  settingsLanguageLabel: 'Ngôn ngữ giao diện',
+  settingsLanguageVi: 'Tiếng Việt',
+  settingsLanguageEn: 'English',
+  settingsCurrencyLabel: 'Đơn vị tiền tệ',
+  settingsCurrencyVnd: 'VND (₫)',
+  settingsCurrencyUsd: 'USD ($)',
+  settingsCurrencyHint: 'Hiện hỗ trợ VND và USD.',
+  settingsThemeLabel: 'Giao diện',
+  settingsThemeLight: 'Sáng (Pastel Sunset)',
+  settingsThemeDark: 'Tối (Midnight Aurora)',
+  settingsThemeLightShort: 'Sáng',
+  settingsThemeDarkShort: 'Tối',
+  settingsExperiments: 'Công cụ thử nghiệm',
+  settingsExperimentsHint:
+    'Các mục dưới đây dành cho bản xem trước và kiểm thử giao diện.',
+  settingsSeedLabel: 'Dữ liệu mẫu (thử nghiệm)',
+  settingsSeedDescription:
+    'Bật để nạp giao dịch, ngân sách và mục tiêu mẫu; tắt để gỡ các khoản mẫu. Ví mẫu còn được giao dịch, mục tiêu hoặc lịch định kỳ thật sử dụng được giữ lại cùng số dư đầu kỳ.',
+  settingsSeedActiveNotice: 'Đã nạp bộ dữ liệu mẫu thành công.',
+  settingsSeedRemovedNotice:
+    'Đã gỡ các khoản mẫu. Ví còn được dữ liệu thật sử dụng được giữ lại.',
+  settingsSeedFailedNotice:
+    'Không thay đổi được dữ liệu mẫu. Trạng thái cũ được giữ lại; hãy thử lại.',
+  csvSectionTitle: 'Sao lưu & Phục hồi dữ liệu (.csv)',
+  csvSectionHint:
+    'Tạo bản sao lưu xuất ra file .csv thật hoặc nhập file .csv từ máy. Tính năng đồng bộ sao lưu lên Google Drive sẽ được tích hợp trong bản cập nhật tới.',
+  csvExportBtn: 'Tạo bản sao .csv (Xuất file)',
+  csvPickFileBtn: 'Chọn file .csv để nhập',
+  csvImportBtn: 'Nhập từ nội dung văn bản',
+  csvLoadSampleBtn: 'Điền mẫu .csv thử nghiệm',
+  csvInputLabel:
+    'Nội dung .csv (dòng đầu: occurred_on,kind,amount,note,category)',
+  csvExportSuccess: 'Đã tạo file sao lưu .csv thành công',
+  csvImportSuccess: 'Đã nhập giao dịch từ .csv vào bộ nhớ máy.',
+  csvImportError:
+    'Nội dung .csv không hợp lệ. Vui lòng kiểm tra cột ngày (YYYY-MM-DD), loại (expense/income) và số tiền nguyên dương.',
+  csvDriveBackupNote:
+    'Chức năng này sau này sẽ gộp chung vào tính năng sao lưu cùng với chức năng đồng bộ sao lưu lên Google Drive.',
+  categorySubcategories: 'Danh mục con',
+  subcategoriesCount: 'danh mục con',
+  noSubcategories: 'Chưa có danh mục con nào',
+  addSubcategory: 'Thêm mục con',
+  parentCategoriesTitle: 'Danh mục cha',
+  notificationsTitle: 'Thông báo & Cảnh báo',
+  notificationsSubtitle:
+    'Tổng hợp cảnh báo ngân sách, lịch định kỳ và khoản nợ đến hạn trên thiết bị.',
+  notificationsEmpty: 'Hiện chưa có cảnh báo mới nào.',
+  aiOrbLabel: 'Biểu tượng trợ lý tài chính',
+  aiPromptBudgetPlanner: 'Lập kế hoạch ngân sách 50/30/20 cho tháng này',
+  aiPromptGoalTracker: 'Kiểm tra tiến độ mục tiêu tiết kiệm của tôi',
+  aiPromptSpendingInsights: 'Phân tích tỷ trọng chi tiêu theo danh mục',
+  aiAnalyzeMessageBtn: 'Xem gợi ý',
+  aiReplyOutOfScope:
+    'PFM.ai chỉ hỗ trợ quản lý tài chính cá nhân (chi tiêu, ngân sách, tiết kiệm, mục tiêu, khoản vay/trả góp). Vui lòng đặt câu hỏi trong các phạm vi này.',
+  aiReplyRestricted:
+    'PFM.ai không đề xuất sản phẩm, ngân hàng, công ty chứng khoán hoặc bên cho vay cụ thể. Bạn có thể hỏi về tiêu chí so sánh hoặc nguyên tắc tài chính chung.',
+  aiReplyAmbiguous:
+    'Chưa rõ ngữ cảnh tài chính. Vui lòng nói rõ hơn về chi tiêu, ngân sách, tiết kiệm, mục tiêu hoặc khoản vay của bạn.',
+  aiFactExpenseHeadline: 'Từ {range}, bạn đã chi {total}.',
+  aiFactExpenseOther: 'Các nhóm còn lại: {total}',
+  aiFactUncategorized: 'Trong đó chưa phân loại {total}.',
+  aiFactNoExpense: 'Từ {range} bạn chưa ghi khoản chi nào.',
+  aiFactCashFlowHeadline:
+    'Từ {range}: thu {income}, chi {expense}, chênh lệch {net}.',
+  aiFactNoCashFlow: 'Từ {range} bạn chưa ghi giao dịch thu hoặc chi nào.',
+  aiFactChartTitle: 'Tỷ trọng chi tiêu từ {range} (%)',
+  aiFactPeriodQuestion:
+    'Bạn muốn xem khoảng thời gian nào? Mình hỗ trợ: hôm nay, hôm qua, tuần này, tuần trước, tháng này, tháng trước, 7 ngày gần đây và 30 ngày gần đây.',
+  aiAdviceDisclaimer:
+    'Đây là gợi ý tham khảo dựa trên dữ liệu bạn đã ghi, không phải tư vấn tài chính có giấy phép.',
+  aiAdviceBigDecision:
+    'Với quyết định lớn như vay hoặc mua trả góp, bạn nên kiểm tra lại với nhân viên tín dụng hoặc chuyên gia trước khi quyết định.',
+  aiQuickMorningSample: 'Ăn sáng 30k',
+  txTimeToday: 'Hôm nay',
+  txTimeYesterday: 'Hôm qua',
 } as const;
+
+export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(viMessages, {
+  get(target, key: keyof typeof viMessages) {
+    return activeLanguage === 'en' ? en[key] ?? target[key] : target[key];
+  },
+});

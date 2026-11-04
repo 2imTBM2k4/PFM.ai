@@ -62,18 +62,43 @@ export const CategoryInputSchema = z
   })
   .strict();
 
+const TransactionKindSchema = z.enum([
+  'expense',
+  'income',
+  'transfer',
+  'debt_borrow',
+  'debt_lend',
+  'debt_repay_paid',
+  'debt_repay_received',
+]);
+
+export const ParseLearningInputSchema = z
+  .object({
+    noteText: z.string(),
+    kind: TransactionKindSchema,
+    categoryId: NullableIdSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.kind !== 'expense' &&
+      value.kind !== 'income' &&
+      value.categoryId !== null
+    )
+      context.addIssue({
+        code: 'custom',
+        path: ['categoryId'],
+        message: 'Only income and expense can have categories.',
+      });
+  });
+export type ParseLearningInput = z.input<typeof ParseLearningInputSchema>;
+
 export const TransactionInputSchema = z
   .object({
-    kind: z.enum([
-      'expense',
-      'income',
-      'transfer',
-      'debt_borrow',
-      'debt_lend',
-      'debt_repay_paid',
-      'debt_repay_received',
-    ]),
+    kind: TransactionKindSchema,
     amount: MoneySchema.positive(),
+    currency: z.enum(['VND', 'USD']).default('VND'),
+    vndPerUsd: z.number().finite().positive().nullable().default(null),
     walletId: IdSchema,
     toWalletId: NullableIdSchema,
     categoryId: NullableIdSchema,
@@ -89,6 +114,8 @@ export const TransactionInputSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.currency === 'USD' && value.vndPerUsd === null)
+      context.addIssue({ code: 'custom', path: ['vndPerUsd'], message: 'USD requires an exchange rate.' });
     if (value.kind === 'transfer') {
       if (value.toWalletId === null || value.toWalletId === value.walletId) {
         context.addIssue({

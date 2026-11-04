@@ -33,6 +33,16 @@ export const MIGRATIONS: Migration[] = [
     sql: "ALTER TABLE transactions ADD COLUMN note_search TEXT NOT NULL DEFAULT '';",
     backfill: backfillNoteSearch,
   },
+  {
+    version: 3,
+    description: 'Group local chat messages into sessions',
+    sql: "ALTER TABLE chat_messages ADD COLUMN session_id TEXT NOT NULL DEFAULT 'legacy'; CREATE INDEX idx_chat_messages_session ON chat_messages(session_id, created_at, id);",
+  },
+  {
+    version: 4,
+    description: 'Preserve original transaction currency and booking exchange rate',
+    sql: "ALTER TABLE transactions ADD COLUMN original_currency TEXT NOT NULL DEFAULT 'VND' CHECK(original_currency IN ('VND','USD')); ALTER TABLE transactions ADD COLUMN original_amount_minor INTEGER; ALTER TABLE transactions ADD COLUMN booking_rate REAL; UPDATE transactions SET original_amount_minor=amount;",
+  },
 ];
 
 export async function checkIntegrity(db: Queries) {

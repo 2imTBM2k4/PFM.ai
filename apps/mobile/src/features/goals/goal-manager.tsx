@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, goalProgress, today } from '@pfm/domain';
+import { goalProgress, today } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { GoalInputSchema, type GoalInput } from '@pfm/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -8,14 +9,24 @@ import { BackHandler, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
+  Divider,
   List,
   ProgressBar,
   RadioButton,
+  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
 } from 'react-native-paper';
-import { Screen, styles } from '@/components/screen';
+import {
+  EmptyStateCard,
+  IconBadge,
+  Screen,
+  StatusPill,
+  styles,
+} from '@/components/screen';
+import { DateField } from '@/components/ui';
+import { useFinancePalette } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
   archiveGoal,
@@ -31,6 +42,8 @@ import {
   parseAmountInput,
 } from '@/features/transactions/form';
 import { vi } from '@/messages/vi';
+import { displayWalletName } from '@/messages/seed-labels';
+import { formatDisplayDate } from '@/utils/display';
 import { useApp } from '@/state/app';
 
 export function GoalManager({ onClose }: { onClose(): void }) {
@@ -44,6 +57,7 @@ export function GoalManager({ onClose }: { onClose(): void }) {
   const working = useRef(false),
     newId = useRef('');
   const { colors } = useTheme();
+  const palette = useFinancePalette();
   const recurringVersion = useApp((state) => state.recurringVersion);
   const refresh = useCallback(async () => {
     return withDatabase(async (db) => ({
@@ -139,142 +153,219 @@ export function GoalManager({ onClose }: { onClose(): void }) {
       />
     );
   const date = today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
+  const visibleGoals = rows.filter(
+    (row) => (row.status === 'archived') === archived,
+  );
   return (
-    <Screen title={vi.goals}>
-      <Button disabled={busy} onPress={back} contentStyle={styles.button}>
-        {vi.back}
-      </Button>
-      <Button
-        mode="contained"
-        disabled={busy || loading}
-        onPress={() => {
-          newId.current = uuid.v4();
-          setError('');
-          setEditing(null);
-        }}
-        contentStyle={styles.button}
-      >
-        {vi.addGoal}
-      </Button>
-      <Button
-        disabled={busy}
-        onPress={() => setArchived(!archived)}
-        contentStyle={styles.button}
-      >
-        {archived ? vi.goalShowActive : vi.goalShowArchived}
-      </Button>
-      {loading && <ActivityIndicator />}
-      {!!error && (
-        <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {error}
-        </Text>
-      )}
-      {!!error && (
+    <Screen
+      title={vi.goals}
+      onBack={back}
+      backDisabled={busy}
+      headerRight={
         <Button
+          mode="contained"
+          icon="plus"
           disabled={busy || loading}
+          contentStyle={styles.compactButton}
           onPress={() => {
-            setLoading(true);
-            refresh()
-              .then((next) => {
-                setRows(next.goals);
-                setWallets(next.wallets);
-                setError('');
-              })
-              .catch(() => setError(vi.goalLoadError))
-              .finally(() => setLoading(false));
+            newId.current = uuid.v4();
+            setError('');
+            setEditing(null);
           }}
         >
-          {vi.retry}
+          {vi.addGoal}
         </Button>
+      }
+    >
+      <SegmentedButtons
+        value={archived ? 'archived' : 'active'}
+        onValueChange={(value) => setArchived(value === 'archived')}
+        buttons={[
+          { value: 'active', label: vi.goalShowActive, disabled: busy },
+          { value: 'archived', label: vi.goalShowArchived, disabled: busy },
+        ]}
+      />
+
+      {loading && (
+        <View style={{ paddingVertical: 28, alignItems: 'center' }}>
+          <ActivityIndicator size="large" />
+        </View>
       )}
-      {!loading &&
-        !rows.some((row) => (row.status === 'archived') === archived) && (
-          <Text>{vi.goalEmpty}</Text>
-        )}
-      {rows
-        .filter((row) => (row.status === 'archived') === archived)
-        .map((row) => {
-          const progress = goalProgress(
-            row.target_amount,
-            row.progress,
-            date,
-            row.deadline_on,
-          );
-          return (
-            <View
-              key={row.id}
-              style={[styles.panel, { backgroundColor: colors.surfaceVariant }]}
-            >
-              <Text variant="titleMedium">{row.name}</Text>
-              <Text>
-                {formatVnd(row.progress)} / {formatVnd(row.target_amount)}
-              </Text>
-              <ProgressBar
-                progress={Math.max(
-                  0,
-                  Math.min(1, row.progress / row.target_amount),
-                )}
-                accessibilityLabel={vi.goalProgress}
+      {!!error && (
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.dangerSoft,
+              borderColor: palette.danger,
+            },
+          ]}
+        >
+          <Text accessibilityRole="alert" style={{ color: colors.error }}>
+            {error}
+          </Text>
+          <Button
+            disabled={busy || loading}
+            onPress={() => {
+              setLoading(true);
+              refresh()
+                .then((next) => {
+                  setRows(next.goals);
+                  setWallets(next.wallets);
+                  setError('');
+                })
+                .catch(() => setError(vi.goalLoadError))
+                .finally(() => setLoading(false));
+            }}
+          >
+            {vi.retry}
+          </Button>
+        </View>
+      )}
+
+      {!loading && !visibleGoals.length && (
+        <EmptyStateCard icon="bullseye-arrow" message={vi.goalEmpty} />
+      )}
+
+      {visibleGoals.map((row) => {
+        const progress = goalProgress(
+          row.target_amount,
+          row.progress,
+          date,
+          row.deadline_on,
+        );
+        const ratio = Math.max(
+          0,
+          Math.min(1, row.progress / row.target_amount),
+        );
+        const pct = Math.round(ratio * 100);
+        return (
+          <View
+            key={row.id}
+            style={[
+              styles.panel,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}
+          >
+            <View style={styles.row}>
+              <View style={[styles.inlineRow, { flex: 1 }]}>
+                <IconBadge
+                  icon={progress.achieved ? 'trophy-outline' : 'bullseye-arrow'}
+                  bg={progress.achieved ? palette.incomeSoft : palette.tealSoft}
+                  fg={progress.achieved ? palette.incomeInk : palette.tealInk}
+                />
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+                    {row.name}
+                  </Text>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: palette.textMuted }}
+                  >
+                    {row.wallet_name
+                      ? `${vi.goalWallet}: ${row.wallet_name}`
+                      : vi.goalManual}
+                  </Text>
+                </View>
+              </View>
+              <StatusPill
+                icon={progress.achieved ? 'check-circle' : undefined}
+                label={progress.achieved ? vi.goalAchieved : `${pct}%`}
+                bg={
+                  progress.achieved ? palette.incomeSoft : palette.primarySoft
+                }
+                fg={progress.achieved ? palette.incomeInk : palette.primaryInk}
               />
-              <Text>
-                {row.wallet_name
-                  ? `${vi.goalWallet}: ${row.wallet_name}`
-                  : vi.goalManual}
+            </View>
+
+            <View style={styles.row}>
+              <Text
+                variant="titleMedium"
+                style={[styles.number, { fontWeight: '700' }]}
+              >
+                {formatVnd(row.progress)}
               </Text>
+              <Text
+                variant="bodyMedium"
+                style={[styles.number, { color: palette.textMuted }]}
+              >
+                / {formatVnd(row.target_amount)}
+              </Text>
+            </View>
+
+            <ProgressBar
+              progress={ratio}
+              color={progress.achieved ? palette.income : colors.primary}
+              style={{ height: 8, borderRadius: 4 }}
+              accessibilityLabel={vi.goalProgress}
+            />
+
+            <View style={styles.row}>
               {row.deadline_on && (
-                <Text>
-                  {vi.goalDeadline}: {row.deadline_on}
+                <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+                  {vi.goalDeadline}: {formatDisplayDate(row.deadline_on)}
                 </Text>
               )}
-              {progress.achieved ? (
-                <Text>{vi.goalAchieved}</Text>
-              ) : (
-                <Text>
+              {!progress.achieved && (
+                <Text
+                  variant="bodySmall"
+                  style={{ color: palette.textMuted, fontWeight: '500' }}
+                >
                   {progress.requiredPerMonth === null
                     ? vi.goalNoDeadline
                     : `${vi.goalMonthly}: ${formatVnd(progress.requiredPerMonth)}`}
                 </Text>
               )}
-              {archived ? (
+            </View>
+
+            <Divider style={{ backgroundColor: palette.borderSubtle }} />
+
+            {archived ? (
+              <Button
+                mode="contained-tonal"
+                icon="restore"
+                disabled={busy}
+                contentStyle={styles.button}
+                onPress={() =>
+                  void mutate((db) =>
+                    restoreGoal(db, row.id, new Date().toISOString()),
+                  )
+                }
+              >
+                {vi.restoreGoal}
+              </Button>
+            ) : (
+              <View style={[styles.row, { justifyContent: 'flex-end' }]}>
                 <Button
+                  compact
+                  mode="contained-tonal"
+                  icon="pencil-outline"
                   disabled={busy}
-                  contentStyle={styles.button}
+                  onPress={() => {
+                    setError('');
+                    setEditing(row);
+                  }}
+                >
+                  {vi.editGoal}
+                </Button>
+                <Button
+                  compact
+                  mode="text"
+                  icon="archive-arrow-down-outline"
+                  disabled={busy}
                   onPress={() =>
                     void mutate((db) =>
-                      restoreGoal(db, row.id, new Date().toISOString()),
+                      archiveGoal(db, row.id, new Date().toISOString()),
                     )
                   }
                 >
-                  {vi.restoreGoal}
+                  {vi.archiveGoal}
                 </Button>
-              ) : (
-                <View style={styles.row}>
-                  <Button
-                    disabled={busy}
-                    contentStyle={styles.button}
-                    onPress={() => {
-                      setError('');
-                      setEditing(row);
-                    }}
-                  >
-                    {vi.editGoal}
-                  </Button>
-                  <Button
-                    disabled={busy}
-                    contentStyle={styles.button}
-                    onPress={() =>
-                      void mutate((db) =>
-                        archiveGoal(db, row.id, new Date().toISOString()),
-                      )
-                    }
-                  >
-                    {vi.archiveGoal}
-                  </Button>
-                </View>
-              )}
-            </View>
-          );
-        })}
+              </View>
+            )}
+          </View>
+        );
+      })}
     </Screen>
   );
 }
@@ -317,103 +408,147 @@ function GoalForm({
   const [invalid, setInvalid] = useState(false),
     [expanded, setExpanded] = useState(false);
   const { colors } = useTheme();
+  const palette = useFinancePalette();
   const walletId = useWatch({ control, name: 'wallet' }),
     disabled = busy || isSubmitting;
   return (
-    <Screen title={row ? vi.editGoal : vi.addGoal}>
-      <Button disabled={disabled} contentStyle={styles.button} onPress={onBack}>
-        {vi.back}
-      </Button>
-      {(
-        [
-          { name: 'name', label: vi.goalName },
-          { name: 'target', label: vi.goalTarget },
-          { name: 'deadline', label: vi.goalDeadline },
-        ] as const
-      ).map((item) => (
-        <Controller
-          key={item.name}
-          control={control}
-          name={item.name}
-          render={({ field }) => (
-            <TextInput
-              mode="outlined"
-              label={item.label}
-              value={field.value}
-              disabled={disabled}
-              onBlur={field.onBlur}
-              keyboardType={item.name === 'target' ? 'number-pad' : 'default'}
-              onChangeText={(value) =>
-                field.onChange(
-                  item.name === 'target'
-                    ? formatAmountInput(value, field.value)
-                    : value,
-                )
-              }
-            />
-          )}
-        />
-      ))}
-      <Text>{vi.goalDeadlineHint}</Text>
-      <Controller
-        control={control}
-        name="wallet"
-        render={({ field }) => (
-          <List.Accordion
-            title={vi.goalSource}
-            description={
-              wallets.find((wallet) => wallet.id === field.value)?.name ??
-              vi.goalManual
+    <Screen
+      title={row ? vi.editGoal : vi.addGoal}
+      onBack={onBack}
+      backDisabled={disabled}
+    >
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        {(
+          [
+            { name: 'name', label: vi.goalName, icon: 'bullseye-arrow' },
+            { name: 'target', label: vi.goalTarget, icon: 'cash' },
+            { name: 'deadline', label: vi.goalDeadline, icon: 'calendar' },
+          ] as const
+        ).map((item) => (
+          <Controller
+            key={item.name}
+            control={control}
+            name={item.name}
+            render={({ field }) =>
+              item.name === 'deadline' ? (
+                <DateField
+                  label={item.label}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={disabled}
+                  allowClear
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={item.label}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  keyboardType={
+                    item.name === 'target' ? 'number-pad' : 'default'
+                  }
+                  onChangeText={(value) =>
+                    field.onChange(
+                      item.name === 'target'
+                        ? formatAmountInput(value, field.value)
+                        : value,
+                    )
+                  }
+                />
+              )
             }
-            expanded={expanded}
-            onPress={() => setExpanded(!expanded)}
-          >
-            <RadioButton.Group
-              value={field.value}
-              onValueChange={field.onChange}
-            >
-              <RadioButton.Item
-                label={vi.goalManual}
-                value=""
-                disabled={disabled}
-              />
-              {wallets
-                .filter(
-                  (wallet) =>
-                    !wallet.is_archived || wallet.id === row?.funding_wallet_id,
-                )
-                .map((wallet) => (
-                  <RadioButton.Item
-                    key={wallet.id}
-                    label={wallet.name}
-                    value={wallet.id}
-                    disabled={disabled}
-                  />
-                ))}
-            </RadioButton.Group>
-          </List.Accordion>
-        )}
-      />
-      {!walletId && (
+          />
+        ))}
+        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+          {vi.goalDeadlineHint}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
         <Controller
           control={control}
-          name="manual"
+          name="wallet"
           render={({ field }) => (
-            <TextInput
-              mode="outlined"
-              label={vi.goalManual}
-              keyboardType="number-pad"
-              value={field.value}
-              disabled={disabled}
-              onBlur={field.onBlur}
-              onChangeText={(value) =>
-                field.onChange(formatAmountInput(value, field.value))
+            <List.Accordion
+              title={vi.goalSource}
+              description={
+                wallets.find((wallet) => wallet.id === field.value)?.name ??
+                vi.goalManual
               }
-            />
+              expanded={expanded}
+              onPress={() => setExpanded(!expanded)}
+              style={{
+                backgroundColor: palette.surfaceMuted,
+                borderRadius: 12,
+              }}
+            >
+              <RadioButton.Group
+                value={field.value}
+                onValueChange={(val) => {
+                  field.onChange(val);
+                  setExpanded(false);
+                }}
+              >
+                <RadioButton.Item
+                  label={vi.goalManual}
+                  value=""
+                  disabled={disabled}
+                />
+                {wallets
+                  .filter(
+                    (wallet) =>
+                      !wallet.is_archived ||
+                      wallet.id === row?.funding_wallet_id,
+                  )
+                  .map((wallet) => (
+                    <RadioButton.Item
+                      key={wallet.id}
+                      label={displayWalletName(wallet.name)}
+                      value={wallet.id}
+                      disabled={disabled}
+                    />
+                  ))}
+              </RadioButton.Group>
+            </List.Accordion>
           )}
         />
-      )}
-      <Text>{vi.goalSourceHint}</Text>
+        {!walletId && (
+          <Controller
+            control={control}
+            name="manual"
+            render={({ field }) => (
+              <TextInput
+                mode="outlined"
+                label={vi.goalManual}
+                keyboardType="number-pad"
+                value={field.value}
+                disabled={disabled}
+                onBlur={field.onBlur}
+                left={<TextInput.Icon icon="piggy-bank-outline" />}
+                onChangeText={(value) =>
+                  field.onChange(formatAmountInput(value, field.value))
+                }
+              />
+            )}
+          />
+        )}
+        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+          {vi.goalSourceHint}
+        </Text>
+      </View>
+
       {(invalid || error) && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {error || vi.goalInvalid}
@@ -421,6 +556,7 @@ function GoalForm({
       )}
       <Button
         mode="contained"
+        icon="check"
         contentStyle={styles.button}
         loading={disabled}
         disabled={disabled}
