@@ -5,6 +5,8 @@ import { foldSearchText } from './search-text';
 
 export const DEV_SEED_PREFIX = '00000000-0000-4000-8999-';
 export const DEV_BANK_WALLET_ID = `${DEV_SEED_PREFIX}000000000001`;
+const SEED_PREFERENCE_SQL = `INSERT INTO settings (key,value) VALUES ('pref_seed_enabled',?)
+  ON CONFLICT(key) DO UPDATE SET value=excluded.value`;
 
 const CAT_FOOD_EATING_OUT = '00000000-0000-4000-8001-000000000002';
 const CAT_FOOD_COFFEE = '00000000-0000-4000-8001-000000000003';
@@ -28,7 +30,10 @@ function seedId(seq: number): string {
  */
 export async function applyDevSeedData(
   db: Database,
-  referenceDate = today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
+  referenceDate = today({
+    now: () => new Date(),
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }),
 ): Promise<void> {
   const nowIso = new Date().toISOString();
   const currentMonth = monthKey(referenceDate);
@@ -259,6 +264,7 @@ export async function applyDevSeedData(
       seedId(300),
       nowIso,
     );
+    await tx.runAsync(SEED_PREFERENCE_SQL, 'true');
   });
 }
 
@@ -277,7 +283,14 @@ export async function removeDevSeedData(db: Database): Promise<void> {
     await tx.runAsync('DELETE FROM goals WHERE id LIKE ?', pattern);
     await tx.runAsync('DELETE FROM transactions WHERE id LIKE ?', pattern);
     await tx.runAsync('DELETE FROM chat_messages WHERE id LIKE ?', pattern);
-    await tx.runAsync('DELETE FROM wallets WHERE id LIKE ?', pattern);
+    // User records can reference a sample wallet; retain its original identity and opening balance.
+    await tx.runAsync(
+      `DELETE FROM wallets WHERE id LIKE ?
+      AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.wallet_id=wallets.id OR t.to_wallet_id=wallets.id)
+      AND NOT EXISTS (SELECT 1 FROM recurring_rules r WHERE r.wallet_id=wallets.id OR r.to_wallet_id=wallets.id)
+      AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.funding_wallet_id=wallets.id)`,
+      pattern,
+    );
+    await tx.runAsync(SEED_PREFERENCE_SQL, 'false');
   });
 }
-

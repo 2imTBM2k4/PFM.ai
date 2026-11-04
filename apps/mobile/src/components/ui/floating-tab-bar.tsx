@@ -1,6 +1,7 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { GlassView } from 'expo-glass-effect';
 import { memo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -121,8 +122,10 @@ export function FloatingTabBarView({
       style={[styles.wrapper, { bottom: bottomOffset }]}
     >
       <View style={styles.row}>
-        {/* Floating Black Pill Container */}
-        <View
+        {/* Floating Liquid Glass Pill Container */}
+        <GlassView
+          glassEffectStyle="regular"
+          colorScheme={theme.mode}
           accessibilityRole="tablist"
           style={[
             styles.pillBar,
@@ -131,6 +134,11 @@ export function FloatingTabBarView({
               backgroundColor: theme.tabBar.pillBackground,
               borderColor: theme.tabBar.pillBorder,
             },
+            Platform.OS === 'web' &&
+              ({
+                backdropFilter: 'blur(24px) saturate(190%)',
+                WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+              } as never),
           ]}
         >
           {items.map((item) => (
@@ -141,7 +149,7 @@ export function FloatingTabBarView({
               onPress={() => onSelect(item.key)}
             />
           ))}
-        </View>
+        </GlassView>
 
         {/* Separate Circular "+" Button on the Right */}
         <Animated.View style={addAnimatedStyle}>

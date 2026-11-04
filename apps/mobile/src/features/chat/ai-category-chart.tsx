@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { formatVnd } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { styles as screenStyles } from '@/components/screen';
 import { DesignRadius, DesignSpacing, useDesignTheme } from '@/constants/theme';
 import { vi } from '@/messages/vi';

@@ -17,6 +17,7 @@ export interface EntryDraft {
   amountConfirmed: boolean;
   kind: ParsedEntry['kind'];
   amount: string;
+  currency: 'VND' | 'USD';
   walletId: string;
   toWalletId: string;
   categoryId: string;
@@ -42,23 +43,25 @@ export function confirmSelectedEntries(
   result: ParseResult,
   drafts: EntryDraft[],
   now: Date,
+  vndPerUsd: number | null = null,
 ): ConfirmedEntry[] {
   if (drafts.length !== result.candidates.length)
     throw new Error('ENTRY_STATE');
   const selected = drafts.flatMap((draft, index) =>
     draft.selected
-      ? [confirmEntryDraft(result.candidates[index], draft, now)]
+      ? [confirmEntryDraft(result.candidates[index], draft, now, vndPerUsd)]
       : [],
   );
   if (!selected.length) throw new Error('ENTRY_SELECTION');
   return selected;
 }
 
-// Populate only active references; an ambiguous wallet hint never replaces last-used wallet.
+// Populate only active references; an ambiguous wallet hint requires an explicit choice.
 export function makeEntryDrafts(
   result: ParseResult,
   refs: EntryReferences,
   id: () => string,
+  defaultCurrency: 'VND' | 'USD' = 'VND',
 ): EntryDraft[] {
   const wallets = refs.wallets.filter((wallet) => !wallet.is_archived);
   const walletId =
@@ -66,6 +69,29 @@ export function makeEntryDrafts(
     wallets[0]?.id ??
     '';
   return result.candidates.map((candidate) => {
+    const noteWords = ` ${foldSearchText(candidate.noteText)
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()} `;
+    const namedWallets = wallets.filter((wallet) =>
+      noteWords.includes(
+        ` ${foldSearchText(wallet.name)
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim()} `,
+      ),
+    );
+    const hintedWallets = candidate.walletHint
+      ? wallets.filter((wallet) => wallet.kind === candidate.walletHint)
+      : [];
+    const selectedWalletId =
+      namedWallets.length === 1
+        ? namedWallets[0].id
+        : namedWallets.length > 1
+          ? ''
+          : hintedWallets.length === 1
+            ? hintedWallets[0].id
+            : hintedWallets.length > 1
+              ? ''
+              : walletId;
     const category = refs.categories.find(
       (category) =>
         category.kind === candidate.kind &&
@@ -96,8 +122,11 @@ export function makeEntryDrafts(
       amount:
         candidate.amount.value === null
           ? ''
-          : formatAmountInput(String(candidate.amount.value)),
-      walletId,
+          : (candidate.amount.currency ?? defaultCurrency) === 'USD'
+            ? (candidate.amount.value / 100).toFixed(2)
+            : formatAmountInput(String(candidate.amount.value)),
+      currency: candidate.amount.currency ?? defaultCurrency,
+      walletId: selectedWalletId,
       toWalletId: '',
       categoryId: category?.id ?? '',
       date: candidate.date.value ?? '',
@@ -113,6 +142,7 @@ export function confirmEntryDraft(
   candidate: ParsedEntry,
   draft: EntryDraft,
   now: Date,
+  vndPerUsd: number | null = null,
 ): ConfirmedEntry {
   if (draft.kind === 'unknown') throw new Error('ENTRY_KIND');
   if (
@@ -129,7 +159,9 @@ export function confirmEntryDraft(
   const financialCategory = draft.kind === 'expense' || draft.kind === 'income';
   const input = TransactionInputSchema.parse({
     kind: draft.kind,
-    amount: parseAmountInput(draft.amount),
+    amount: parseAmountInput(draft.amount, draft.currency),
+    currency: draft.currency,
+    vndPerUsd: draft.currency === 'USD' ? vndPerUsd : null,
     walletId: draft.walletId,
     toWalletId: draft.kind === 'transfer' ? draft.toWalletId || null : null,
     categoryId: financialCategory ? draft.categoryId || null : null,

@@ -8,7 +8,8 @@ import {
   useTheme,
 } from 'react-native-paper';
 import { Pressable, View } from 'react-native';
-import { formatVnd, MAX_AMOUNT_VND } from '@pfm/domain';
+import { MAX_AMOUNT_VND } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { useFinancePalette } from '@/constants/theme';
 import { vi } from '@/messages/vi';

@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, today } from '@pfm/domain';
+import { today } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import {
   DebtChangesSchema,
   DebtInputSchema,
@@ -61,6 +62,7 @@ import {
   useRecurringStatus,
 } from '@/features/recurring/mobile';
 import { vi } from '@/messages/vi';
+import { displayWalletName } from '@/messages/seed-labels';
 import { formatDisplayDate } from '@/utils/display';
 import { useApp } from '@/state/app';
 import { DEBT_KIND_LABELS } from './labels';
@@ -841,7 +843,7 @@ function DebtForm({
                       <RadioButton.Item
                         key={wallet.id}
                         value={wallet.id}
-                        label={wallet.name}
+                        label={displayWalletName(wallet.name)}
                         disabled={disabled}
                       />
                     ))}

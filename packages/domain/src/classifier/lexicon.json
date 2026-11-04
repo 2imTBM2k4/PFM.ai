@@ -5,6 +5,10 @@
     {
       "phrases": [
         "an sang",
+        "breakfast",
+        "lunch",
+        "dinner",
+        "restaurant",
         "an trua",
         "an toi",
         "an vat",
@@ -26,6 +30,7 @@
     {
       "phrases": [
         "cf",
+        "coffee",
         "cafe",
         "ca phe",
         "caphe",
@@ -42,6 +47,8 @@
     {
       "phrases": [
         "di cho",
+        "groceries",
+        "supermarket",
         "sieu thi",
         "tap hoa",
         "bach hoa xanh",
@@ -71,7 +78,7 @@
       "weight": 1.0
     },
     {
-      "phrases": ["tien nha", "tien tro", "thue nha", "thue phong"],
+      "phrases": ["tien nha", "tien tro", "thue nha", "thue phong", "rent", "room rent"],
       "kind": "expense",
       "category": "expense.housing.rent",
       "weight": 1.2
@@ -150,7 +157,7 @@
     },
 
     {
-      "phrases": ["luong", "tien luong"],
+      "phrases": ["luong", "tien luong", "salary", "paycheck"],
       "kind": "income",
       "category": "income.salary",
       "weight": 1.3

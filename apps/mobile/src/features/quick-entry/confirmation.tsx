@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Modal, View } from 'react-native';
 import {
   Controller,
@@ -12,22 +12,23 @@ import {
   Button,
   Checkbox,
   HelperText,
-  List,
-  RadioButton,
   Text,
   TextInput,
 } from 'react-native-paper';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
   CONFIDENCE_HIGH,
-  formatVnd,
   type ParseResult,
   type ParsedEntry,
   type ParseWarning,
 } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { Screen, styles } from '@/components/screen';
-import { useFinancePalette } from '@/constants/theme';
+import { AppleMenuPicker, DateField } from '@/components/ui';
+import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { vi } from '@/messages/vi';
+import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
+import { usePreferences } from '@/state/preferences';
 import { formatDisplayDate } from '@/utils/display';
 import { formatAmountInput, isFutureDate } from '../transactions/form';
 import type { EntryDraft, EntryReferences } from './draft';
@@ -170,67 +171,6 @@ export function EntryConfirmation({
   );
 }
 
-function Choice({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-  low = false,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  disabled: boolean;
-  onChange(value: string): void;
-  low?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const palette = useFinancePalette();
-  return (
-    <View
-      style={{
-        borderWidth: 1,
-        borderRadius: 12,
-        borderColor: low ? palette.warning : palette.border,
-        overflow: 'hidden',
-      }}
-    >
-      <List.Accordion
-        title={label}
-        description={
-          options.find((option) => option.value === value)?.label ??
-          vi.quickChoose
-        }
-        titleNumberOfLines={3}
-        descriptionNumberOfLines={4}
-        expanded={open}
-        onPress={() => {
-          if (!disabled) setOpen(!open);
-        }}
-      >
-        <RadioButton.Group
-          value={value}
-          onValueChange={(value) => {
-            onChange(value);
-            setOpen(false);
-          }}
-        >
-          {options.map((option) => (
-            <RadioButton.Item
-              key={option.value}
-              label={option.label}
-              value={option.value}
-              disabled={disabled}
-            />
-          ))}
-        </RadioButton.Group>
-      </List.Accordion>
-      {low && <HelperText type="info">{vi.quickCheckField}</HelperText>}
-    </View>
-  );
-}
-
 function CandidateFields({
   index,
   candidate,
@@ -252,6 +192,7 @@ function CandidateFields({
   const [expanded, setExpanded] = useState(expandedByDefault);
   const palette = useFinancePalette();
   const path = `entries.${index}` as const;
+  const language = usePreferences((state) => state.language);
   const financialCategory = draft.kind === 'income' || draft.kind === 'expense';
   const newLoan = draft.kind === 'debt_borrow' || draft.kind === 'debt_lend';
   const repayment =
@@ -272,8 +213,143 @@ function CandidateFields({
       debt.direction ===
         (draft.kind === 'debt_repay_paid' ? 'borrowed' : 'lent'),
   );
+
+  const kindOptions = useMemo(
+    () => [
+      {
+        value: 'expense',
+        label: vi.transactionExpense,
+        icon: 'arrow-down-circle',
+        iconBg: palette.expenseSoft,
+        iconColor: palette.expenseInk,
+      },
+      {
+        value: 'income',
+        label: vi.transactionIncome,
+        icon: 'arrow-up-circle',
+        iconBg: palette.incomeSoft,
+        iconColor: palette.incomeInk,
+      },
+      {
+        value: 'transfer',
+        label: vi.transactionTransfer,
+        icon: 'swap-horizontal-circle',
+        iconBg: palette.purpleSoft,
+        iconColor: palette.purpleInk,
+      },
+      {
+        value: 'debt_borrow',
+        label: vi.debtBorrow,
+        icon: 'handshake',
+        iconBg: palette.warningSoft,
+        iconColor: palette.warningInk,
+      },
+      {
+        value: 'debt_lend',
+        label: vi.debtLend,
+        icon: 'cash-fast',
+        iconBg: palette.tealSoft,
+        iconColor: palette.tealInk,
+      },
+      {
+        value: 'debt_repay_paid',
+        label: vi.debtRepayPaid,
+        icon: 'cash-minus',
+        iconBg: palette.expenseSoft,
+        iconColor: palette.expenseInk,
+      },
+      {
+        value: 'debt_repay_received',
+        label: vi.debtRepayReceived,
+        icon: 'cash-plus',
+        iconBg: palette.incomeSoft,
+        iconColor: palette.incomeInk,
+      },
+    ],
+    [palette],
+  );
+
+  const walletOptions = useMemo(
+    () =>
+      wallets.map((wallet) => {
+        const visual = walletKindVisual(wallet.kind, palette);
+        return {
+          value: wallet.id,
+          label: displayWalletName(wallet.name, language),
+          icon: visual.icon,
+          iconBg: visual.bg,
+          iconColor: visual.fg,
+        };
+      }),
+    [wallets, palette, language],
+  );
+
+  const toWalletOptions = useMemo(
+    () =>
+      wallets
+        .filter((wallet) => wallet.id !== draft.walletId)
+        .map((wallet) => {
+          const visual = walletKindVisual(wallet.kind, palette);
+          return {
+            value: wallet.id,
+            label: displayWalletName(wallet.name, language),
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    [wallets, draft.walletId, palette, language],
+  );
+
+  const categoryOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: vi.transactionUncategorized,
+        icon: 'help-circle-outline',
+        iconBg: palette.surfaceMuted,
+        iconColor: palette.textMuted,
+      },
+      ...categories.map((category) => {
+        const isExpense = category.kind === 'expense';
+        const parent = category.parent_id
+          ? refs.categories.find((p) => p.id === category.parent_id)
+          : null;
+        return {
+          value: category.id,
+          label: displayCategoryName(category.name, language),
+          icon: category.icon || 'tag-outline',
+          iconBg: isExpense ? palette.expenseSoft : palette.incomeSoft,
+          iconColor:
+            category.color ||
+            (isExpense ? palette.expenseInk : palette.incomeInk),
+          subtitle: parent
+            ? `${language === 'en' ? 'Under' : 'Thuộc'}: ${displayCategoryName(parent.name, language)}`
+            : undefined,
+        };
+      }),
+    ],
+    [categories, refs.categories, palette, language],
+  );
+
+  const debtOptions = useMemo(
+    () =>
+      debts.map((debt) => ({
+        value: debt.id,
+        label: debt.counterparty_label,
+        subtitle: `${language === 'en' ? 'Outstanding' : 'Còn lại'}: ${formatVnd(debt.outstanding)}`,
+        icon: debt.direction === 'borrowed' ? 'handshake' : 'cash-fast',
+        iconBg:
+          debt.direction === 'borrowed'
+            ? palette.warningSoft
+            : palette.tealSoft,
+        iconColor:
+          debt.direction === 'borrowed' ? palette.warningInk : palette.tealInk,
+      })),
+    [debts, palette, language],
+  );
   const textField = (
-    name: 'amount' | 'date' | 'note' | 'counterpartyLabel',
+    name: 'amount' | 'note' | 'counterpartyLabel',
     label: string,
     low = false,
   ) => (
@@ -288,15 +364,20 @@ function CandidateFields({
             accessibilityLabel={label}
             value={field.value}
             disabled={disabled || !draft.selected}
-            keyboardType={name === 'amount' ? 'number-pad' : 'default'}
-            autoCapitalize={name === 'date' ? 'none' : 'sentences'}
+            keyboardType={
+              name === 'amount'
+                ? draft.currency === 'USD'
+                  ? 'decimal-pad'
+                  : 'number-pad'
+                : 'default'
+            }
             multiline={name === 'note'}
             onBlur={field.onBlur}
             outlineColor={low ? palette.warning : undefined}
             onChangeText={(value) => {
               field.onChange(
                 name === 'amount'
-                  ? formatAmountInput(value, field.value)
+                  ? formatAmountInput(value, field.value, draft.currency)
                   : value,
               );
               if (name === 'amount') setValue(`${path}.amountConfirmed`, false);
@@ -310,12 +391,16 @@ function CandidateFields({
   const amountLabel = draft.amount || vi.quickNoAmount;
   const formDisabled = disabled || !draft.selected;
   const walletName =
-    refs.wallets.find((wallet) => wallet.id === draft.walletId)?.name ?? '—';
+    displayWalletName(
+      refs.wallets.find((wallet) => wallet.id === draft.walletId)?.name,
+    ) || '—';
   const toWalletName =
-    refs.wallets.find((wallet) => wallet.id === draft.toWalletId)?.name ?? '—';
-  const categoryName = refs.categories.find(
-    (category) => category.id === draft.categoryId,
-  )?.name;
+    displayWalletName(
+      refs.wallets.find((wallet) => wallet.id === draft.toWalletId)?.name,
+    ) || '—';
+  const categoryName = displayCategoryName(
+    refs.categories.find((category) => category.id === draft.categoryId)?.name,
+  );
   const debtName = refs.debts.find(
     (debt) => debt.id === draft.debtId,
   )?.counterparty_label;
@@ -360,7 +445,8 @@ function CandidateFields({
         )}
       />
       <Text variant="titleMedium" style={styles.number}>
-        {amountLabel} ₫ · {entryKindLabel(draft.kind)}
+        {amountLabel} {draft.currency === 'USD' ? '$' : '₫'} ·{' '}
+        {entryKindLabel(draft.kind)}
       </Text>
       <Text variant="bodySmall" style={{ color: palette.textMuted }}>
         {referenceLabel}
@@ -378,16 +464,18 @@ function CandidateFields({
       </Button>
       {expanded && (
         <>
-          <Choice
+          <AppleMenuPicker
             label={vi.transactionKind}
             value={draft.kind}
-            options={[...ENTRY_KINDS]}
+            options={kindOptions}
             disabled={formDisabled}
-            low={
+            helperText={
               candidate.kindConfidence < CONFIDENCE_HIGH ||
               draft.kind === 'unknown'
+                ? vi.quickCheckField
+                : undefined
             }
-            onChange={(value) => {
+            onSelect={(value) => {
               const choice = ENTRY_KINDS.find((kind) => kind.value === value);
               if (!choice) return;
               setValue(`${path}.kind`, choice.value);
@@ -396,9 +484,23 @@ function CandidateFields({
               setValue(`${path}.debtId`, '');
             }}
           />
+          <AppleMenuPicker
+            label={vi.settingsCurrencyLabel}
+            value={draft.currency}
+            options={[
+              { value: 'VND', label: 'VND (₫)' },
+              { value: 'USD', label: 'USD ($)' },
+            ]}
+            disabled={formDisabled}
+            onSelect={(value) => {
+              setValue(`${path}.currency`, value as 'VND' | 'USD');
+              setValue(`${path}.amount`, '');
+              setValue(`${path}.amountConfirmed`, false);
+            }}
+          />
           {textField(
             'amount',
-            vi.transactionAmount,
+            `${vi.transactionAmount.replace(' (₫)', '')} (${draft.currency})`,
             candidate.amount.confidence !== 'high',
           )}
           {candidate.explanation.includes('amount.assumed_thousands') && (
@@ -420,48 +522,39 @@ function CandidateFields({
               />
             </>
           )}
-          <Choice
+          <AppleMenuPicker
             label={
               draft.kind === 'transfer'
                 ? vi.transactionSourceWallet
                 : vi.transactionWallet
             }
             value={draft.walletId}
-            options={wallets.map((wallet) => ({
-              value: wallet.id,
-              label: wallet.name,
-            }))}
+            options={walletOptions}
             disabled={formDisabled}
-            onChange={(value) => setValue(`${path}.walletId`, value)}
+            onSelect={(value) => setValue(`${path}.walletId`, value)}
           />
           {draft.kind === 'transfer' && (
-            <Choice
+            <AppleMenuPicker
               label={vi.transactionDestination}
               value={draft.toWalletId}
-              options={wallets
-                .filter((wallet) => wallet.id !== draft.walletId)
-                .map((wallet) => ({ value: wallet.id, label: wallet.name }))}
+              options={toWalletOptions}
               disabled={formDisabled}
-              onChange={(value) => setValue(`${path}.toWalletId`, value)}
+              onSelect={(value) => setValue(`${path}.toWalletId`, value)}
             />
           )}
           {financialCategory && (
-            <Choice
+            <AppleMenuPicker
               label={vi.transactionCategory}
               value={draft.categoryId}
+              options={categoryOptions}
               disabled={formDisabled}
-              low={
+              helperText={
                 candidate.categoryConfidence < CONFIDENCE_HIGH ||
                 (!!candidate.categoryKey && !draft.categoryId)
+                  ? vi.quickCheckField
+                  : undefined
               }
-              options={[
-                { value: '', label: vi.transactionUncategorized },
-                ...categories.map((category) => ({
-                  value: category.id,
-                  label: `${category.parent_id ? `${refs.categories.find((parent) => parent.id === category.parent_id)?.name} › ` : ''}${category.name}`,
-                })),
-              ]}
-              onChange={(value) => setValue(`${path}.categoryId`, value)}
+              onSelect={(value) => setValue(`${path}.categoryId`, value)}
             />
           )}
           {newLoan && (
@@ -472,50 +565,40 @@ function CandidateFields({
           )}
           {repayment && (
             <>
-              <Choice
+              <AppleMenuPicker
                 label={vi.quickExistingDebt}
                 value={draft.debtId}
-                options={debts.map((debt) => ({
-                  value: debt.id,
-                  label: `${debt.counterparty_label} · ${formatVnd(debt.outstanding)}`,
-                }))}
+                options={debtOptions}
                 disabled={formDisabled}
-                onChange={(value) => setValue(`${path}.debtId`, value)}
+                onSelect={(value) => setValue(`${path}.debtId`, value)}
               />
               {!debts.length && <Text>{vi.quickNoDebt}</Text>}
             </>
           )}
-          {textField(
-            'date',
-            vi.transactionDate,
-            candidate.date.confidence !== 'high' || !draft.date,
-          )}
+          <Controller
+            control={control}
+            name={`${path}.date`}
+            render={({ field }) => (
+              <DateField
+                label={vi.transactionDate}
+                value={field.value}
+                onChange={field.onChange}
+                disabled={formDisabled}
+                error={candidate.date.confidence !== 'high' || !draft.date}
+                helperText={
+                  candidate.date.confidence !== 'high' || !draft.date
+                    ? vi.quickCheckField
+                    : undefined
+                }
+              />
+            )}
+          />
           {textField('note', vi.transactionNote)}
           {!!candidate.amount.matchedText && (
             <Text variant="bodySmall">
               {vi.quickMatchedAmount}: “{candidate.amount.matchedText}”
             </Text>
           )}
-          <List.Accordion title={vi.quickWhy}>
-            {candidate.explanation
-              .filter(
-                (line) =>
-                  !line.startsWith('amount.') && !line.startsWith('date.'),
-              )
-              .map((line, i) => (
-                <Text key={i} variant="bodySmall" style={{ padding: 8 }}>
-                  {line.replace(
-                    / \/ ((?:expense|income)(?:\.[a-z_]+)+)/g,
-                    (_, key: string) => {
-                      const category = refs.categories.find(
-                        (category) => category.system_key === key,
-                      );
-                      return category ? ` — ${category.name}` : '';
-                    },
-                  )}
-                </Text>
-              ))}
-          </List.Accordion>
         </>
       )}
       {future && (

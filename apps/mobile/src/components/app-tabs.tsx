@@ -98,7 +98,10 @@ export function CustomBottomTabBar({
 
   return (
     <FloatingTabBar
-      items={APP_TAB_ITEMS}
+      items={APP_TAB_ITEMS.map((item) => ({
+        ...item,
+        label: ({ index: vi.overview, budgets: vi.statsTabTitle, chat: vi.chat, transactions: vi.transactions, settings: vi.settings } as Record<string, string>)[item.key] ?? item.label,
+      }))}
       activeKey={activeRouteName}
       onSelect={handleSelectTab}
       onAddPress={handleAddTransactionPress}
@@ -119,6 +122,7 @@ export default function AppTabs() {
       tabBar={(props) => <CustomBottomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        animation: 'fade',
         sceneStyle: { backgroundColor: theme.sky.upperMid },
       }}
     >

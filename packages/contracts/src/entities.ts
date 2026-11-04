@@ -97,6 +97,8 @@ export const TransactionInputSchema = z
   .object({
     kind: TransactionKindSchema,
     amount: MoneySchema.positive(),
+    currency: z.enum(['VND', 'USD']).default('VND'),
+    vndPerUsd: z.number().finite().positive().nullable().default(null),
     walletId: IdSchema,
     toWalletId: NullableIdSchema,
     categoryId: NullableIdSchema,
@@ -112,6 +114,8 @@ export const TransactionInputSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.currency === 'USD' && value.vndPerUsd === null)
+      context.addIssue({ code: 'custom', path: ['vndPerUsd'], message: 'USD requires an exchange rate.' });
     if (value.kind === 'transfer') {
       if (value.toWalletId === null || value.toWalletId === value.walletId) {
         context.addIssue({

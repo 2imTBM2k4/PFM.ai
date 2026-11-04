@@ -15,6 +15,7 @@ import {
   useDesignTheme,
 } from '@/constants/theme';
 import { vi } from '@/messages/vi';
+import { activeLanguage } from '@/messages/language';
 import { formatDisplayDate } from '@/utils/display';
 import {
   calendarDays,
@@ -170,7 +171,7 @@ export function DateField({
                 variant="titleMedium"
                 style={{ color: theme.text.primary, fontWeight: '700' }}
               >
-                Tháng {view.month + 1}/{view.year}
+                {activeLanguage === 'en' ? 'Month' : 'Tháng'} {view.month + 1}/{view.year}
               </Text>
               <IconButton
                 icon="chevron-right"
@@ -184,8 +185,8 @@ export function DateField({
             <View style={styles.jumpRow}>
               <TextInput
                 mode="outlined"
-                label="Tháng/năm (MM/YYYY)"
-                accessibilityLabel="Chuyển đến tháng/năm (MM/YYYY)"
+                label={activeLanguage === 'en' ? 'Month/year (MM/YYYY)' : 'Tháng/năm (MM/YYYY)'}
+                accessibilityLabel={activeLanguage === 'en' ? 'Go to month/year (MM/YYYY)' : 'Chuyển đến tháng/năm (MM/YYYY)'}
                 value={jump}
                 onChangeText={(next) => {
                   setJump(next);
@@ -198,11 +199,11 @@ export function DateField({
                 error={jumpError}
                 style={styles.jumpInput}
               />
-              <Button onPress={jumpToMonth}>Đi đến</Button>
+              <Button onPress={jumpToMonth}>{activeLanguage === 'en' ? 'Go' : 'Đi đến'}</Button>
             </View>
             {jumpError && (
               <HelperText type="error">
-                Nhập tháng 01–12 và năm 0001–9999.
+                {activeLanguage === 'en' ? 'Enter month 01–12 and year 0001–9999.' : 'Nhập tháng 01–12 và năm 0001–9999.'}
               </HelperText>
             )}
 

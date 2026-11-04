@@ -3,10 +3,10 @@ import { useFocusEffect } from 'expo-router';
 import {
   addMonths,
   budgetThresholds,
-  formatVnd,
   monthKey,
   today,
 } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { BudgetInputSchema, type BudgetInput } from '@pfm/contracts';
 import { memo, useCallback, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -43,6 +43,7 @@ import {
 } from '@/data/budgets';
 import { listCategories, type CategoryRow } from '@/data/categories';
 import { vi } from '@/messages/vi';
+import { displayCategoryName } from '@/messages/seed-labels';
 import { formatDisplayMonth } from '@/utils/display';
 import {
   formatAmountInput,
@@ -368,7 +369,7 @@ const BudgetItem = memo(function BudgetItem({
           />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
-              {row.category_name ?? vi.budgetOverall}
+              {row.category_name ? displayCategoryName(row.category_name) : vi.budgetOverall}
               {row.category_archived
                 ? ` · ${vi.transactionArchivedReference}`
                 : ''}
@@ -720,7 +721,7 @@ function BudgetForm({
                       value={c.id}
                       disabled={disabled}
                       style={{ minHeight: 48 }}
-                      label={`${c.parent_id ? `${categories.find((p) => p.id === c.parent_id)?.name ?? ''} › ` : ''}${c.name}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`}
+                      label={`${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} › ` : ''}${displayCategoryName(c.name)}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`}
                     />
                   ))}
               </RadioButton.Group>

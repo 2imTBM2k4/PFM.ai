@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { convertMoney } from '@pfm/domain';
 import type {
   AppLanguage,
   CurrencyCode,
@@ -7,6 +8,8 @@ import type {
 import { withDatabase } from '@/data/connection';
 import type { Queries } from '@/data/migrate';
 import { applyDevSeedData, removeDevSeedData } from '@/data/seed-data';
+import { loadUsdVndRate } from '@/services/exchange-rate';
+import { setActiveLanguage } from '@/messages/language';
 
 export interface UserPreferences {
   language: AppLanguage;
@@ -18,6 +21,10 @@ export interface UserPreferences {
 interface PreferencesState extends UserPreferences {
   hydrated: boolean;
   pendingTransactionEntry: 'manual' | 'natural' | null;
+  exchangeRate: number | null;
+  exchangeRateDate: string | null;
+  exchangeRateCached: boolean;
+  refreshExchangeRate(): Promise<void>;
   hydratePreferences(): Promise<void>;
   setLanguage(language: AppLanguage): Promise<void>;
   setCurrency(currency: CurrencyCode): Promise<void>;
@@ -70,23 +77,29 @@ async function writeSettingValue(
 export function formatCurrencyAmount(
   amountInteger: number,
   currency: CurrencyCode,
-  options?: { showPlus?: boolean; compact?: boolean },
+  options?: { showPlus?: boolean; compact?: boolean; rate?: number },
 ): string {
-  const safeInteger = Math.trunc(Number.isFinite(amountInteger) ? amountInteger : 0);
+  const safeInteger = Math.trunc(
+    Number.isFinite(amountInteger) ? amountInteger : 0,
+  );
   const isNegative = safeInteger < 0;
   const absValue = Math.abs(safeInteger);
-  const prefix = isNegative ? '-' : options?.showPlus && absValue > 0 ? '+' : '';
+  const prefix = isNegative
+    ? '-'
+    : options?.showPlus && absValue > 0
+      ? '+'
+      : '';
 
   if (currency === 'USD') {
-    // When displaying VND integer amounts in USD mode or integer cents,
-    // if amounts are >= 1000 VND, convert using a fixed integer ratio (25,000 VND = 100 cents)
-    // so existing local integer VND data displays naturally without floating-point storage.
-    const totalCents =
-      absValue >= 1000 ? Math.round((absValue * 100) / 25000) : absValue * 100;
+    const rate = options?.rate ?? usePreferences.getState().exchangeRate;
+    if (rate === null) return '—';
+    const totalCents = Math.abs(convertMoney(safeInteger, 'VND', 'USD', rate));
     const wholeDollars = Math.floor(totalCents / 100);
     const cents = totalCents % 100;
     if (options?.compact && wholeDollars >= 1000) {
-      const compactThousands = (wholeDollars / 1000).toFixed(1).replace(/\.0$/, '');
+      const compactThousands = (wholeDollars / 1000)
+        .toFixed(1)
+        .replace(/\.0$/, '');
       return `${prefix}$${compactThousands}k`;
     }
     const formattedDollars = wholeDollars
@@ -97,7 +110,9 @@ export function formatCurrencyAmount(
 
   if (options?.compact) {
     if (absValue >= 1_000_000_000) {
-      const billions = (absValue / 1_000_000_000).toFixed(1).replace(/\.0$/, '');
+      const billions = (absValue / 1_000_000_000)
+        .toFixed(1)
+        .replace(/\.0$/, '');
       return `${prefix}${billions}B ₫`;
     }
     if (absValue >= 1_000_000) {
@@ -114,6 +129,29 @@ export function formatCurrencyAmount(
   return `${prefix}${grouped} ₫`;
 }
 
+export function formatTransactionCurrencyAmount(
+  row: {
+    amount: number;
+    original_amount_minor: number | null;
+    original_currency: 'VND' | 'USD';
+    booking_rate: number | null;
+  },
+  currency: CurrencyCode,
+  rate: number | null,
+): string {
+  if (row.original_currency !== 'USD')
+    return formatCurrencyAmount(row.amount, currency, rate ? { rate } : undefined);
+  const originalCents = row.original_amount_minor ?? 0;
+  if (currency === 'USD') {
+    const dollars = Math.floor(originalCents / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return `$${dollars}.${(originalCents % 100).toString().padStart(2, '0')}`;
+  }
+  return formatCurrencyAmount(
+    rate ? convertMoney(originalCents, 'USD', 'VND', rate) : row.amount,
+    'VND',
+  );
+}
+
 export const usePreferences = create<PreferencesState>()((set, get) => ({
   language: 'vi',
   currency: 'VND',
@@ -121,6 +159,22 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   seedEnabled: false,
   hydrated: false,
   pendingTransactionEntry: null,
+  exchangeRate: null,
+  exchangeRateDate: null,
+  exchangeRateCached: false,
+
+  async refreshExchangeRate() {
+    try {
+      const next = await withDatabase((db) => loadUsdVndRate(db));
+      set({
+        exchangeRate: next.rate,
+        exchangeRateDate: next.date,
+        exchangeRateCached: next.cached,
+      });
+    } catch {
+      if (get().exchangeRate !== null) set({ exchangeRateCached: true });
+    }
+  },
 
   requestAddTransaction(mode = 'manual') {
     set({ pendingTransactionEntry: mode });
@@ -155,6 +209,8 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         };
       });
       set({ ...loaded, hydrated: true });
+      setActiveLanguage(loaded.language);
+      void get().refreshExchangeRate();
     } catch {
       set({ hydrated: true });
     }
@@ -162,6 +218,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 
   async setLanguage(language) {
     set({ language });
+    setActiveLanguage(language);
     try {
       await withDatabase((db) =>
         writeSettingValue(db, PREF_KEYS.language, language),
@@ -173,6 +230,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 
   async setCurrency(currency) {
     set({ currency });
+    if (currency === 'USD') void get().refreshExchangeRate();
     try {
       await withDatabase((db) =>
         writeSettingValue(db, PREF_KEYS.currency, currency),
@@ -194,22 +252,10 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   },
 
   async setSeedEnabled(enabled) {
+    await withDatabase(async (db) => {
+      if (enabled) await applyDevSeedData(db);
+      else await removeDevSeedData(db);
+    });
     set({ seedEnabled: enabled });
-    try {
-      await withDatabase(async (db) => {
-        if (enabled) {
-          await applyDevSeedData(db);
-        } else {
-          await removeDevSeedData(db);
-        }
-        await writeSettingValue(
-          db,
-          PREF_KEYS.seedEnabled,
-          enabled ? 'true' : 'false',
-        );
-      });
-    } catch {
-      // Keep in-memory state if persistence is unavailable in tests.
-    }
   },
 }));

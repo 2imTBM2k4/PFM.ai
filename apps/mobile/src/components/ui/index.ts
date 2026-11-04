@@ -5,6 +5,11 @@ export {
   type FloatingTabBarProps,
   type TabBarItem,
 } from './floating-tab-bar';
+export {
+  AppleMenuPicker,
+  type AppleMenuOption,
+  type AppleMenuPickerProps,
+} from './apple-menu-picker';
 export { DateField, type DateFieldProps } from './date-field';
 export {
   GlassCard,

@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+vi.mock('expo', () => ({ uuid: { v4: () => 'test-chat-session' } }));
 vi.mock('@/features/recurring/mobile', () => ({
   runRecurring: async () => {
     operations.runs++;

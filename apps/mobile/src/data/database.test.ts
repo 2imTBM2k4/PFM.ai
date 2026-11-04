@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import { migrate, MIGRATIONS, type Database } from './migrate';
 import { seed, DEFAULT_WALLET_ID } from './seed';
 import { archiveGoal, restoreGoal, listGoals, saveGoal } from './goals';
-import { readDashboard } from './dashboard';
+import { readDashboard, readDailyTotals } from './dashboard';
 import { createDebt, repayDebt, listDebts, updateDebt } from './debts';
 import {
   saveRecurringRule,
@@ -46,6 +46,8 @@ import {
   readOnboarding,
   saveChatMessage,
   listChatMessages,
+  listChatSessions,
+  deleteChatSessions,
   listWallets,
 } from './repository';
 import {
@@ -61,6 +63,14 @@ import {
   readClassifierContext,
 } from './parse-learning';
 import { parseEntry } from '@pfm/domain';
+import { routeChatInput } from '@/features/chat/intent';
+import {
+  applyDevSeedData,
+  removeDevSeedData,
+  DEV_BANK_WALLET_ID,
+  DEV_SEED_PREFIX,
+} from './seed-data';
+import { listTransactionHistory } from './transaction-history';
 import {
   readQuickEntryContext,
   saveParsedEntries,
@@ -76,6 +86,518 @@ let db: Database;
 let temporaryFile: string | undefined;
 
 const entryNow = new Date('2026-10-23T09:00:00+07:00');
+
+it('toggles samples off and on without losing a real Chat transaction in the sample wallet', async () => {
+  await migrate(db);
+  await applyDevSeedData(db, '2026-10-23');
+  const session = await entrySession('ăn sáng 30k');
+  session.drafts[0].walletId = DEV_BANK_WALLET_ID;
+  const receipt = await saveParsedEntries(
+    db,
+    session.result.raw,
+    confirmSelectedEntries(session.result, session.drafts, entryNow),
+    'now',
+    randomUUID(),
+  );
+  await removeDevSeedData(db);
+  expect((await listTransactions(db)).map((row) => row.id)).toEqual([
+    receipt.transactions[0].id,
+  ]);
+  expect((await listChatMessages(db)).map((row) => row.id)).toEqual([
+    receipt.chatMessage!.id,
+  ]);
+  expect(
+    (await listWallets(db)).find((row) => row.id === DEV_BANK_WALLET_ID),
+  ).toMatchObject({ initial_balance: 5000000, balance: 4970000 });
+  expect(await listGoals(db)).toEqual([]);
+  expect(
+    sqlite
+      .prepare('SELECT value FROM settings WHERE key=?')
+      .get('pref_seed_enabled')?.value,
+  ).toBe('false');
+  await removeDevSeedData(db);
+  await applyDevSeedData(db, '2026-10-23');
+  await applyDevSeedData(db, '2026-10-23');
+  const restored = await listTransactions(db);
+  expect(
+    restored.filter((row) => row.id === receipt.transactions[0].id),
+  ).toHaveLength(1);
+  expect(restored.some((row) => row.id.startsWith(DEV_SEED_PREFIX))).toBe(true);
+  expect(
+    sqlite
+      .prepare('SELECT value FROM settings WHERE key=?')
+      .get('pref_seed_enabled')?.value,
+  ).toBe('true');
+});
+
+it.each([
+  'receiving_transfer',
+  'goal',
+  'recurring_source',
+  'recurring_destination',
+] as const)(
+  'retains a sample wallet referenced by a real %s',
+  async (reference) => {
+    await migrate(db);
+    await applyDevSeedData(db, '2026-10-23');
+    if (reference === 'receiving_transfer') {
+      await createTransaction(
+        db,
+        randomUUID(),
+        {
+          kind: 'transfer',
+          amount: 100,
+          walletId: DEFAULT_WALLET_ID,
+          toWalletId: DEV_BANK_WALLET_ID,
+          occurredOn: '2026-10-23',
+          occurredAt: entryNow.toISOString(),
+        },
+        'now',
+      );
+    } else if (reference === 'goal') {
+      await saveGoal(
+        db,
+        randomUUID(),
+        {
+          name: 'Real goal',
+          targetAmount: 10000000,
+          fundingWalletId: DEV_BANK_WALLET_ID,
+        },
+        'now',
+        false,
+      );
+    } else {
+      await saveRecurringRule(
+        db,
+        randomUUID(),
+        {
+          kind: 'transfer',
+          amount: 100,
+          walletId:
+            reference === 'recurring_source'
+              ? DEV_BANK_WALLET_ID
+              : DEFAULT_WALLET_ID,
+          toWalletId:
+            reference === 'recurring_source'
+              ? DEFAULT_WALLET_ID
+              : DEV_BANK_WALLET_ID,
+          frequency: 'monthly',
+          startOn: '2026-10-23',
+        },
+        'now',
+        false,
+      );
+    }
+    await removeDevSeedData(db);
+    expect(
+      (await listWallets(db, true)).some(
+        (row) => row.id === DEV_BANK_WALLET_ID,
+      ),
+    ).toBe(true);
+    expect(sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+  },
+);
+
+it('removes unused sample wallets and rolls back all sample changes when the flag write fails', async () => {
+  await migrate(db);
+  await applyDevSeedData(db, '2026-10-23');
+  const before = await listTransactions(db);
+  await db.execAsync(
+    `CREATE TRIGGER fail_sample_flag BEFORE UPDATE ON settings WHEN OLD.key='pref_seed_enabled' BEGIN SELECT RAISE(ABORT,'FLAG_FAILED'); END;`,
+  );
+  await expect(removeDevSeedData(db)).rejects.toThrow('FLAG_FAILED');
+  expect(await listTransactions(db)).toEqual(before);
+  expect(
+    sqlite
+      .prepare('SELECT value FROM settings WHERE key=?')
+      .get('pref_seed_enabled')?.value,
+  ).toBe('true');
+  await db.execAsync('DROP TRIGGER fail_sample_flag');
+  await removeDevSeedData(db);
+  expect(
+    (await listWallets(db, true)).some((row) => row.id === DEV_BANK_WALLET_ID),
+  ).toBe(false);
+  expect(await listTransactions(db)).toEqual([]);
+});
+
+it('rolls back sample enablement when persisting the enabled flag fails', async () => {
+  await migrate(db);
+  await applyDevSeedData(db, '2026-10-23');
+  await removeDevSeedData(db);
+  await db.execAsync(
+    `CREATE TRIGGER fail_enable_flag BEFORE UPDATE ON settings WHEN OLD.key='pref_seed_enabled' BEGIN SELECT RAISE(ABORT,'FLAG_FAILED'); END;`,
+  );
+  await expect(applyDevSeedData(db, '2026-10-23')).rejects.toThrow(
+    'FLAG_FAILED',
+  );
+  expect(await listTransactions(db)).toEqual([]);
+  expect(await listChatMessages(db)).toEqual([]);
+  expect(await listGoals(db)).toEqual([]);
+  expect(
+    (await listWallets(db, true)).some((row) => row.id === DEV_BANK_WALLET_ID),
+  ).toBe(false);
+  expect(
+    sqlite
+      .prepare('SELECT value FROM settings WHERE key=?')
+      .get('pref_seed_enabled')?.value,
+  ).toBe('false');
+});
+
+it('shows full-history wallet balances after transfers even when history is filtered', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  sqlite
+    .prepare('UPDATE wallets SET initial_balance=1000000 WHERE id=?')
+    .run(DEFAULT_WALLET_ID);
+  const bank = randomUUID();
+  await createWallet(
+    db,
+    bank,
+    { name: 'Bank', kind: 'bank', initialBalance: 200000 },
+    'old',
+  );
+  const ids: string[] = [];
+  for (const [kind, amount, hour, toWalletId] of [
+    ['income', 300000, '09', null],
+    ['expense', 30000, '10', null],
+    ['transfer', 200000, '11', bank],
+  ] as const) {
+    const id = randomUUID();
+    ids.push(id);
+    await createTransaction(
+      db,
+      id,
+      {
+        kind,
+        amount,
+        walletId: DEFAULT_WALLET_ID,
+        toWalletId,
+        occurredOn: '2026-10-23',
+        occurredAt: `2026-10-23T${hour}:00:00+07:00`,
+        note: 'target',
+      },
+      'now',
+    );
+  }
+  const history = await listTransactionHistory(db);
+  expect(
+    history.map((row) => [
+      row.id,
+      row.wallet_balance_after,
+      row.to_wallet_balance_after,
+    ]),
+  ).toEqual([
+    [ids[2], 1070000, 400000],
+    [ids[1], 1270000, null],
+    [ids[0], 1300000, null],
+  ]);
+  const filtered = await listTransactionHistory(db, undefined, {
+    kind: 'expense',
+    text: 'target',
+    from: '2026-10-23',
+    walletId: DEFAULT_WALLET_ID,
+  });
+  expect(filtered.map((row) => row.wallet_balance_after)).toEqual([1270000]);
+  const incoming = await listTransactionHistory(db, undefined, {
+    walletId: bank,
+  });
+  expect(incoming[0].to_wallet_balance_after).toBe(400000);
+  await setWalletArchived(db, bank, true, 'archived');
+  expect((await listTransactionHistory(db))[0].to_wallet_balance_after).toBe(
+    400000,
+  );
+});
+
+it('recomputes historical balances for backdated insert, edit, deletion and undo', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  sqlite
+    .prepare('UPDATE wallets SET initial_balance=1000 WHERE id=?')
+    .run(DEFAULT_WALLET_ID);
+  const income = randomUUID(),
+    expense = randomUUID();
+  await createTransaction(
+    db,
+    income,
+    {
+      kind: 'income',
+      amount: 50,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-23',
+      occurredAt: '2026-10-23T12:00:00+07:00',
+    },
+    'one',
+  );
+  const input = {
+    kind: 'expense',
+    amount: 30,
+    walletId: DEFAULT_WALLET_ID,
+    occurredOn: '2026-10-22',
+    occurredAt: '2026-10-22T12:00:00+07:00',
+  } as const;
+  await createTransaction(db, expense, input, 'backdated');
+  expect(
+    (await listTransactionHistory(db)).map((row) => row.wallet_balance_after),
+  ).toEqual([1020, 970]);
+  await updateTransaction(db, expense, { ...input, amount: 40 }, 'edit');
+  expect(
+    (await listTransactionHistory(db)).map((row) => row.wallet_balance_after),
+  ).toEqual([1010, 960]);
+  const deleted = await deleteTransaction(db, expense);
+  expect((await listTransactionHistory(db))[0].wallet_balance_after).toBe(1050);
+  await undoDeleteTransaction(db, deleted);
+  expect(
+    (await listTransactionHistory(db)).map((row) => row.wallet_balance_after),
+  ).toEqual([1010, 960]);
+});
+
+it('keeps tied-time running balances stable across history pages', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  sqlite
+    .prepare('UPDATE wallets SET initial_balance=1000 WHERE id=?')
+    .run(DEFAULT_WALLET_ID);
+  for (let i = 0; i < 55; i++)
+    await createTransaction(
+      db,
+      `00000000-0000-4000-8777-${String(i).padStart(12, '0')}`,
+      {
+        kind: 'expense',
+        amount: 10,
+        walletId: DEFAULT_WALLET_ID,
+        occurredOn: '2026-10-23',
+        occurredAt: entryNow.toISOString(),
+      },
+      'now',
+    );
+  const first = await listTransactionHistory(db);
+  const second = await listTransactionHistory(db, first.at(-1));
+  expect(first).toHaveLength(50);
+  expect(second).toHaveLength(5);
+  expect([...first, ...second].map((row) => row.wallet_balance_after)).toEqual(
+    Array.from({ length: 55 }, (_, i) => 450 + i * 10),
+  );
+  expect(
+    await listTransactionHistory(db, undefined, { text: 'not present' }),
+  ).toEqual([]);
+});
+
+it('includes borrowed, lent and repaid principal in historical cash balances', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  const borrowed = randomUUID(),
+    lent = randomUUID();
+  await createDebt(
+    db,
+    borrowed,
+    randomUUID(),
+    {
+      direction: 'borrowed',
+      counterpartyLabel: 'Borrower',
+      amount: 500,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-20',
+    },
+    'one',
+  );
+  await createDebt(
+    db,
+    lent,
+    randomUUID(),
+    {
+      direction: 'lent',
+      counterpartyLabel: 'Lender',
+      amount: 200,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-21',
+    },
+    'two',
+  );
+  await repayDebt(
+    db,
+    borrowed,
+    randomUUID(),
+    { amount: 100, walletId: DEFAULT_WALLET_ID, occurredOn: '2026-10-22' },
+    'three',
+  );
+  await repayDebt(
+    db,
+    lent,
+    randomUUID(),
+    { amount: 50, walletId: DEFAULT_WALLET_ID, occurredOn: '2026-10-23' },
+    'four',
+  );
+  expect(
+    (await listTransactionHistory(db)).map((row) => row.wallet_balance_after),
+  ).toEqual([250, 200, 300, 500]);
+});
+
+it('keeps zero, negative and large historical balances exact', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  sqlite
+    .prepare('UPDATE wallets SET initial_balance=-100000000000 WHERE id=?')
+    .run(DEFAULT_WALLET_ID);
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'income',
+      amount: 100000000000,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-22',
+      occurredAt: '2026-10-22T12:00:00+07:00',
+    },
+    'one',
+  );
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'expense',
+      amount: 100000000000,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-23',
+      occurredAt: '2026-10-23T12:00:00+07:00',
+    },
+    'two',
+  );
+  expect(
+    (await listTransactionHistory(db)).map((row) => row.wallet_balance_after),
+  ).toEqual([-100000000000, 0]);
+});
+
+it('lists a Chat expense alongside enabled sample data', async () => {
+  await migrate(db);
+  await applyDevSeedData(db, '2026-10-23');
+  const session = await entrySession('ăn sáng 30k');
+  const receipt = await saveParsedEntries(
+    db,
+    session.result.raw,
+    confirmSelectedEntries(session.result, session.drafts, entryNow),
+    entryNow.toISOString(),
+    randomUUID(),
+  );
+  expect(
+    (await listTransactions(db)).some(
+      (row) => row.id === receipt.transactions[0].id,
+    ),
+  ).toBe(true);
+});
+
+it.each(['transactions', 'chat_messages'] as const)(
+  'refuses a successful-looking save when SQLite did not insert into %s',
+  async (table) => {
+    await migrate(db);
+    await seed(db, 'old');
+    await db.execAsync(
+      `CREATE TRIGGER ignore_entry BEFORE INSERT ON ${table} BEGIN SELECT RAISE(IGNORE); END;`,
+    );
+    const session = await entrySession('ăn sáng 30k');
+    await expect(
+      saveParsedEntries(
+        db,
+        session.result.raw,
+        confirmSelectedEntries(session.result, session.drafts, entryNow),
+        entryNow.toISOString(),
+        randomUUID(),
+      ),
+    ).rejects.toThrow('ENTRY_SAVE_NOT_VERIFIED');
+    expect(await listTransactions(db)).toEqual([]);
+    expect(await listChatMessages(db)).toEqual([]);
+    expect((await listWallets(db))[0].balance).toBe(0);
+    expect(
+      sqlite.prepare('SELECT COUNT(*) n FROM parse_learning').get()?.n,
+    ).toBe(0);
+  },
+);
+
+it.each([
+  ['ăn sáng 30k', [30000], -30000, false],
+  ['khách trả tiền hàng 50k', [50000], 50000, false],
+  ['cf 30k bánh 20k', [20000, 30000], -50000, false],
+  ['ăn sáng 30', [30000], -30000, true],
+] as const)(
+  'routes, confirms, saves and undoes the complete Chat financial flow: %s',
+  async (raw, amounts, balance, needsConsent) => {
+    await migrate(db);
+    await seed(db, 'old');
+    const context = await readQuickEntryContext(db);
+    const { route, parsed } = routeChatInput(raw, {
+      ...context,
+      clock: { now: () => entryNow, timeZone: 'Asia/Ho_Chi_Minh' },
+    });
+    expect(route).toBe('transaction');
+    const drafts = makeEntryDrafts(parsed, context, randomUUID);
+    if (needsConsent) {
+      expect(() => confirmSelectedEntries(parsed, drafts, entryNow)).toThrow(
+        'ENTRY_AMOUNT_CONFIRMATION',
+      );
+      drafts.forEach((draft) => {
+        draft.amountConfirmed = true;
+      });
+    }
+    // Routing and opening confirmation must leave cancellation safe.
+    expect(await listTransactions(db)).toEqual([]);
+    expect(await listChatMessages(db)).toEqual([]);
+    expect(
+      sqlite.prepare('SELECT COUNT(*) n FROM parse_learning').get()?.n,
+    ).toBe(0);
+    const receipt = await saveParsedEntries(
+      db,
+      raw,
+      confirmSelectedEntries(parsed, drafts, entryNow),
+      entryNow.toISOString(),
+      randomUUID(),
+    );
+    expect(
+      (await listTransactions(db))
+        .map((row) => row.amount)
+        .sort((a, b) => a - b),
+    ).toEqual([...amounts]);
+    expect((await listWallets(db))[0].balance).toBe(balance);
+    expect((await listChatMessages(db)).map((row) => row.text)).toEqual([raw]);
+    expect(
+      sqlite.prepare('SELECT COUNT(*) n FROM parse_learning').get()?.n,
+    ).toBeGreaterThan(0);
+    await undoParsedEntries(db, receipt);
+    expect(await listTransactions(db)).toEqual([]);
+    expect(await listChatMessages(db)).toEqual([]);
+    expect((await listWallets(db))[0].balance).toBe(0);
+    expect(
+      sqlite.prepare('SELECT COUNT(*) n FROM parse_learning').get()?.n,
+    ).toBe(0);
+  },
+);
+
+it.each([
+  ['có nên mua điện thoại 15tr?', 'advice'],
+  ['500k', 'ambiguous'],
+  ['chưa trả nợ Hùng 500k', 'ambiguous'],
+] as const)(
+  'does not turn a routed non-transaction into financial data: %s',
+  async (raw, expectedRoute) => {
+    await migrate(db);
+    await seed(db, 'old');
+    const context = await readQuickEntryContext(db);
+    const { route } = routeChatInput(raw, {
+      ...context,
+      clock: { now: () => entryNow, timeZone: 'Asia/Ho_Chi_Minh' },
+    });
+    expect(route).toBe(expectedRoute);
+    if (route === 'advice')
+      await saveChatMessage(db, randomUUID(), raw, entryNow.toISOString());
+    expect(await listTransactions(db)).toEqual([]);
+    expect((await listWallets(db))[0].balance).toBe(0);
+    expect(
+      sqlite.prepare('SELECT COUNT(*) n FROM parse_learning').get()?.n,
+    ).toBe(0);
+    expect((await listChatMessages(db)).length).toBe(
+      route === 'advice' ? 1 : 0,
+    );
+  },
+);
+
 async function entrySession(raw: string) {
   const context = await readQuickEntryContext(db);
   const result = parseEntry(raw, {
@@ -112,6 +634,54 @@ it('commits confirmed chat text with financial entries and learning, and undoes 
   expect(sqlite.prepare('SELECT COUNT(*) n FROM parse_learning').get()?.n).toBe(
     0,
   );
+});
+
+it('books a USD expense in a VND wallet and restores its original amount after undo', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  const id = randomUUID();
+  const input = {
+    kind: 'expense' as const,
+    amount: 1000,
+    currency: 'USD' as const,
+    vndPerUsd: 25_500,
+    walletId: DEFAULT_WALLET_ID,
+    occurredOn: '2026-10-23',
+    occurredAt: entryNow.toISOString(),
+  };
+  await createTransaction(db, id, input, 'now');
+  expect((await listTransactions(db))[0]).toMatchObject({
+    amount: 255_000,
+    original_amount_minor: 1000,
+    original_currency: 'USD',
+    booking_rate: 25_500,
+  });
+  expect((await listWallets(db))[0].balance).toBe(-255_000);
+  const deleted = await deleteTransaction(db, id);
+  await undoDeleteTransaction(db, deleted);
+  expect((await listTransactions(db))[0]).toMatchObject({
+    amount: 255_000,
+    original_amount_minor: 1000,
+    original_currency: 'USD',
+  });
+  expect((await listWallets(db))[0].balance).toBe(-255_000);
+});
+
+it('groups only income and expenses by local transaction day for the selected month', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  const base = { walletId: DEFAULT_WALLET_ID, occurredOn: '2026-11-02', occurredAt: '2026-11-02T12:00:00+07:00' };
+  await createTransaction(db, randomUUID(), { ...base, kind: 'income', amount: 50_000 }, 'now');
+  await createTransaction(db, randomUUID(), { ...base, kind: 'expense', amount: 20_000 }, 'now');
+  await createTransaction(db, randomUUID(), { ...base, kind: 'expense', amount: 10_000 }, 'now');
+  const destination = randomUUID();
+  await createWallet(db, destination, { name: 'Second wallet', kind: 'bank' }, 'now');
+  await createTransaction(db, randomUUID(), { ...base, kind: 'transfer', amount: 100_000, toWalletId: destination }, 'now');
+  await createTransaction(db, randomUUID(), { ...base, occurredOn: '2026-10-31', occurredAt: '2026-10-31T12:00:00+07:00', kind: 'expense', amount: 5_000 }, 'now');
+  expect(await readDailyTotals(db, '2026-11')).toEqual([
+    { date: '2026-11-02', income: 50_000, expense: 30_000 },
+  ]);
+  expect(await readDailyTotals(db, '2026-12')).toEqual([]);
 });
 
 it.each(['duplicate', 'oversize'])(
@@ -2016,9 +2586,12 @@ it('upgrades version 1 notes in bounded batches without changing original transa
     original.map((row) => ({
       ...row,
       note_search: row.note === null ? '' : 'an sang va dien',
+      original_currency: 'VND',
+      original_amount_minor: row.amount,
+      booking_rate: null,
     })),
   );
-  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(2);
+  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
   await migrate(db);
   expect(
     sqlite.prepare('SELECT * FROM transactions ORDER BY id').all(),
@@ -2225,6 +2798,17 @@ it('upgrades and queries 50000 synthetic transactions with the actual migration 
   start = performance.now();
   const first = await listTransactions(db);
   const firstPageMs = performance.now() - start;
+  start = performance.now();
+  const history = await listTransactionHistory(db);
+  const historyPageMs = performance.now() - start;
+  expect(history.map((row) => row.id)).toEqual(first.map((row) => row.id));
+  expect(history.map((row) => row.wallet_balance_after)).toEqual(
+    Array.from({ length: 50 }, (_, i) => -(50000 - i) * 1000),
+  );
+  expect(
+    (await listTransactionHistory(db, undefined, { text: 'an sang' }))[0]
+      .wallet_balance_after,
+  ).toBe(-1000);
   const aggregateBudget = randomUUID();
   await createBudget(
     db,
@@ -2253,6 +2837,7 @@ it('upgrades and queries 50000 synthetic transactions with the actual migration 
       migrationMs: Math.round(migrationMs),
       searchMs: Math.round(searchMs),
       firstPageMs: Math.round(firstPageMs),
+      historyPageMs: Math.round(historyPageMs),
       budgetMs: Math.round(budgetMs),
     }),
   );
@@ -2951,14 +3536,119 @@ it('paginates tied chat timestamps without losing or duplicating rows', async ()
       `id-${String(index).padStart(3, '0')}`,
       `Synthetic message ${index}`,
       '2026-10-26T00:00:00Z',
+      'session-a',
     );
   }
-  const first = await listChatMessages(db);
-  const second = await listChatMessages(db, first.at(-1));
+  await saveChatMessage(
+    db,
+    'other',
+    'Other session',
+    '2026-10-26T00:00:00Z',
+    'session-b',
+  );
+  const first = await listChatMessages(db, undefined, 'session-a');
+  const second = await listChatMessages(db, first.at(-1), 'session-a');
   expect(first).toHaveLength(50);
   expect(first[0].id).toBe('id-052');
   expect(second.map(({ id }) => id)).toEqual(['id-002', 'id-001', 'id-000']);
   expect(new Set([...first, ...second].map(({ id }) => id)).size).toBe(53);
+});
+
+it('preserves old chat as one session and keeps new session history separate', async () => {
+  await migrate(db, MIGRATIONS.slice(0, 2));
+  await db.runAsync(
+    "INSERT INTO chat_messages (id,text,created_at) VALUES ('old-1','Câu hỏi cũ','2026-10-26T00:00:00Z')",
+  );
+  await migrate(db);
+  expect((await listChatSessions(db)).map((row) => row.id)).toEqual(['legacy']);
+  await saveChatMessage(
+    db,
+    'new-1',
+    'Mua xe máy',
+    '2026-10-27T00:00:00Z',
+    'session-a',
+  );
+  await saveChatMessage(
+    db,
+    'new-2',
+    'Tiết kiệm bao lâu?',
+    '2026-10-27T00:01:00Z',
+    'session-a',
+  );
+  await saveChatMessage(
+    db,
+    'other',
+    'Khoản vay',
+    '2026-10-28T00:00:00Z',
+    'session-b',
+  );
+  expect(
+    (await listChatSessions(db)).map((row) => [
+      row.id,
+      row.title,
+      row.messageCount,
+    ]),
+  ).toEqual([
+    ['session-b', 'Khoản vay', 1],
+    ['session-a', 'Mua xe máy', 2],
+    ['legacy', 'Câu hỏi cũ', 1],
+  ]);
+  expect(
+    (await listChatMessages(db, undefined, 'session-a')).map((row) => row.id),
+  ).toEqual(['new-2', 'new-1']);
+  expect(
+    (await listChatMessages(db, undefined, 'session-b')).map((row) => row.id),
+  ).toEqual(['other']);
+  expect(
+    (await listChatMessages(db, undefined, 'legacy')).map((row) => row.id),
+  ).toEqual(['old-1']);
+});
+
+it('deletes only selected chat sessions and their saved AI replies', async () => {
+  await migrate(db);
+  await saveChatMessage(
+    db,
+    'a-1',
+    'Mua xe',
+    '2026-10-26T00:00:00Z',
+    'session-a',
+  );
+  await saveChatMessage(
+    db,
+    'a-2',
+    'Tôi tiết kiệm 3 triệu',
+    '2026-10-26T00:01:00Z',
+    'session-a',
+  );
+  await saveChatMessage(
+    db,
+    'b-1',
+    'Ngân sách',
+    '2026-10-26T00:02:00Z',
+    'session-b',
+  );
+  await db.runAsync(
+    'INSERT INTO settings(key,value) VALUES (?,?)',
+    'ai_chat_replies_v1',
+    JSON.stringify({
+      'a-1': { replyText: 'Hỏi thêm' },
+      'a-2': { replyText: 'Tư vấn' },
+      'b-1': { replyText: 'Giữ lại' },
+    }),
+  );
+  await deleteChatSessions(db, ['session-a', 'session-a']);
+  expect((await listChatSessions(db)).map((row) => row.id)).toEqual([
+    'session-b',
+  ]);
+  expect(await listChatMessages(db, undefined, 'session-a')).toEqual([]);
+  expect(
+    (await listChatMessages(db, undefined, 'session-b')).map((row) => row.id),
+  ).toEqual(['b-1']);
+  const saved = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM settings WHERE key = ?',
+    'ai_chat_replies_v1',
+  );
+  expect(JSON.parse(saved!.value)).toEqual({ 'b-1': { replyText: 'Giữ lại' } });
 });
 
 it('preserves wallets, category hierarchy, goals, budgets and alert markers, onboarding and chat after reopening a real file', async () => {
@@ -3131,7 +3821,7 @@ it('migrates once, seeds exactly 25 categories and one cash wallet twice', async
   expect(sqlite.prepare('SELECT count(*) n FROM wallets').get()?.n).toBe(1);
   expect(
     sqlite.prepare('SELECT count(*) n FROM schema_migrations').get()?.n,
-  ).toBe(2);
+  ).toBe(4);
   expect(
     sqlite
       .prepare('SELECT count(*) n FROM categories WHERE parent_id IS NOT NULL')

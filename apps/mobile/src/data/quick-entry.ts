@@ -1,5 +1,5 @@
 import { DebtInputSchema, TransactionInputSchema } from '@pfm/contracts';
-import { learningTokens, type EntryKind } from '@pfm/domain';
+import { convertMoney, learningTokens, type EntryKind } from '@pfm/domain';
 import type {
   ConfirmedEntry,
   EntryReferences,
@@ -73,6 +73,7 @@ export async function saveParsedEntries(
   entries: ConfirmedEntry[],
   timestamp: string,
   chatMessageId?: string,
+  chatSessionId?: string,
 ): Promise<ParsedEntryReceipt> {
   if (!entries.length) throw new Error('ENTRY_SELECTION');
   if (!rawInput.trim()) throw new Error('ENTRY_INPUT');
@@ -105,7 +106,9 @@ export async function saveParsedEntries(
         const debt = DebtInputSchema.parse({
           direction: value.kind === 'debt_borrow' ? 'borrowed' : 'lent',
           counterpartyLabel: entry.newDebt.counterpartyLabel,
-          amount: value.amount,
+          amount: value.currency === 'USD'
+            ? convertMoney(value.amount, 'USD', 'VND', value.vndPerUsd!)
+            : value.amount,
           walletId: value.walletId,
           occurredOn: value.occurredOn,
           note: value.note,
@@ -147,12 +150,12 @@ export async function saveParsedEntries(
         },
         timestamp,
       );
-      receipt.transactions.push(
-        (await tx.getFirstAsync<TransactionRow>(
-          'SELECT * FROM transactions WHERE id=?',
-          entry.transactionId,
-        ))!,
+      const inserted = await tx.getFirstAsync<TransactionRow>(
+        'SELECT * FROM transactions WHERE id=?',
+        entry.transactionId,
       );
+      if (!inserted) throw new Error('ENTRY_SAVE_NOT_VERIFIED');
+      receipt.transactions.push(inserted);
     }
     for (const change of changes.values())
       receipt.learning.push({
@@ -165,11 +168,18 @@ export async function saveParsedEntries(
         after: (await readDebtBalances(tx, id))[0],
       });
     if (chatMessageId !== undefined) {
-      await saveChatMessage(tx, chatMessageId, rawInput, timestamp);
+      await saveChatMessage(
+        tx,
+        chatMessageId,
+        rawInput,
+        timestamp,
+        chatSessionId,
+      );
       receipt.chatMessage = await tx.getFirstAsync<ChatRow>(
         'SELECT id,text,created_at FROM chat_messages WHERE id=?',
         chatMessageId,
       );
+      if (!receipt.chatMessage) throw new Error('ENTRY_SAVE_NOT_VERIFIED');
     }
   });
   return receipt;

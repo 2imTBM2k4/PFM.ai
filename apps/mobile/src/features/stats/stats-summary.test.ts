@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   aggregatePeriodSummary,
   computeCategoryAllocation,
+  shouldShowDailyTotals,
 } from './stats-summary';
+
+it('shows daily totals through today and hides them on future calendar days', () => {
+  expect(shouldShowDailyTotals('2026-11-03', '2026-11-04')).toBe(true);
+  expect(shouldShowDailyTotals('2026-11-04', '2026-11-04')).toBe(true);
+  expect(shouldShowDailyTotals('2026-11-05', '2026-11-04')).toBe(false);
+  expect(shouldShowDailyTotals('2026-12-01', '2026-11-04')).toBe(false);
+});
 
 describe('Stats Summary & Category Allocation (Stage 5)', () => {
   it('handles zero-transaction months with 0 income, 0 expense, 0 net, and 0% savings rate', () => {

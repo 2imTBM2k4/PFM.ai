@@ -1,4 +1,7 @@
-export const vi = {
+import { en } from './en';
+import { activeLanguage } from './language';
+
+export const viMessages = {
   quickTitle: 'Nhập nhanh giao dịch',
   quickInput: 'Bạn vừa thu hoặc chi gì?',
   quickExample: 'Ví dụ: ăn sáng 30k hôm qua',
@@ -30,6 +33,7 @@ export const vi = {
   quickWhy: 'Vì sao có gợi ý này?',
   quickSave: 'Lưu các khoản đã chọn',
   quickSaved: 'Đã lưu giao dịch và ghi nhận lựa chọn của bạn.',
+  transactionBalanceAfter: 'Số dư sau giao dịch',
   quickUndo: 'Hoàn tác nhóm giao dịch vừa lưu',
   quickUndone: 'Đã hoàn tác giao dịch và phần học từ lần xác nhận đó.',
   quickUndoHint: 'Hoàn tác áp dụng cho cả nhóm vừa lưu và phần học tương ứng.',
@@ -128,6 +132,18 @@ export const vi = {
   transactionKind: 'Loại giao dịch',
   transactionExpense: 'Chi tiêu',
   transactionIncome: 'Thu nhập',
+  receiptScan: 'Quét hóa đơn',
+  receiptChooseSource: 'Chụp hóa đơn hoặc chọn ảnh có sẵn.',
+  receiptTakePhoto: 'Chụp ảnh',
+  receiptChoosePhoto: 'Chọn ảnh',
+  receiptCameraDenied: 'Cần cấp quyền camera để chụp hóa đơn.',
+  receiptConsentTitle: 'Gửi ảnh hóa đơn tới AI?',
+  receiptConsentBody: 'Ảnh sẽ đi qua máy chủ PFM.ai tới nhà cung cấp AI để đọc giao dịch. Ảnh có thể chứa tên, số điện thoại hoặc số tài khoản; ứng dụng không thể tự xóa chắc chắn các thông tin này. Hãy che thông tin nhạy cảm trước khi chụp. Ảnh không được lưu vào giao dịch.',
+  receiptConsentAgree: 'Đồng ý gửi ảnh',
+  receiptConsentWithdraw: 'Thu hồi đồng ý gửi ảnh hóa đơn',
+  receiptConsentWithdrawn: 'Đã thu hồi. Lần quét tiếp theo sẽ hỏi lại trước khi gửi ảnh.',
+  receiptTooLarge: 'Ảnh quá lớn sau khi xử lý. Hãy chụp lại gần hóa đơn hơn.',
+  receiptScanFailed: 'Không thể đọc hóa đơn. Vui lòng thử lại hoặc nhập tay.',
   transactionTransfer: 'Chuyển ví',
   transactionWallet: 'Ví',
   transactionSourceWallet: 'Ví chuyển đi',
@@ -338,6 +354,8 @@ export const vi = {
   chatRouteTransaction: 'Gợi ý ghi giao dịch',
   chatRouteMultiple: 'khoản giao dịch cần xác nhận riêng',
   chatRouteAmbiguous: 'Chưa rõ ý; cần chọn ghi giao dịch hay hỏi tư vấn',
+  chatRouteRestricted: 'Yêu cầu bị hạn chế · Chỉ hỗ trợ tiêu chí chung',
+  chatRouteOutOfScope: 'Ngoài phạm vi tài chính cá nhân',
   chatChooseRoute: 'Bạn muốn xử lý nội dung này thế nào?',
   chatChooseTransaction: 'Ghi giao dịch',
   chatChooseAdvice: 'Hỏi tư vấn',
@@ -496,13 +514,22 @@ export const vi = {
     'Đã lưu thay đổi nhưng chưa tải lại được danh sách. Hãy thử tải lại.',
   aiIntroTitle: 'Trợ lý tài chính của bạn',
   aiIntroSubtitle:
-    'Ghi chép thu chi bằng câu tự nhiên hoặc chạm vào gợi ý bên dưới để xem ngân sách, mục tiêu và cơ cấu chi tiêu.',
+    'Ghi chép thu chi bằng câu tự nhiên hoặc đặt câu hỏi về ngân sách, mục tiêu và chi tiêu của bạn.',
   aiChipBudgetPlanner: 'Lập ngân sách',
   aiChipGoalTracker: 'Mục tiêu',
   aiChipSpendingInsights: 'Phân tích chi tiêu',
   aiTyping: 'PFM.ai đang chuẩn bị gợi ý trên máy…',
   aiViewIntro: 'Màn giới thiệu trợ lý',
   aiViewChat: 'Lịch sử trò chuyện',
+  aiHistory: 'Lịch sử',
+  aiHistoryEmpty: 'Chưa có cuộc trò chuyện nào.',
+  aiHistoryMessages: 'tin nhắn',
+  aiNewChat: 'Cuộc trò chuyện mới',
+  aiSelectDelete: 'Chọn xóa',
+  aiDeleteSelected: 'Xóa đã chọn',
+  aiDeleteChats: 'Xóa cuộc trò chuyện',
+  aiDeleteChatsConfirm: 'Xóa vĩnh viễn các cuộc trò chuyện đã chọn?',
+  aiDelete: 'Xóa',
   aiChartTitle: 'Phân bổ chi tiêu theo danh mục (%)',
   aiQuickAttach: 'Điền mẫu giao dịch nhanh',
   aiQuickImageSample: 'Gợi ý từ hóa đơn ảnh',
@@ -533,7 +560,7 @@ export const vi = {
   settingsCurrencyLabel: 'Đơn vị tiền tệ',
   settingsCurrencyVnd: 'VND (₫)',
   settingsCurrencyUsd: 'USD ($)',
-  settingsCurrencyHint: 'Bản xem trước chỉ hỗ trợ VND.',
+  settingsCurrencyHint: 'Hiện hỗ trợ VND và USD.',
   settingsThemeLabel: 'Giao diện',
   settingsThemeLight: 'Sáng (Pastel Sunset)',
   settingsThemeDark: 'Tối (Midnight Aurora)',
@@ -544,21 +571,32 @@ export const vi = {
     'Các mục dưới đây dành cho bản xem trước và kiểm thử giao diện.',
   settingsSeedLabel: 'Dữ liệu mẫu (thử nghiệm)',
   settingsSeedDescription:
-    'Bật để nạp bộ giao dịch, ngân sách và mục tiêu mẫu phục vụ kiểm thử giao diện; tắt để gỡ sạch dữ liệu mẫu.',
+    'Bật để nạp giao dịch, ngân sách và mục tiêu mẫu; tắt để gỡ các khoản mẫu. Ví mẫu còn được giao dịch, mục tiêu hoặc lịch định kỳ thật sử dụng được giữ lại cùng số dư đầu kỳ.',
   settingsSeedActiveNotice: 'Đã nạp bộ dữ liệu mẫu thành công.',
-  settingsSeedRemovedNotice: 'Đã gỡ dữ liệu mẫu khỏi máy.',
-  csvSectionTitle: 'Xuất / Nhập dữ liệu (.csv)',
+  settingsSeedRemovedNotice:
+    'Đã gỡ các khoản mẫu. Ví còn được dữ liệu thật sử dụng được giữ lại.',
+  settingsSeedFailedNotice:
+    'Không thay đổi được dữ liệu mẫu. Trạng thái cũ được giữ lại; hãy thử lại.',
+  csvSectionTitle: 'Sao lưu & Phục hồi dữ liệu (.csv)',
   csvSectionHint:
-    'Sao lưu hoặc khôi phục danh sách giao dịch bằng định dạng .csv ngay trên thiết bị (chưa nối Google Drive).',
-  csvExportBtn: 'Tạo bản xuất .csv',
-  csvImportBtn: 'Nhập từ nội dung .csv',
+    'Tạo bản sao lưu xuất ra file .csv thật hoặc nhập file .csv từ máy. Tính năng đồng bộ sao lưu lên Google Drive sẽ được tích hợp trong bản cập nhật tới.',
+  csvExportBtn: 'Tạo bản sao .csv (Xuất file)',
+  csvPickFileBtn: 'Chọn file .csv để nhập',
+  csvImportBtn: 'Nhập từ nội dung văn bản',
   csvLoadSampleBtn: 'Điền mẫu .csv thử nghiệm',
   csvInputLabel:
     'Nội dung .csv (dòng đầu: occurred_on,kind,amount,note,category)',
-  csvExportSuccess: 'Đã xuất dữ liệu giao dịch ra định dạng .csv bên dưới.',
+  csvExportSuccess: 'Đã tạo file sao lưu .csv thành công',
   csvImportSuccess: 'Đã nhập giao dịch từ .csv vào bộ nhớ máy.',
   csvImportError:
     'Nội dung .csv không hợp lệ. Vui lòng kiểm tra cột ngày (YYYY-MM-DD), loại (expense/income) và số tiền nguyên dương.',
+  csvDriveBackupNote:
+    'Chức năng này sau này sẽ gộp chung vào tính năng sao lưu cùng với chức năng đồng bộ sao lưu lên Google Drive.',
+  categorySubcategories: 'Danh mục con',
+  subcategoriesCount: 'danh mục con',
+  noSubcategories: 'Chưa có danh mục con nào',
+  addSubcategory: 'Thêm mục con',
+  parentCategoriesTitle: 'Danh mục cha',
   notificationsTitle: 'Thông báo & Cảnh báo',
   notificationsSubtitle:
     'Tổng hợp cảnh báo ngân sách, lịch định kỳ và khoản nợ đến hạn trên thiết bị.',
@@ -568,7 +606,33 @@ export const vi = {
   aiPromptGoalTracker: 'Kiểm tra tiến độ mục tiêu tiết kiệm của tôi',
   aiPromptSpendingInsights: 'Phân tích tỷ trọng chi tiêu theo danh mục',
   aiAnalyzeMessageBtn: 'Xem gợi ý',
+  aiReplyOutOfScope:
+    'PFM.ai chỉ hỗ trợ quản lý tài chính cá nhân (chi tiêu, ngân sách, tiết kiệm, mục tiêu, khoản vay/trả góp). Vui lòng đặt câu hỏi trong các phạm vi này.',
+  aiReplyRestricted:
+    'PFM.ai không đề xuất sản phẩm, ngân hàng, công ty chứng khoán hoặc bên cho vay cụ thể. Bạn có thể hỏi về tiêu chí so sánh hoặc nguyên tắc tài chính chung.',
+  aiReplyAmbiguous:
+    'Chưa rõ ngữ cảnh tài chính. Vui lòng nói rõ hơn về chi tiêu, ngân sách, tiết kiệm, mục tiêu hoặc khoản vay của bạn.',
+  aiFactExpenseHeadline: 'Từ {range}, bạn đã chi {total}.',
+  aiFactExpenseOther: 'Các nhóm còn lại: {total}',
+  aiFactUncategorized: 'Trong đó chưa phân loại {total}.',
+  aiFactNoExpense: 'Từ {range} bạn chưa ghi khoản chi nào.',
+  aiFactCashFlowHeadline:
+    'Từ {range}: thu {income}, chi {expense}, chênh lệch {net}.',
+  aiFactNoCashFlow: 'Từ {range} bạn chưa ghi giao dịch thu hoặc chi nào.',
+  aiFactChartTitle: 'Tỷ trọng chi tiêu từ {range} (%)',
+  aiFactPeriodQuestion:
+    'Bạn muốn xem khoảng thời gian nào? Mình hỗ trợ: hôm nay, hôm qua, tuần này, tuần trước, tháng này, tháng trước, 7 ngày gần đây và 30 ngày gần đây.',
+  aiAdviceDisclaimer:
+    'Đây là gợi ý tham khảo dựa trên dữ liệu bạn đã ghi, không phải tư vấn tài chính có giấy phép.',
+  aiAdviceBigDecision:
+    'Với quyết định lớn như vay hoặc mua trả góp, bạn nên kiểm tra lại với nhân viên tín dụng hoặc chuyên gia trước khi quyết định.',
   aiQuickMorningSample: 'Ăn sáng 30k',
   txTimeToday: 'Hôm nay',
   txTimeYesterday: 'Hôm qua',
 } as const;
+
+export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(viMessages, {
+  get(target, key: keyof typeof viMessages) {
+    return activeLanguage === 'en' ? en[key] ?? target[key] : target[key];
+  },
+});

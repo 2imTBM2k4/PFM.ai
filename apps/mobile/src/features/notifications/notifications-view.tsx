@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { formatVnd, monthKey, today } from '@pfm/domain';
+import { monthKey, today } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Text } from 'react-native-paper';
@@ -18,6 +19,8 @@ import {
   useBudgetNotifications,
 } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
+import { displayCategoryName } from '@/messages/seed-labels';
+import { usePreferences } from '@/state/preferences';
 
 interface NotificationAlertItem {
   id: string;
@@ -40,6 +43,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
   const theme = useDesignTheme();
   const palette = useFinancePalette();
   const permissionStatus = useBudgetNotifications((state) => state.status);
+  const language = usePreferences((state) => state.language);
 
   const fetchNotifications = useCallback(async () => {
     const currentMonth = monthKey(
@@ -52,7 +56,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
 
     // 1. Budget threshold notifications
     for (const budget of dashboard.budgets) {
-      const name = budget.category_name ?? vi.budgetOverall;
+      const name = budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall;
       const percent =
         budget.amount > 0
           ? Math.round((budget.spent * 100) / budget.amount)
@@ -61,7 +65,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
         nextItems.push({
           id: `budget-over-${budget.id}`,
           title: `${name}: ${vi.budgetReached}`,
-          description: `Đã chi ${formatVnd(budget.spent)} / ${formatVnd(budget.amount)} (${percent}%).`,
+          description: `${language === 'en' ? 'Spent' : 'Đã chi'} ${formatVnd(budget.spent)} / ${formatVnd(budget.amount)} (${percent}%).`,
           tone: 'expense',
           icon: 'alert-octagon-outline',
           badgeText: `${percent}%`,
@@ -70,7 +74,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
         nextItems.push({
           id: `budget-warn-${budget.id}`,
           title: `${name}: ${vi.budgetWarning.replace('{percent}', String(budget.warn_percent))}`,
-          description: `Đã sử dụng ${percent}% hạn mức tháng (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`,
+          description: language === 'en' ? `Used ${percent}% of the monthly limit (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).` : `Đã sử dụng ${percent}% hạn mức tháng (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`,
           tone: 'primary',
           icon: 'bell-ring-outline',
           badgeText: `${percent}%`,
@@ -82,7 +86,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
     nextItems.push({
       id: 'monthly-net-summary',
       title: `${vi.overviewMonthSummary} (${currentMonth})`,
-      description: `Thu nhập: ${formatVnd(dashboard.current.income)} · Chi tiêu: ${formatVnd(dashboard.current.expense)} · Chênh lệch: ${formatVnd(dashboard.current.net)}.`,
+      description: `${vi.transactionIncome}: ${formatVnd(dashboard.current.income)} · ${vi.transactionExpense}: ${formatVnd(dashboard.current.expense)} · ${vi.overviewNet}: ${formatVnd(dashboard.current.net)}.`,
       tone: dashboard.current.net >= 0 ? 'income' : 'expense',
       icon: dashboard.current.net >= 0 ? 'trending-up' : 'trending-down',
       badgeText:
@@ -97,7 +101,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
       nextItems.push({
         id: `goal-${firstGoal.id}`,
         title: `${vi.goals}: ${firstGoal.name}`,
-        description: `Mục tiêu: ${formatVnd(firstGoal.target_amount)}. Hãy duy trì tích lũy đều đặn mỗi tháng.`,
+        description: language === 'en' ? `Target: ${formatVnd(firstGoal.target_amount)}. Keep saving regularly each month.` : `Mục tiêu: ${formatVnd(firstGoal.target_amount)}. Hãy duy trì tích lũy đều đặn mỗi tháng.`,
         tone: 'savings',
         icon: 'bullseye-arrow',
         badgeText: vi.goals,
@@ -105,7 +109,7 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
     }
 
     return nextItems;
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     let cancelled = false;

@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, goalProgress, today } from '@pfm/domain';
+import { goalProgress, today } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { GoalInputSchema, type GoalInput } from '@pfm/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -41,6 +42,7 @@ import {
   parseAmountInput,
 } from '@/features/transactions/form';
 import { vi } from '@/messages/vi';
+import { displayWalletName } from '@/messages/seed-labels';
 import { formatDisplayDate } from '@/utils/display';
 import { useApp } from '@/state/app';
 
@@ -513,7 +515,7 @@ function GoalForm({
                   .map((wallet) => (
                     <RadioButton.Item
                       key={wallet.id}
-                      label={wallet.name}
+                      label={displayWalletName(wallet.name)}
                       value={wallet.id}
                       disabled={disabled}
                     />

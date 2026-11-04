@@ -29,7 +29,7 @@ export interface AmountMatch {
 }
 
 // Parse complete numeric tokens; invalid separators must never yield a partial amount.
-export function extractAmounts(text: string): AmountMatch[] {
+export function extractAmounts(text: string, defaultCurrency: 'VND' | 'USD' = 'VND'): AmountMatch[] {
   const view = matchingText(text);
   const results: AmountMatch[] = [];
   for (const match of view.folded.matchAll(/\d+(?:[.,]+\d+)*/g)) {
@@ -44,15 +44,39 @@ export function extractAmounts(text: string): AmountMatch[] {
       continue;
     const suffix = view.folded.slice(afterNumber);
     const unitMatch =
-      /^ ?(trieu|nghin|ngan|dong|vnd|lit|tr|ty|ti|cu|k|m|d|₫)(\d+)?(?: (ruoi))?(?![a-z0-9])/.exec(
+      /^ ?(trieu|nghin|ngan|dong|dollars|dollar|usd|vnd|lit|tr|ty|ti|cu|k|m|d|₫)(\d+)?(?: (ruoi))?(?![a-z0-9])/.exec(
         suffix,
       );
     const validUnit =
       unitMatch && !(unitMatch[1] === 'm' && unitMatch[0].startsWith(' '))
         ? unitMatch
         : null;
+    const dollarPrefix = /\$\s*$/.exec(view.folded.slice(0, start));
+    const usdUnit = validUnit && /^(usd|dollar|dollars)$/.test(validUnit[1]);
+    const isUsd = Boolean(dollarPrefix || usdUnit || (!validUnit && defaultCurrency === 'USD'));
     if (!validUnit && /^[a-z0-9/]/.test(suffix)) continue;
     const unit = validUnit ? units[validUnit[1]] : null;
+    if (isUsd) {
+      const normalized = literal.replace(/,/g, '');
+      const valid = /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(literal);
+      const [whole, fraction = ''] = normalized.split('.');
+      const cents = valid ? BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0') || '0') : 0n;
+      const span = view.span(start - (dollarPrefix?.[0].length ?? 0), afterNumber + (validUnit?.[0].length ?? 0));
+      results.push({
+        amount: {
+          value: valid && cents > 0n && cents <= BigInt(MAX_AMOUNT_VND) ? Number(cents) : null,
+          currency: 'USD',
+          confidence: valid ? 'high' : 'low',
+          matchedText: text.slice(span.start, span.end),
+        },
+        span,
+        marked: Boolean(dollarPrefix || usdUnit),
+        quantity: false,
+        warnings: !valid ? ['NON_INTEGER_VND'] : cents === 0n ? ['ZERO_AMOUNT'] : cents > BigInt(MAX_AMOUNT_VND) ? ['AMOUNT_TOO_LARGE'] : [],
+        rule: 'amount.usd',
+      });
+      continue;
+    }
     const grouped = /^\d{1,3}(?:[.,]\d{3})+$/.test(literal);
     const plain = /^\d+$/.test(literal);
     const decimal = /^(\d+)[.,](\d{1,2})$/.exec(literal);
@@ -114,6 +138,7 @@ export function extractAmounts(text: string): AmountMatch[] {
     results.push({
       amount: {
         value,
+        ...(validUnit && defaultCurrency === 'USD' ? { currency: 'VND' as const } : {}),
         confidence,
         matchedText: text.slice(span.start, span.end),
       },

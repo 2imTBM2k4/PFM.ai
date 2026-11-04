@@ -5,7 +5,7 @@ import {
   type TransactionFilters,
 } from '@pfm/contracts';
 import { foldSearchText } from './search-text';
-import { today } from '@pfm/domain';
+import { convertMoney, today, MAX_AMOUNT_VND } from '@pfm/domain';
 import type { Database, Queries } from './migrate';
 import { requireActiveWallet } from './wallets';
 import { requireActiveCategory } from './categories';
@@ -15,6 +15,9 @@ export interface TransactionRow {
   id: string;
   kind: TransactionInput['kind'];
   amount: number;
+  original_amount_minor: number | null;
+  original_currency: 'VND' | 'USD';
+  booking_rate: number | null;
   wallet_id: string;
   to_wallet_id: string | null;
   category_id: string | null;
@@ -93,6 +96,14 @@ async function validateInput(
   previous?: TransactionRow,
 ) {
   const value = TransactionInputSchema.parse(input);
+  const bookedAmount = convertMoney(
+    value.amount,
+    value.currency,
+    'VND',
+    value.vndPerUsd,
+  );
+  if (bookedAmount <= 0 || bookedAmount > MAX_AMOUNT_VND)
+    throw new RangeError('TRANSACTION_AMOUNT');
   if (value.debtId) await validateDebtReference(db, value.debtId, value.kind);
   if (
     previous &&
@@ -120,7 +131,14 @@ async function validateInput(
       throw new Error('CATEGORY_KIND');
     await requireActiveCategory(db, value.categoryId, value.kind);
   }
-  return { ...value, occurredAt: new Date(value.occurredAt).toISOString() };
+  return {
+    ...value,
+    amount: bookedAmount,
+    originalAmountMinor: value.amount,
+    originalCurrency: value.currency,
+    bookingRate: value.currency === 'USD' ? value.vndPerUsd : null,
+    occurredAt: new Date(value.occurredAt).toISOString(),
+  };
 }
 
 async function requireTransaction(db: Queries, id: string) {
@@ -154,8 +172,8 @@ export async function insertTransaction(
   if (value.recurringRuleId || value.source === 'recurring')
     throw new Error('TRANSACTION_FEATURE_PENDING');
   await transaction.runAsync(
-    `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search,original_currency,original_amount_minor,booking_rate)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     id,
     value.kind,
     value.amount,
@@ -172,6 +190,9 @@ export async function insertTransaction(
     timestamp,
     timestamp,
     foldSearchText(value.note ?? ''),
+    value.originalCurrency,
+    value.originalAmountMinor,
+    value.bookingRate,
   );
   if (value.debtId) await reconcileDebt(transaction, value.debtId, timestamp);
 }
@@ -202,7 +223,7 @@ export async function updateTransaction(
       );
     }
     await transaction.runAsync(
-      `UPDATE transactions SET kind=?,amount=?,wallet_id=?,to_wallet_id=?,category_id=?,occurred_on=?,occurred_at=?,note=?,updated_at=?,note_search=? WHERE id=?`,
+      `UPDATE transactions SET kind=?,amount=?,wallet_id=?,to_wallet_id=?,category_id=?,occurred_on=?,occurred_at=?,note=?,updated_at=?,note_search=?,original_currency=?,original_amount_minor=?,booking_rate=? WHERE id=?`,
       value.kind,
       value.amount,
       value.walletId,
@@ -213,6 +234,9 @@ export async function updateTransaction(
       value.note,
       timestamp,
       foldSearchText(value.note ?? ''),
+      value.originalCurrency,
+      value.originalAmountMinor,
+      value.bookingRate,
       id,
     );
     if (previous.debt_id)
@@ -254,8 +278,8 @@ export async function undoDeleteTransaction(db: Database, row: TransactionRow) {
   // Restore the trusted local deletion snapshot exactly, including archived references.
   await db.transaction(async (transaction) => {
     await transaction.runAsync(
-      `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search,original_currency,original_amount_minor,booking_rate)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       row.id,
       row.kind,
       row.amount,
@@ -272,6 +296,9 @@ export async function undoDeleteTransaction(db: Database, row: TransactionRow) {
       row.created_at,
       row.updated_at,
       foldSearchText(row.note ?? ''),
+      row.original_currency,
+      row.original_amount_minor,
+      row.booking_rate,
     );
     if (row.debt_id)
       await reconcileDebt(transaction, row.debt_id, new Date().toISOString());

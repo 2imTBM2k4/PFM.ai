@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, today } from '@pfm/domain';
+import { today } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import { RecurringInputSchema, type RecurringInput } from '@pfm/contracts';
 import { useCallback, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
@@ -41,6 +42,7 @@ import {
 } from '@/features/transactions/form';
 import { useApp } from '@/state/app';
 import { vi } from '@/messages/vi';
+import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { requestRecurringNotifications, useRecurringStatus } from './mobile';
 
 const FREQUENCIES = [
@@ -320,7 +322,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
 
           <View style={styles.row}>
             <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {wallets.find((wallet) => wallet.id === row.wallet_id)?.name}
+              {displayWalletName(wallets.find((wallet) => wallet.id === row.wallet_id)?.name)}
               {row.to_wallet_id
                 ? ` → ${wallets.find((wallet) => wallet.id === row.to_wallet_id)?.name ?? ''}`
                 : ''}
@@ -476,7 +478,7 @@ function RecurringForm({
                 )
                 .map((c) => ({
                   value: c.id,
-                  label: `${c.parent_id ? `${categories.find((p) => p.id === c.parent_id)?.name ?? ''} / ` : ''}${c.name}`,
+                  label: `${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} / ` : ''}${displayCategoryName(c.name)}`,
                 })),
             ],
           },

@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { addMonths, monthKey, today } from '@pfm/domain';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { PieChart } from 'react-native-gifted-charts';
 import {
   ActivityIndicator,
@@ -20,17 +20,26 @@ import {
   useFinancePalette,
 } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
-import { readDashboard, type Dashboard } from '@/data/dashboard';
+import {
+  readDashboard,
+  readDailyTotals,
+  type Dashboard,
+  type DailyTotals,
+} from '@/data/dashboard';
 import { vi } from '@/messages/vi';
-import { formatCurrencyAmount } from '@/state/preferences';
+import { displayCategoryName } from '@/messages/seed-labels';
+import { formatCurrencyAmount, usePreferences } from '@/state/preferences';
+import { calendarDays, calendarMonth } from '@/utils/calendar';
 import {
   formatCompactVndShort,
+  formatDisplayDate,
   formatDisplayMonth,
   formatDisplayMonthShort,
 } from '@/utils/display';
 import {
   aggregatePeriodSummary,
   computeCategoryAllocation,
+  shouldShowDailyTotals,
 } from './stats-summary';
 
 export type StatsRange = 1 | 3 | 6;
@@ -50,6 +59,8 @@ export function StatsView({
   const [anchorMonth, setAnchorMonth] = useState(() => monthKey(localToday()));
   const [rangeMonths, setRangeMonths] = useState<StatsRange>(6);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [dailyTotals, setDailyTotals] = useState<DailyTotals[]>([]);
+  const [selectedDay, setSelectedDay] = useState(localToday);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const hasLoadedOnce = useRef(false);
@@ -57,9 +68,9 @@ export function StatsView({
 
   const theme = useDesignTheme();
   const palette = useFinancePalette();
-  // The preview stores and displays whole VND only; the hidden legacy USD
-  // preference must not make this tab disagree with every other screen.
-  const currency = 'VND' as const;
+  const currency = usePreferences((state) => state.currency);
+  const language = usePreferences((state) => state.language);
+  usePreferences((state) => state.exchangeRate);
   const compactAmount = useCallback(
     (value: number) => formatCompactVndShort(value),
     [],
@@ -72,10 +83,14 @@ export function StatsView({
     }
     setError(false);
     try {
-      const next = await withDatabase((db) => readDashboard(db, anchorMonth));
+      const next = await withDatabase(async (db) => ({
+        dashboard: await readDashboard(db, anchorMonth),
+        dailyTotals: await readDailyTotals(db, anchorMonth),
+      }));
       if (currentId !== request.current) return;
       hasLoadedOnce.current = true;
-      setDashboard(next);
+      setDashboard(next.dashboard);
+      setDailyTotals(next.dailyTotals);
     } catch {
       if (currentId === request.current) setError(true);
     } finally {
@@ -105,14 +120,26 @@ export function StatsView({
     [visibleSeries],
   );
 
-  const categoryAllocation = useMemo(
-    () =>
-      computeCategoryAllocation(
-        dashboard?.categories ?? [],
-        vi.transactionUncategorized,
-      ),
-    [dashboard?.categories],
+  const categoryAllocation = computeCategoryAllocation(
+    dashboard?.categories ?? [],
+    vi.transactionUncategorized,
   );
+  const calendar = useMemo(
+    () => calendarDays(calendarMonth(`${anchorMonth}-01`)),
+    [anchorMonth],
+  );
+  const dailyByDate = useMemo(
+    () => new Map(dailyTotals.map((row) => [row.date, row])),
+    [dailyTotals],
+  );
+  const selectedDate = selectedDay.startsWith(anchorMonth)
+    ? selectedDay
+    : `${anchorMonth}-01`;
+  const selectedTotals = dailyByDate.get(selectedDate) ?? {
+    income: 0,
+    expense: 0,
+  };
+  const currentDate = localToday();
 
   return (
     <Screen title={vi.statsTabTitle}>
@@ -212,6 +239,116 @@ export function StatsView({
 
       {dashboard && (
         <>
+          <GlassCard
+            variant="elevated"
+            radius="xl"
+            padding={DesignSpacing.sm}
+            style={{ gap: 10 }}
+          >
+            <Text
+              variant="titleMedium"
+              style={{ fontWeight: '800', color: theme.text.primary }}
+            >
+              {language === 'en'
+                ? 'Daily income and expenses'
+                : 'Thu chi theo ngày'}
+            </Text>
+            <View style={localStyles.calendarGrid}>
+              {(language === 'en'
+                ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+              ).map((label) => (
+                <Text key={label} style={localStyles.calendarWeekday}>
+                  {label}
+                </Text>
+              ))}
+              {calendar.map((day, index) =>
+                day ? (
+                  <Pressable
+                    key={day.date}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      selected:
+                        selectedDate === day.date &&
+                        shouldShowDailyTotals(day.date, currentDate),
+                    }}
+                    accessibilityLabel={
+                      shouldShowDailyTotals(day.date, currentDate)
+                        ? `${formatDisplayDate(day.date)}. ${language === 'en' ? 'Income' : 'Thu nhập'} ${formatCurrencyAmount(dailyByDate.get(day.date)?.income ?? 0, currency)}. ${language === 'en' ? 'Expense' : 'Chi tiêu'} ${formatCurrencyAmount(dailyByDate.get(day.date)?.expense ?? 0, currency)}`
+                        : formatDisplayDate(day.date)
+                    }
+                    disabled={!shouldShowDailyTotals(day.date, currentDate)}
+                    onPress={() => setSelectedDay(day.date)}
+                    style={[
+                      localStyles.calendarCell,
+                      selectedDate === day.date &&
+                        shouldShowDailyTotals(day.date, currentDate) && {
+                          backgroundColor: theme.brand.primarySoft,
+                        },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        fontWeight:
+                          selectedDate === day.date &&
+                          shouldShowDailyTotals(day.date, currentDate)
+                            ? '800'
+                            : '600',
+                        color: theme.text.primary,
+                      }}
+                    >
+                      {day.day}
+                    </Text>
+                    {shouldShowDailyTotals(day.date, currentDate) && (
+                      <>
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          style={{
+                            fontSize: 10,
+                            color: theme.finance.incomeText,
+                          }}
+                        >
+                          +
+                          {compactAmount(
+                            dailyByDate.get(day.date)?.income ?? 0,
+                          )}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          style={{
+                            fontSize: 10,
+                            color: theme.finance.expenseText,
+                          }}
+                        >
+                          −
+                          {compactAmount(
+                            dailyByDate.get(day.date)?.expense ?? 0,
+                          )}
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                ) : (
+                  <View
+                    key={`empty-${index}`}
+                    style={localStyles.calendarCell}
+                  />
+                ),
+              )}
+            </View>
+            {shouldShowDailyTotals(selectedDate, currentDate) && (
+              <Text
+                variant="bodyMedium"
+                style={{ color: theme.text.secondary }}
+              >
+                {formatDisplayDate(selectedDate)} · +
+                {formatCurrencyAmount(selectedTotals.income, currency)} · −
+                {formatCurrencyAmount(selectedTotals.expense, currency)}
+              </Text>
+            )}
+          </GlassCard>
           {/* 3 Period Summary Cards: Income, Expenses, Net Savings */}
           <View style={localStyles.summaryGrid}>
             <GlassCard
@@ -397,7 +534,7 @@ export function StatsView({
                               flexShrink: 1,
                             }}
                           >
-                            {item.name}
+                            {displayCategoryName(item.name)}
                           </Text>
                           <Pill
                             label={`${item.percentage}%`}
@@ -440,6 +577,25 @@ export function StatsView({
 }
 
 const localStyles = StyleSheet.create({
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  calendarWeekday: {
+    width: '14.2857%',
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  calendarCell: {
+    width: '14.2857%',
+    minHeight: 58,
+    paddingHorizontal: 1,
+    paddingVertical: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+  },
   modeSwitchRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -41,6 +41,17 @@ const id = () =>
   `00000000-0000-4000-8002-${String(++serial).padStart(12, '0')}`;
 
 describe('editable quick-entry confirmation', () => {
+  it('keeps a parsed USD rent amount in cents and requires a booking rate', () => {
+    const result = parseEntry('spent $10 on rent', { clock, currency: 'USD' });
+    const draft = makeEntryDrafts(result, context, id, 'USD')[0];
+    expect(draft).toMatchObject({ amount: '10.00', currency: 'USD', kind: 'expense' });
+    expect(() => confirmEntryDraft(result.candidates[0], draft, now)).toThrow();
+    expect(confirmEntryDraft(result.candidates[0], draft, now, 25_500).input).toMatchObject({
+      amount: 1000,
+      currency: 'USD',
+      vndPerUsd: 25_500,
+    });
+  });
   it('builds a default draft from actual parser/classifier output without changing it', () => {
     const result = parseEntry('ăn sáng 30k hôm qua', { clock });
     const before = JSON.stringify(result);
@@ -160,6 +171,68 @@ describe('editable quick-entry confirmation', () => {
         id,
       )[0].categoryId,
     ).toBe('');
+  });
+
+  it('uses a unique wallet hint or exact wallet name without guessing among multiple active wallets', () => {
+    const bank: WalletRow = {
+      ...wallet,
+      id: 'bank-1',
+      name: 'VCB',
+      kind: 'bank',
+    };
+    const cash: WalletRow = {
+      ...wallet,
+      id: 'cash-1',
+      name: 'Tiền mặt',
+      kind: 'cash',
+    };
+    const anotherCash: WalletRow = {
+      ...wallet,
+      id: 'cash-2',
+      name: 'Ví dự phòng',
+      kind: 'cash',
+    };
+    const input = parseEntry('cf 40k tiền mặt', { clock });
+    expect(
+      makeEntryDrafts(
+        input,
+        { ...context, wallets: [bank, cash], lastWalletId: bank.id },
+        id,
+      )[0].walletId,
+    ).toBe(cash.id);
+    expect(
+      makeEntryDrafts(
+        input,
+        {
+          ...context,
+          wallets: [bank, cash, anotherCash],
+          lastWalletId: bank.id,
+        },
+        id,
+      )[0].walletId,
+    ).toBe(cash.id);
+    expect(
+      makeEntryDrafts(
+        input,
+        {
+          ...context,
+          wallets: [bank, { ...cash, name: 'Cash' }, anotherCash],
+          lastWalletId: bank.id,
+        },
+        id,
+      )[0].walletId,
+    ).toBe('');
+    expect(
+      makeEntryDrafts(
+        input,
+        {
+          ...context,
+          wallets: [bank, { ...cash, is_archived: 1 }],
+          lastWalletId: bank.id,
+        },
+        id,
+      )[0].walletId,
+    ).toBe(bank.id);
   });
 
   it('requires a counterparty for each new loan and an existing debt for repayment', () => {

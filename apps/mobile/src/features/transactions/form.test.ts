@@ -50,6 +50,15 @@ it('regroups single-digit insertions and deletions within an already formatted a
   expect(() => parseAmountInput('12.5')).toThrow();
 });
 
+it('reads USD decimal input as cents without treating the dot as a VND thousands mark', () => {
+  expect(parseAmountInput('10.25', 'USD')).toBe(1025);
+  expect(parseAmountInput('0.01', 'USD')).toBe(1);
+  expect(parseAmountInput('10', 'USD')).toBe(1000);
+  expect(formatAmountInput('10.25', '', 'USD')).toBe('10.25');
+  for (const value of ['0', '0.001', '1.234', '1,000', '-1'])
+    expect(() => parseAmountInput(value, 'USD')).toThrow();
+});
+
 it('keeps today timestamp, uses noon for other dates, and warns from tomorrow in Vietnam', () => {
   const now = new Date('2026-10-26T17:01:00Z');
   expect(manualOccurredAt('2026-10-27', now)).toBe(now.toISOString());

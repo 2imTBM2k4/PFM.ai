@@ -16,11 +16,11 @@ export type {
 // Parse local text using an injected clock, phrase lexicon and confirmed learning only.
 export function parseEntry(
   input: string,
-  ctx: { clock: Clock } & ClassifierContext,
+  ctx: { clock: Clock; currency?: 'VND' | 'USD' } & ClassifierContext,
 ): ParseResult {
   const text = normalizeText(input);
   const date = extractDate(text, ctx.clock);
-  const amounts = extractAmounts(withoutSpans(text, date.excluded, true));
+  const amounts = extractAmounts(withoutSpans(text, date.excluded, true), ctx.currency);
   const warnings: ParseWarning[] = [
     ...date.warnings,
     ...amounts.flatMap((match) => match.warnings),

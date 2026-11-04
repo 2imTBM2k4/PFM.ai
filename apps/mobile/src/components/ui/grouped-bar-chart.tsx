@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
-import { formatCompactVnd, formatVnd } from '@pfm/domain';
+import { formatCompactMoney as formatCompactVnd, formatMoney as formatVnd } from '@/utils/display-money';
 import { DesignSpacing, useDesignTheme } from '@/constants/theme';
 
 export interface GroupedBarPoint {

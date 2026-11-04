@@ -5,19 +5,14 @@ import {
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { View } from 'react-native';
-import {
-  Button,
-  List,
-  RadioButton,
-  Text,
-  TextInput,
-  useTheme,
-} from 'react-native-paper';
+import { Button, Text, TextInput, useTheme } from 'react-native-paper';
+import { AppleMenuPicker, DateField } from '@/components/ui';
 import { Screen, styles } from '@/components/screen';
 import { useFinancePalette } from '@/constants/theme';
 import type { WalletRow } from '@/data/repository';
 import type { CategoryRow } from '@/data/categories';
 import { vi } from '@/messages/vi';
+import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { formatAmountInput, parseAmountInput } from './form';
 
 interface Fields {
@@ -75,8 +70,6 @@ export function TransactionFilterForm({
   const disabled = busy || isSubmitting;
   const fields = [
     { name: 'text', label: vi.filterText, icon: 'magnify' },
-    { name: 'from', label: vi.filterFrom, icon: 'calendar-start' },
-    { name: 'to', label: vi.filterTo, icon: 'calendar-end' },
     { name: 'minAmount', label: vi.filterMinAmount, icon: 'cash-minus' },
     { name: 'maxAmount', label: vi.filterMaxAmount, icon: 'cash-plus' },
   ] as const;
@@ -125,6 +118,22 @@ export function TransactionFilterForm({
             )}
           />
         ))}
+        {(['from', 'to'] as const).map((name) => (
+          <Controller
+            key={name}
+            control={control}
+            name={name}
+            render={({ field }) => (
+              <DateField
+                label={name === 'from' ? vi.filterFrom : vi.filterTo}
+                value={field.value}
+                onChange={field.onChange}
+                disabled={disabled}
+                allowClear
+              />
+            )}
+          />
+        ))}
       </View>
 
       <View
@@ -137,15 +146,16 @@ export function TransactionFilterForm({
           control={control}
           name="kind"
           render={({ field }) => (
-            <FilterChoice
+            <AppleMenuPicker
               label={vi.transactionKind}
               value={field.value}
               disabled={disabled}
-              onChange={(value) => {
+              onSelect={(value) => {
                 field.onChange(value);
                 setValue('categoryId', '');
               }}
               options={[
+                { value: '', label: vi.filterAll },
                 { value: 'expense', label: vi.transactionExpense },
                 { value: 'income', label: vi.transactionIncome },
                 { value: 'transfer', label: vi.transactionTransfer },
@@ -157,15 +167,18 @@ export function TransactionFilterForm({
           control={control}
           name="walletId"
           render={({ field }) => (
-            <FilterChoice
+            <AppleMenuPicker
               label={vi.transactionWallet}
               value={field.value}
               disabled={disabled}
-              onChange={field.onChange}
-              options={wallets.map((w) => ({
-                value: w.id,
-                label: `${w.name}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
-              }))}
+              onSelect={field.onChange}
+              options={[
+                { value: '', label: vi.filterAll },
+                ...wallets.map((w) => ({
+                  value: w.id,
+                  label: `${displayWalletName(w.name)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+                })),
+              ]}
             />
           )}
         />
@@ -176,15 +189,18 @@ export function TransactionFilterForm({
           control={control}
           name="categoryId"
           render={({ field }) => (
-            <FilterChoice
+            <AppleMenuPicker
               label={vi.transactionCategory}
               value={field.value}
               disabled={disabled}
-              onChange={field.onChange}
-              options={categories.map((c) => ({
-                value: c.id,
-                label: `${c.parent_id ? `${categories.find((p) => p.id === c.parent_id)?.name ?? ''} › ` : ''}${c.name}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
-              }))}
+              onSelect={field.onChange}
+              options={[
+                { value: '', label: vi.filterAll },
+                ...categories.map((c) => ({
+                  value: c.id,
+                  label: `${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} › ` : ''}${displayCategoryName(c.name)}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+                })),
+              ]}
             />
           )}
         />
@@ -238,54 +254,5 @@ export function TransactionFilterForm({
         {vi.filterClear}
       </Button>
     </Screen>
-  );
-}
-
-function FilterChoice({
-  label,
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  options: { value: string; label: string }[];
-  onChange(value: string): void;
-  disabled: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const palette = useFinancePalette();
-  return (
-    <List.Accordion
-      title={label}
-      description={
-        options.find((option) => option.value === value)?.label ?? vi.filterAll
-      }
-      descriptionNumberOfLines={0}
-      expanded={expanded}
-      onPress={() => {
-        if (!disabled) setExpanded((current) => !current);
-      }}
-      style={{ backgroundColor: palette.surfaceMuted, borderRadius: 12 }}
-    >
-      <RadioButton.Group
-        value={value}
-        onValueChange={(next) => {
-          onChange(next);
-          setExpanded(false);
-        }}
-      >
-        {[{ value: '', label: vi.filterAll }, ...options].map((option) => (
-          <RadioButton.Item
-            key={option.value}
-            value={option.value}
-            label={option.label}
-            disabled={disabled}
-            style={{ minHeight: 48 }}
-          />
-        ))}
-      </RadioButton.Group>
-    </List.Accordion>
   );
 }

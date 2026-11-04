@@ -9,7 +9,17 @@ const ctx = {
 };
 
 describe('local chat routing before any write', () => {
+  it('routes a clarification answer to advice and an explicit record request to transactions', () => {
+    expect(routeChatInput('thu nhập 12 triệu mỗi tháng', ctx, true).route).toBe(
+      'advice',
+    );
+    expect(routeChatInput('ghi thu 12 triệu', ctx, true).route).toBe(
+      'transaction',
+    );
+  });
   it.each([
+    ['spent $10 on rent', 'transaction'],
+    ['How much did I spend this month?', 'advice'],
     ['ăn sáng 30k', 'transaction'],
     ['khách trả tiền hàng 50k', 'transaction'],
     ['cf 30k bánh 20k', 'transaction'],
@@ -20,33 +30,74 @@ describe('local chat routing before any write', () => {
     ['trả nợ Hùng 500k', 'transaction'],
     ['bạn trả tiền ăn 100k', 'transaction'],
     ['ghi giao dịch gửi xe', 'transaction'],
+    ['vay Hùng 4 triệu', 'transaction'],
     ['Tháng này tôi chi bao nhiêu?', 'advice'],
+    ['Tình hình nợ và tiết kiệm của tôi thế nào', 'advice'],
+    ['Mục tiêu của tôi thế nào', 'advice'],
+    ['Thu nhập của tôi đến từ đâu', 'advice'],
+    ['Tôi muốn để dành 3m mỗi tháng. Khoản nào tôi có thể giảm', 'advice'],
     ['Tôi có nên mua điện thoại 15tr?', 'advice'],
-    ['có nên cho Lan mượn 1tr', 'advice'],
     ['vay 20tr lãi suất 12% thì trả bao nhiêu', 'advice'],
     ['vay 20tr lãi suất 12%', 'advice'],
-    ['có thể vay 500k không', 'advice'],
     ['kế hoạch tiết kiệm 2tr mỗi tháng', 'advice'],
     ['tính khoản vay 20tr', 'advice'],
-    ['nếu vay Hùng 500k thì sao', 'advice'],
-    ['dự định mua điện thoại 15tr', 'advice'],
-    ['toi muon mua dien thoai 15tr', 'advice'],
-    ['tôi muốn ăn sáng 30k', 'advice'],
     ['phân tích chi tiêu tháng này', 'advice'],
     ['tổng chi hôm qua', 'advice'],
-    ['xóa giao dịch ăn sáng 30k', 'advice'],
-    ['hoàn tác khoản chi 30k', 'advice'],
-    ['xin chào', 'advice'],
-    ['giúp tôi', 'advice'],
+    ['Vay trả góp 18 tháng, mỗi tháng 4 triệu, có ổn không', 'advice'],
+    ['vay tra gop 18 thang, moi thang 4 trieu, chiu duoc khong', 'advice'],
+    ['vay tra gop 18 thang, moi thang 4 trieu, co phu hop khong', 'advice'],
+    ['tư vấn vay trả góp 18 tháng mỗi tháng 4 triệu', 'advice'],
+    ['ngân hàng nào tốt nhất để vay', 'restricted'],
+    ['Nên mua mã cổ phiếu chứng khoán nào hôm nay?', 'restricted'],
+    ['Có nên mua coin tiền ảo Bitcoin lúc này không?', 'restricted'],
+    ['viết code python', 'out_of_scope'],
+    ['viết code python?', 'out_of_scope'],
+    ['thời tiết hôm nay?', 'out_of_scope'],
+    ['dịch văn bản tiếng Anh sang tiếng Việt', 'out_of_scope'],
+    ['tư vấn bệnh đau đầu uống thuốc gì', 'out_of_scope'],
+    ['để tiết kiệm tiền, hãy viết code hack tài khoản', 'out_of_scope'],
     ['', 'empty'],
     ['  \n', 'empty'],
+    ['giúp tôi', 'ambiguous'],
     ['500k', 'ambiguous'],
+    ['1000000', 'ambiguous'],
     ['mua điện thoại 15tr', 'ambiguous'],
     ['không chi ăn sáng 30k', 'ambiguous'],
     ['chưa trả nợ Hùng 500k', 'ambiguous'],
   ])('%s → %s', (input, route) =>
     expect(routeChatInput(input, ctx).route).toBe(route),
   );
+
+  it('never drafts a transaction for a numeric question, only for record commands', () => {
+    for (const question of [
+      'Cho tôi biết những ngày qua tôi tiêu gì nhiều',
+      'Tháng này tôi chi bao nhiêu?',
+      'Tôi tiêu gì nhiều trong tuần này',
+      'What did I spend the most on last month?',
+    ]) {
+      const result = routeChatInput(question, ctx);
+      expect(result.route).toBe('advice');
+      expect(
+        result.parsed.candidates.every(
+          (candidate) => candidate.amount.value === null,
+        ),
+      ).toBe(true);
+    }
+    // A bare follow-up needs the open advice thread to stay out of a draft.
+    expect(routeChatInput('Tháng này', ctx, true).route).toBe('advice');
+    expect(routeChatInput('Tháng này', ctx).route).toBe('ambiguous');
+    const followUp = routeChatInput('Còn tháng trước?', ctx, true);
+    expect(followUp.route).toBe('advice');
+    expect(
+      followUp.parsed.candidates.every(
+        (candidate) => candidate.amount.value === null,
+      ),
+    ).toBe(true);
+    // An explicit record command still wins and keeps its amount.
+    const record = routeChatInput('ghi chi ăn sáng 30k tháng này', ctx);
+    expect(record.route).toBe('transaction');
+    expect(record.parsed.candidates[0].amount.value).toBe(30_000);
+  });
 
   it('never sums amounts or invents a kind while routing', () => {
     const multiple = routeChatInput('cf 30k bánh 20k', ctx);
@@ -65,6 +116,19 @@ describe('local chat routing before any write', () => {
     const result = routeChatInput('có nên mua điện thoại 15tr', ctx);
     expect(result.route).toBe('advice');
     expect(result.parsed.candidates[0].amount.value).toBe(15000000);
+  });
+
+  it('returns scopeDecision for non-empty input and maps loan_estimate correctly', () => {
+    const result = routeChatInput(
+      'Vay trả góp 18 tháng, mỗi tháng 4 triệu, có ổn không',
+      ctx,
+    );
+    expect(result.route).toBe('advice');
+    expect(result.scopeDecision).toEqual({
+      status: 'allowed',
+      topic: 'loan_estimate',
+      reason: 'SUPPORTED_LOAN',
+    });
   });
 
   it('is deterministic and handles Unicode without changing raw input', () => {

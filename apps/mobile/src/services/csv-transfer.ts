@@ -1,4 +1,4 @@
-import { validateDate } from '@pfm/domain';
+import { convertMoney, validateDate } from '@pfm/domain';
 import { withDatabase } from '@/data/connection';
 import { listCategories } from '@/data/categories';
 import type { Database } from '@/data/migrate';
@@ -13,9 +13,12 @@ export interface CsvTransactionRecord {
   amount: number;
   note: string;
   categoryName: string;
+  originalCurrency?: 'USD';
+  originalAmountMinor?: number;
+  bookingRate?: number;
 }
 
-const CSV_HEADER = 'occurred_on,kind,amount,note,category';
+const CSV_HEADER = 'occurred_on,kind,amount,note,category,currency,original_amount_minor,booking_rate';
 
 /**
  * Escapes a single CSV field according to RFC 4180.
@@ -82,6 +85,9 @@ export function serializeTransactionsToCsv(
         String(safeAmount),
         escapeCsvField(row.note),
         escapeCsvField(row.categoryName),
+        row.originalCurrency ?? 'VND',
+        String(row.originalAmountMinor ?? row.amount),
+        row.bookingRate === undefined ? '' : String(row.bookingRate),
       ].join(','),
     );
   }
@@ -139,12 +145,25 @@ export function parseTransactionsFromCsv(
       throw new Error('CSV_AMOUNT_OUT_OF_RANGE');
     }
 
+    const rawCurrency = cols[5] ?? 'VND';
+    let metadata: Pick<CsvTransactionRecord, 'originalCurrency' | 'originalAmountMinor' | 'bookingRate'> = {};
+    if (rawCurrency === 'USD') {
+      const originalAmountMinor = Number(cols[6]);
+      const bookingRate = Number(cols[7]);
+      if (!/^\d+$/.test(cols[6] ?? '') || !Number.isSafeInteger(originalAmountMinor) || originalAmountMinor <= 0 || !Number.isFinite(bookingRate) || bookingRate <= 0 || convertMoney(originalAmountMinor, 'USD', 'VND', bookingRate) !== amount)
+        throw new Error('CSV_EXCHANGE_MISMATCH');
+      metadata = { originalCurrency: 'USD', originalAmountMinor, bookingRate };
+    } else if (rawCurrency !== 'VND' || (cols[6] && Number(cols[6]) !== amount) || cols[7]) {
+      throw new Error('CSV_EXCHANGE_MISMATCH');
+    }
+
     records.push({
       occurredOn,
       kind: rawKind,
       amount,
       note,
       categoryName,
+      ...metadata,
     });
   }
 
@@ -173,6 +192,13 @@ export async function exportLocalTransactionsCsv(): Promise<string> {
         note: tx.note ?? '',
         categoryName:
           (tx.category_id ? categoryMap.get(tx.category_id) : undefined) ?? '',
+        ...(tx.original_currency === 'USD'
+          ? {
+              originalCurrency: 'USD' as const,
+              originalAmountMinor: tx.original_amount_minor ?? undefined,
+              bookingRate: tx.booking_rate ?? undefined,
+            }
+          : {}),
       }));
     return serializeTransactionsToCsv(records);
   });
@@ -210,8 +236,9 @@ export async function importLocalTransactionsCsv(
       await tx.runAsync(
         `INSERT INTO transactions (
           id, kind, amount, wallet_id, to_wallet_id, category_id, debt_id,
-          occurred_on, occurred_at, note, note_search, source, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, 'import', ?, ?)`,
+          occurred_on, occurred_at, note, note_search, source, created_at, updated_at,
+          original_currency, original_amount_minor, booking_rate
+        ) VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, ?, ?, ?, 'import', ?, ?, ?, ?, ?)`,
         id,
         record.kind,
         record.amount,
@@ -223,10 +250,12 @@ export async function importLocalTransactionsCsv(
         foldSearchText(record.note),
         nowIso,
         nowIso,
+        record.originalCurrency ?? 'VND',
+        record.originalAmountMinor ?? record.amount,
+        record.bookingRate ?? null,
       );
     }
   });
 
   return records.length;
 }
-

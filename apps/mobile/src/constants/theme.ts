@@ -122,6 +122,9 @@ export const FinancePalette = {
  */
 export function useDesignTheme(): DesignColorScheme {
   const themeMode = usePreferences((state) => state.themeMode);
+  usePreferences((state) => state.language);
+  usePreferences((state) => state.currency);
+  usePreferences((state) => state.exchangeRate);
   return DesignColors[themeMode];
 }
 
@@ -130,6 +133,9 @@ export function useDesignTheme(): DesignColorScheme {
  */
 export function useFinancePalette() {
   const themeMode = usePreferences((state) => state.themeMode);
+  usePreferences((state) => state.language);
+  usePreferences((state) => state.currency);
+  usePreferences((state) => state.exchangeRate);
   return FinancePalette[themeMode];
 }
 

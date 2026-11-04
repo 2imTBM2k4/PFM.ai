@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, MAX_AMOUNT_VND } from '@pfm/domain';
+import { MAX_AMOUNT_VND } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { WalletInput } from '@pfm/contracts';
 import { memo, useCallback, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -36,6 +37,7 @@ import {
   reorderWallets,
 } from '@/data/wallets';
 import { vi } from '@/messages/vi';
+import { displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
 
 const KINDS = [
@@ -337,7 +339,7 @@ const WalletItem = memo(function WalletItem({
           />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
-              {wallet.name}
+              {displayWalletName(wallet.name)}
             </Text>
             <Text variant="bodySmall" style={{ color: palette.textMuted }}>
               {KINDS.find(({ value }) => value === wallet.kind)?.label}

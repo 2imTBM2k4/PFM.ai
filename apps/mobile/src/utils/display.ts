@@ -1,12 +1,14 @@
 import { formatVnd } from '@pfm/domain';
+import { formatCurrencyAmount, usePreferences } from '@/state/preferences';
 
 /**
- * Formats a stored ISO date (YYYY-MM-DD) for Vietnamese display without changing
+ * Formats a stored ISO date (YYYY-MM-DD) for the selected language without changing
  * the value used by forms, parsers or the database.
  */
 export function formatDisplayDate(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return value;
+  if (usePreferences.getState().language === 'en') return `${match[2]}/${match[3]}/${match[1]}`;
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
@@ -25,7 +27,7 @@ export function formatDisplayMonth(value: string): string {
 export function formatDisplayMonthShort(value: string): string {
   const match = /^(\d{4})-(\d{2})$/.exec(value);
   if (!match) return value;
-  return `T${Number(match[2])}`;
+  return `${usePreferences.getState().language === 'en' ? 'M' : 'T'}${Number(match[2])}`;
 }
 
 /**
@@ -34,6 +36,9 @@ export function formatDisplayMonthShort(value: string): string {
  * consistent with the rest of the Vietnamese interface.
  */
 export function formatCompactVndShort(value: number): string {
+  const { currency, language } = usePreferences.getState();
+  if (currency === 'USD' || language === 'en')
+    return formatCurrencyAmount(value, currency, { compact: true });
   if (!Number.isSafeInteger(value)) return formatVnd(value);
   const absolute = Math.abs(value);
   const sign = value < 0 ? '-' : '';

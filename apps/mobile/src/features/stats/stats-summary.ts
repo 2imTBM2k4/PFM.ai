@@ -4,6 +4,9 @@ export interface MonthlyFlowPoint {
   expense: number;
 }
 
+export const shouldShowDailyTotals = (date: string, currentDate: string) =>
+  date <= currentDate;
+
 export interface PeriodSummaryResult {
   totalIncome: number;
   totalExpense: number;
@@ -87,4 +90,3 @@ export function computeCategoryAllocation(
 
   return { totalExpense, items };
 }
-

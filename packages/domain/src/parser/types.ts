@@ -23,6 +23,7 @@ export interface ParsedEntry {
   kindConfidence: number;
   amount: {
     value: number | null;
+    currency?: 'VND' | 'USD';
     confidence: Confidence;
     matchedText: string | null;
   };

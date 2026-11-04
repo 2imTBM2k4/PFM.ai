@@ -2,11 +2,11 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   addMonths,
-  formatVnd,
   goalProgress,
   monthKey,
   today,
 } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput } from '@pfm/contracts';
 import { useCallback, useRef, useState } from 'react';
 import {
@@ -46,6 +46,7 @@ import { readDashboard, type Dashboard } from '@/data/dashboard';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
 import { NotificationsView } from '@/features/notifications/notifications-view';
 import { vi } from '@/messages/vi';
+import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
 import { formatDisplayMonth } from '@/utils/display';
@@ -399,7 +400,7 @@ export function OverviewScreen({
                             fontWeight: '600',
                           }}
                         >
-                          {wallet.name}
+                          {displayWalletName(wallet.name)}
                         </Text>
                         <Text
                           variant="bodyMedium"
@@ -885,7 +886,7 @@ export function OverviewScreen({
                             variant="titleSmall"
                             style={{ fontWeight: '700', flex: 1 }}
                           >
-                            {budget.category_name ?? vi.budgetOverall}
+                            {budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall}
                           </Text>
                           <StatusPill
                             label={`${pct}%`}
@@ -922,7 +923,7 @@ export function OverviewScreen({
                           }
                           style={localStyles.progressBar}
                           accessibilityLabel={
-                            budget.category_name ?? vi.budgetOverall
+                            budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall
                           }
                           accessibilityValue={{
                             min: 0,

@@ -1,4 +1,5 @@
 import type { PropsWithChildren, ReactNode } from 'react';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -49,7 +50,10 @@ export function Screen({
   const designTheme = useDesignTheme();
   const insets = useSafeAreaInsets();
   const content = (
-    <View style={[styles.column, scroll ? styles.scrollColumn : styles.fill]}>
+    <Animated.View
+      entering={FadeIn.duration(240)}
+      style={[styles.column, scroll ? styles.scrollColumn : styles.fill]}
+    >
       {!hideHeader && (
         <View style={styles.headerContainer}>
           {onBack && (
@@ -105,7 +109,7 @@ export function Screen({
         </View>
       )}
       {children}
-    </View>
+    </Animated.View>
   );
   return (
     <View

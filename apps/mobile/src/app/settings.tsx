@@ -7,7 +7,6 @@ import {
   SegmentedButtons,
   Switch,
   Text,
-  TextInput,
 } from 'react-native-paper';
 import { DeleteDataControl } from '@/components/delete-data-control';
 import { IconBadge, Screen, styles } from '@/components/screen';
@@ -20,41 +19,49 @@ import {
 import { withDatabase } from '@/data/connection';
 import { CategoryManager } from '@/features/categories/category-manager';
 import { PinSettings } from '@/features/lock/pin-controls';
+import { withdrawReceiptConsent } from '@/features/quick-entry/receipt-consent';
 import { NotificationsView } from '@/features/notifications/notifications-view';
 import { vi } from '@/messages/vi';
 import {
   exportLocalTransactionsCsv,
   importLocalTransactionsCsv,
 } from '@/services/csv-transfer';
+import { pickAndReadCsvFile, saveCsvFile } from '@/services/file-transfer';
 import { usePreferences } from '@/state/preferences';
 
-const SAMPLE_CSV = [
-  'occurred_on,kind,amount,note,category',
-  '2026-10-25,expense,45000,"Phở bò & trà đá",Ăn ngoài',
-  '2026-10-26,expense,120000,"Xăng xe đi làm",Xăng xe',
-  '2026-10-27,income,2500000,"Thưởng hoàn thành sprint",Thưởng',
-].join('\n');
-
 /**
- * Settings screen: display mode (Pastel Sunset / Midnight Aurora), fixed VND note,
+ * Settings screen: display mode (Pastel Sunset / Midnight Aurora), currency,
  * preview tools (seed data and CSV), category management, notifications and PIN security.
  */
 export default function Settings() {
   const [managingCategories, setManagingCategories] = useState(false);
   const [viewingNotifications, setViewingNotifications] = useState(false);
-  const [csvText, setCsvText] = useState('');
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvNotice, setCsvNotice] = useState('');
   const [csvError, setCsvError] = useState('');
   const [seedNotice, setSeedNotice] = useState('');
+  const [seedError, setSeedError] = useState('');
   const [seedBusy, setSeedBusy] = useState(false);
+  const [receiptConsentNotice, setReceiptConsentNotice] = useState('');
 
   const palette = useFinancePalette();
   const theme = useDesignTheme();
 
   const themeMode = usePreferences((state) => state.themeMode);
+  const language = usePreferences((state) => state.language);
+  const currency = usePreferences((state) => state.currency);
+  const exchangeRate = usePreferences((state) => state.exchangeRate);
+  const exchangeRateDate = usePreferences((state) => state.exchangeRateDate);
+  const exchangeRateCached = usePreferences(
+    (state) => state.exchangeRateCached,
+  );
   const seedEnabled = usePreferences((state) => state.seedEnabled);
   const setThemeMode = usePreferences((state) => state.setThemeMode);
+  const setLanguage = usePreferences((state) => state.setLanguage);
+  const setCurrency = usePreferences((state) => state.setCurrency);
+  const refreshExchangeRate = usePreferences(
+    (state) => state.refreshExchangeRate,
+  );
   const setSeedEnabled = usePreferences((state) => state.setSeedEnabled);
 
   if (managingCategories) {
@@ -68,11 +75,14 @@ export default function Settings() {
     if (seedBusy) return;
     setSeedBusy(true);
     setSeedNotice('');
+    setSeedError('');
     try {
       await setSeedEnabled(nextValue);
       setSeedNotice(
         nextValue ? vi.settingsSeedActiveNotice : vi.settingsSeedRemovedNotice,
       );
+    } catch {
+      setSeedError(vi.settingsSeedFailedNotice);
     } finally {
       setSeedBusy(false);
     }
@@ -85,8 +95,10 @@ export default function Settings() {
     setCsvNotice('');
     try {
       const exported = await exportLocalTransactionsCsv();
-      setCsvText(exported);
-      setCsvNotice(vi.csvExportSuccess);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `pfm-transactions-${dateStr}.csv`;
+      await saveCsvFile(fileName, exported);
+      setCsvNotice(`${vi.csvExportSuccess}: ${fileName}`);
     } catch {
       setCsvError(vi.saveError);
     } finally {
@@ -94,16 +106,23 @@ export default function Settings() {
     }
   };
 
-  const handleImportCsv = async () => {
-    if (csvBusy || !csvText.trim()) return;
+  const handlePickAndImportCsv = async () => {
+    if (csvBusy) return;
     setCsvBusy(true);
     setCsvError('');
     setCsvNotice('');
     try {
+      const picked = await pickAndReadCsvFile();
+      if (!picked) {
+        setCsvBusy(false);
+        return;
+      }
       const count = await withDatabase((db) =>
-        importLocalTransactionsCsv(db, csvText),
+        importLocalTransactionsCsv(db, picked.content),
       );
-      setCsvNotice(`${vi.csvImportSuccess} (${count})`);
+      setCsvNotice(
+        `${vi.csvImportSuccess} (${count} ${language === 'en' ? 'from' : 'từ'} ${picked.fileName})`,
+      );
     } catch {
       setCsvError(vi.csvImportError);
     } finally {
@@ -140,21 +159,51 @@ export default function Settings() {
 
         <Divider style={{ backgroundColor: theme.card.border }} />
 
-        {/* Currency is fixed for this preview; hiding a non-working selector is clearer. */}
-        <View style={localStyles.settingRow}>
+        <View style={{ gap: 8 }}>
+          <Text
+            variant="titleSmall"
+            style={{ fontWeight: '700', color: theme.text.primary }}
+          >
+            {vi.settingsLanguageLabel}
+          </Text>
+          <SegmentedButtons
+            value={language}
+            onValueChange={(value) => void setLanguage(value as 'vi' | 'en')}
+            buttons={[
+              { value: 'vi', label: vi.settingsLanguageVi },
+              { value: 'en', label: vi.settingsLanguageEn },
+            ]}
+          />
+        </View>
+
+        <Divider style={{ backgroundColor: theme.card.border }} />
+
+        <View style={{ gap: 8 }}>
           <Text
             variant="titleSmall"
             style={{ fontWeight: '700', color: theme.text.primary }}
           >
             {vi.settingsCurrencyLabel}
           </Text>
-          <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
-            {vi.settingsCurrencyVnd}
-          </Text>
+          <SegmentedButtons
+            value={currency}
+            onValueChange={(value) => void setCurrency(value as 'VND' | 'USD')}
+            buttons={[
+              { value: 'VND', label: 'VND (₫)' },
+              { value: 'USD', label: 'USD ($)' },
+            ]}
+          />
         </View>
         <Text variant="bodySmall" style={{ color: theme.text.muted }}>
-          {vi.settingsCurrencyHint}
+          {exchangeRate && exchangeRateDate
+            ? `1 USD ≈ ${Math.round(exchangeRate).toLocaleString(language === 'en' ? 'en-US' : 'vi-VN')} ₫ · ${exchangeRateDate}${exchangeRateCached ? (language === 'en' ? ' · cached' : ' · đã lưu') : ''}`
+            : language === 'en'
+              ? 'USD/VND rate unavailable. Connect to the internet to convert amounts.'
+              : 'Chưa có tỷ giá USD/VND. Cần kết nối mạng để quy đổi.'}
         </Text>
+        <Button compact onPress={() => void refreshExchangeRate()}>
+          {language === 'en' ? 'Refresh exchange rate' : 'Cập nhật tỷ giá'}
+        </Button>
 
         <Divider style={{ backgroundColor: theme.card.border }} />
 
@@ -231,6 +280,15 @@ export default function Settings() {
             onValueChange={(value) => void handleToggleSeed(value)}
           />
         </View>
+        {!!seedError && (
+          <Text
+            accessibilityRole="alert"
+            variant="bodySmall"
+            style={{ color: palette.danger }}
+          >
+            {seedError}
+          </Text>
+        )}
         {!!seedNotice && (
           <Text
             variant="bodySmall"
@@ -286,45 +344,28 @@ export default function Settings() {
             {vi.csvExportBtn}
           </Button>
           <Button
-            mode="outlined"
+            mode="contained-tonal"
             compact
-            icon="file-document-edit-outline"
+            icon="folder-open-outline"
             disabled={csvBusy}
-            onPress={() => {
-              setCsvText(SAMPLE_CSV);
-              setCsvError('');
-              setCsvNotice('');
-            }}
+            loading={csvBusy}
+            onPress={() => void handlePickAndImportCsv()}
           >
-            {vi.csvLoadSampleBtn}
+            {vi.csvPickFileBtn}
           </Button>
         </View>
 
-        <TextInput
-          mode="outlined"
-          label={vi.csvInputLabel}
-          accessibilityLabel={vi.csvInputLabel}
-          multiline
-          numberOfLines={4}
-          value={csvText}
-          onChangeText={(val) => {
-            setCsvText(val);
-            setCsvError('');
-            setCsvNotice('');
+        <Text
+          variant="bodySmall"
+          style={{
+            color: theme.brand.primaryText,
+            fontStyle: 'italic',
+            fontSize: 12,
+            lineHeight: 16,
           }}
-          disabled={csvBusy}
-          style={{ maxHeight: 150, fontSize: 12 }}
-        />
-
-        <Button
-          mode="contained-tonal"
-          icon="tray-arrow-down"
-          disabled={csvBusy || !csvText.trim()}
-          loading={csvBusy}
-          onPress={() => void handleImportCsv()}
         >
-          {vi.csvImportBtn}
-        </Button>
+          {vi.csvDriveBackupNote}
+        </Text>
 
         {!!csvNotice && (
           <Text
@@ -474,6 +515,19 @@ export default function Settings() {
         style={{ gap: 12 }}
       >
         <PinSettings />
+        <Button
+          mode="outlined"
+          onPress={() =>
+            void withDatabase(withdrawReceiptConsent)
+              .then(() => setReceiptConsentNotice(vi.receiptConsentWithdrawn))
+              .catch(() => setReceiptConsentNotice(vi.saveError))
+          }
+        >
+          {vi.receiptConsentWithdraw}
+        </Button>
+        {!!receiptConsentNotice && (
+          <Text accessibilityLiveRegion="polite">{receiptConsentNotice}</Text>
+        )}
         <Divider style={{ backgroundColor: theme.card.border }} />
         <View style={{ gap: 4 }}>
           <Text

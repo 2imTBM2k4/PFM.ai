@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createSoftShadow } from './design-tokens';
-import { formatCurrencyAmount } from '@/state/preferences';
+import { formatCurrencyAmount, formatTransactionCurrencyAmount } from '@/state/preferences';
 
 vi.mock('@/data/connection', () => ({
   withDatabase: async () => undefined,
@@ -23,7 +23,8 @@ describe('Shadow & Currency Formatting Utilities', () => {
   it('formats zero, standard, negative, and huge integer currency amounts accurately without floats', () => {
     // Zero balance
     expect(formatCurrencyAmount(0, 'VND')).toBe('0 ₫');
-    expect(formatCurrencyAmount(0, 'USD')).toBe('$0.00');
+    expect(formatCurrencyAmount(0, 'USD', { rate: 25_500 })).toBe('$0.00');
+    expect(formatCurrencyAmount(255_000, 'USD', { rate: 25_500 })).toBe('$10.00');
 
     // Standard integer VND & USD conversion
     expect(formatCurrencyAmount(30_000, 'VND')).toBe('30.000 ₫');
@@ -42,5 +43,12 @@ describe('Shadow & Currency Formatting Utilities', () => {
 
     // Truncates any accidental float input to integer smallest unit
     expect(formatCurrencyAmount(30000.89, 'VND')).toBe('30.000 ₫');
+  });
+
+  it('shows the original USD and converts an old USD transaction at the current rate', () => {
+    const row = { amount: 255_000, original_amount_minor: 1000, original_currency: 'USD' as const, booking_rate: 25_500 };
+    expect(formatTransactionCurrencyAmount(row, 'USD', 26_000)).toBe('$10.00');
+    expect(formatTransactionCurrencyAmount(row, 'VND', 26_000)).toBe('260.000 ₫');
+    expect(row.amount).toBe(255_000);
   });
 });

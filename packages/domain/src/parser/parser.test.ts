@@ -9,6 +9,26 @@ const clock: Clock = {
 const parse = (text: string, reference = clock) =>
   parseEntry(text, { clock: reference });
 
+it('parses English rent expenses in USD while respecting explicit VND', () => {
+  const usd = parseEntry('spent $10.25 on rent', { clock, currency: 'USD' });
+  expect(usd.candidates[0]).toMatchObject({
+    kind: 'expense',
+    categoryKey: 'expense.housing.rent',
+    amount: { value: 1025, currency: 'USD' },
+  });
+  const implicit = parseEntry('spent 10 on rent', { clock, currency: 'USD' });
+  expect(implicit.candidates[0].amount).toMatchObject({ value: 1000, currency: 'USD' });
+  const vnd = parseEntry('spent 10,000 VND on rent', { clock, currency: 'USD' });
+  expect(vnd.candidates[0].amount).toMatchObject({ value: 10000, currency: 'VND' });
+});
+
+it('classifies English quick-entry examples as food expenses and salary income', () => {
+  const breakfast = parseEntry('spent $10 on breakfast', { clock, currency: 'USD' });
+  expect(breakfast.candidates[0]).toMatchObject({ kind: 'expense', categoryKey: 'expense.food.eating_out', amount: { value: 1000, currency: 'USD' } });
+  const salary = parseEntry('salary $500', { clock, currency: 'USD' });
+  expect(salary.candidates[0]).toMatchObject({ kind: 'income', categoryKey: 'income.salary', amount: { value: 50_000, currency: 'USD' } });
+});
+
 describe('normative amounts', () => {
   it.each([
     ['ăn sáng 30k', 30000, 'high'],

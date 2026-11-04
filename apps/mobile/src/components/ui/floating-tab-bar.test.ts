@@ -22,6 +22,10 @@ vi.mock('react-native', () => ({
   View: 'View',
   Pressable: 'Pressable',
   Text: 'Text',
+  Platform: {
+    OS: 'ios',
+    select: <T>(obj: Record<string, T>): T => obj.ios ?? obj.default!,
+  },
   StyleSheet: {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
   },

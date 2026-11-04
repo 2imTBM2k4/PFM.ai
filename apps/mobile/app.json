@@ -35,7 +35,15 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép PFM.ai chọn ảnh hóa đơn để tạo giao dịch.",
+          "cameraPermission": "Cho phép PFM.ai chụp hóa đơn để tạo giao dịch.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

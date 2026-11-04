@@ -1,13 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import {
-  formatVnd,
-  parseEntry,
-  today,
-  validateDate,
-  type ParseResult,
-} from '@pfm/domain';
+import { parseEntry, today, validateDate, type ParseResult } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput, TransactionFilters } from '@pfm/contracts';
 import { TransactionFilterForm } from './transaction-filters';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
@@ -28,9 +23,6 @@ import {
   Divider,
   HelperText,
   IconButton,
-  List,
-  RadioButton,
-  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
@@ -43,12 +35,13 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField, GlassCard, Pill } from '@/components/ui';
+import { AppleMenuPicker, DateField, GlassCard, Pill } from '@/components/ui';
 import {
   DesignRadius,
   DesignSpacing,
   useDesignTheme,
   useFinancePalette,
+  walletKindVisual,
 } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
@@ -61,9 +54,12 @@ import {
   updateTransaction,
   deleteTransaction,
   undoDeleteTransaction,
-  listTransactions,
   type TransactionRow,
 } from '@/data/transactions';
+import {
+  listTransactionHistory,
+  type TransactionHistoryRow,
+} from '@/data/transaction-history';
 import {
   confirmSelectedEntries,
   makeEntryDrafts,
@@ -71,8 +67,13 @@ import {
 } from '@/features/quick-entry/draft';
 import { EntryConfirmation } from '@/features/quick-entry/confirmation';
 import { useApp } from '@/state/app';
-import { usePreferences } from '@/state/preferences';
+import {
+  formatTransactionCurrencyAmount,
+  usePreferences,
+} from '@/state/preferences';
 import { vi } from '@/messages/vi';
+import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
+import { logAppEvent } from '@/services/logger';
 import { formatDisplayDate } from '@/utils/display';
 import {
   formatAmountInput,
@@ -87,10 +88,15 @@ const KINDS = [
   { value: 'transfer', label: vi.transactionTransfer },
 ] as const;
 
+function formatEntryAmount(row: TransactionRow): string {
+  const { currency, exchangeRate } = usePreferences.getState();
+  return formatTransactionCurrencyAmount(row, currency, exchangeRate);
+}
+
 type Mode =
   | { type: 'list' }
   | { type: 'filters' }
-  | { type: 'detail'; row: TransactionRow }
+  | { type: 'detail'; row: TransactionHistoryRow }
   | { type: 'form'; row: TransactionRow | null; id: string }
   | { type: 'delete'; row: TransactionRow };
 
@@ -105,7 +111,7 @@ export function TransactionManager({
   onManageRecurring(): void;
   onManageDebts(): void;
 }) {
-  const [rows, setRows] = useState<TransactionRow[]>([]);
+  const [rows, setRows] = useState<TransactionHistoryRow[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [quickQuery, setQuickQuery] = useState('');
   const [quickKind, setQuickKind] = useState<string>('all');
@@ -128,9 +134,13 @@ export function TransactionManager({
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const theme = useDesignTheme();
+  const language = usePreferences((state) => state.language);
   const recurringVersion = useApp((state) => state.recurringVersion);
   const consumeAddTransaction = usePreferences(
     (state) => state.consumeAddTransaction,
+  );
+  const pendingTransactionEntry = usePreferences(
+    (state) => state.pendingTransactionEntry,
   );
 
   const load = useCallback(async () => {
@@ -142,11 +152,18 @@ export function TransactionManager({
     setError('');
     try {
       const data = await withDatabase(async (db) => ({
-        rows: await listTransactions(db, undefined, filtersRef.current),
+        rows: await listTransactionHistory(db, undefined, filtersRef.current),
         wallets: await listWallets(db, true),
         categories: await listCategories(db, true),
       }));
       hasLoadedOnce.current = true;
+      logAppEvent('debug', {
+        route: 'entry',
+        status: 'ready',
+        action: data.rows.some((row) => row.source === 'parsed')
+          ? 'history_with_parsed'
+          : 'history_without_parsed',
+      });
       setRows(data.rows);
       setMore(data.rows.length === 50);
       setWallets(data.wallets);
@@ -176,7 +193,12 @@ export function TransactionManager({
         setUndo(null);
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps -- Automatic entries refresh this focused list.
-    }, [load, recurringVersion, consumeAddTransaction]),
+    }, [
+      load,
+      recurringVersion,
+      consumeAddTransaction,
+      pendingTransactionEntry,
+    ]),
   );
 
   const back = useCallback(() => {
@@ -213,7 +235,7 @@ export function TransactionManager({
         committed = true;
         setUndo(focused.current ? (deleted ?? null) : null);
         return {
-          rows: await listTransactions(db, undefined, filtersRef.current),
+          rows: await listTransactionHistory(db, undefined, filtersRef.current),
           wallets: await listWallets(db, true),
         };
       });
@@ -257,7 +279,7 @@ export function TransactionManager({
     setError('');
     try {
       const page = await withDatabase((db) =>
-        listTransactions(db, rows.at(-1), filtersRef.current),
+        listTransactionHistory(db, rows.at(-1), filtersRef.current),
       );
       setRows((current) => [
         ...current,
@@ -274,7 +296,7 @@ export function TransactionManager({
     }
   };
 
-  const viewDetail = useCallback((row: TransactionRow) => {
+  const viewDetail = useCallback((row: TransactionHistoryRow) => {
     setMode({ type: 'detail', row });
     setError('');
     setNotice('');
@@ -315,7 +337,7 @@ export function TransactionManager({
   }, [rows, quickKind, quickQuery, categories, wallets]);
 
   const renderItem = useCallback(
-    ({ item }: { item: TransactionRow }) => (
+    ({ item }: { item: TransactionHistoryRow }) => (
       <TransactionItem
         row={item}
         wallets={wallets}
@@ -382,8 +404,13 @@ export function TransactionManager({
               ]}
             >
               {isExpense ? '−' : isIncome ? '+' : ''}
-              {formatVnd(detailRow.amount)}
+              {formatEntryAmount(detailRow)}
             </Text>
+            {detailRow.original_currency === 'USD' && (
+              <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+                {`${language === 'en' ? 'Original' : 'Gốc'}: $${((detailRow.original_amount_minor ?? 0) / 100).toFixed(2)} · ${language === 'en' ? 'Booked to wallet' : 'Đã ghi vào ví'}: ${detailRow.amount.toLocaleString('vi-VN')} ₫`}
+              </Text>
+            )}
             <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
               {formatDisplayDate(detailRow.occurred_on)}
             </Text>
@@ -403,7 +430,7 @@ export function TransactionManager({
               </Text>
               <Text style={{ fontWeight: '700', color: theme.text.primary }}>
                 {wallet?.name ?? ''}
-                {toWallet ? ` → ${toWallet.name}` : ''}
+                {toWallet ? ` → ${displayWalletName(toWallet.name)}` : ''}
               </Text>
             </View>
 
@@ -429,6 +456,7 @@ export function TransactionManager({
               </View>
             )}
           </View>
+          <TransactionBalance row={detailRow} wallets={wallets} />
         </GlassCard>
 
         <View style={localStyles.detailActions}>
@@ -502,7 +530,7 @@ export function TransactionManager({
             />
             <View style={{ flex: 1, gap: 2 }}>
               <Text variant="titleMedium" style={{ fontWeight: '700' }}>
-                {formatVnd(mode.row.amount)} ·{' '}
+                {formatEntryAmount(mode.row)} ·{' '}
                 {formatDisplayDate(mode.row.occurred_on)}
               </Text>
               {!!mode.row.note && (
@@ -795,6 +823,35 @@ export function TransactionManager({
   );
 }
 
+// Wrap wallet names and values naturally on small screens and with larger text.
+function TransactionBalance({
+  row,
+  wallets,
+}: {
+  row: TransactionHistoryRow;
+  wallets: WalletRow[];
+}) {
+  const theme = useDesignTheme();
+  return (
+    <View style={{ gap: 4 }}>
+      <Text variant="labelSmall" style={{ color: theme.text.secondary }}>
+        {vi.transactionBalanceAfter}
+      </Text>
+      <Text variant="bodySmall" style={{ color: theme.text.primary }}>
+        {wallets.find((wallet) => wallet.id === row.wallet_id)?.name ?? '—'}:{' '}
+        {formatVnd(row.wallet_balance_after)}
+      </Text>
+      {row.to_wallet_id && row.to_wallet_balance_after !== null && (
+        <Text variant="bodySmall" style={{ color: theme.text.primary }}>
+          {wallets.find((wallet) => wallet.id === row.to_wallet_id)?.name ??
+            '—'}
+          : {formatVnd(row.to_wallet_balance_after)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 const TransactionItem = memo(function TransactionItem({
   row,
   wallets,
@@ -804,11 +861,11 @@ const TransactionItem = memo(function TransactionItem({
   onEdit,
   onDelete,
 }: {
-  row: TransactionRow;
+  row: TransactionHistoryRow;
   wallets: WalletRow[];
   categories: CategoryRow[];
   busy: boolean;
-  onPress(row: TransactionRow): void;
+  onPress(row: TransactionHistoryRow): void;
   onEdit(row: TransactionRow): void;
   onDelete(row: TransactionRow): void;
 }) {
@@ -851,7 +908,7 @@ const TransactionItem = memo(function TransactionItem({
   const categoryTitle =
     row.kind !== 'transfer' && !row.debt_id
       ? category
-        ? `${parent ? `${parent.name} › ` : ''}${category.name}`
+        ? `${parent ? `${displayCategoryName(parent.name)} › ` : ''}${displayCategoryName(category.name)}`
         : vi.transactionUncategorized
       : null;
 
@@ -893,7 +950,9 @@ const TransactionItem = memo(function TransactionItem({
             </View>
             <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
               {formatDisplayDate(row.occurred_on)} ·{' '}
-              {wallets.find((w) => w.id === row.wallet_id)?.name}
+              {displayWalletName(
+                wallets.find((w) => w.id === row.wallet_id)?.name,
+              )}
               {row.to_wallet_id
                 ? ` → ${wallets.find((w) => w.id === row.to_wallet_id)?.name ?? ''}`
                 : ''}
@@ -919,7 +978,7 @@ const TransactionItem = memo(function TransactionItem({
           ]}
         >
           {row.kind === 'expense' ? '−' : row.kind === 'income' ? '+' : ''}
-          {formatVnd(row.amount)}
+          {formatEntryAmount(row)}
         </Text>
       </View>
 
@@ -937,6 +996,8 @@ const TransactionItem = memo(function TransactionItem({
           fg={palette.tealInk}
         />
       )}
+
+      <TransactionBalance row={row} wallets={wallets} />
 
       <Divider style={{ backgroundColor: theme.card.border }} />
 
@@ -1000,7 +1061,11 @@ export function TransactionForm({
   onNaturalSaved?(): Promise<void>;
   onSave(input: TransactionInput): Promise<void>;
 }) {
-  const [categoryExpanded, setCategoryExpanded] = useState(false);
+  const selectedCurrency = usePreferences((state) => state.currency);
+  const language = usePreferences((state) => state.language);
+  const currentRate = usePreferences((state) => state.exchangeRate);
+  const currency = row?.original_currency ?? selectedCurrency;
+  const originalAmount = row?.original_amount_minor ?? row?.amount ?? 0;
   const [naturalText, setNaturalText] = useState('');
   const [naturalBusy, setNaturalBusy] = useState(false);
   const [naturalError, setNaturalError] = useState('');
@@ -1018,7 +1083,11 @@ export function TransactionForm({
         row?.kind === 'income' || row?.kind === 'transfer'
           ? row.kind
           : 'expense',
-      amount: row ? formatAmountInput(String(row.amount)) : '',
+      amount: row
+        ? currency === 'USD'
+          ? (originalAmount / 100).toFixed(2)
+          : formatAmountInput(String(originalAmount))
+        : '',
       walletId: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
       toWalletId: row?.to_wallet_id ?? '',
       categoryId: row?.category_id ?? '',
@@ -1050,6 +1119,100 @@ export function TransactionForm({
       (!c.is_archived || (c.id === row?.category_id && kind === row.kind)),
   );
 
+  const kindOptions = useMemo(
+    () => [
+      {
+        value: 'expense',
+        label: language === 'en' ? 'Expense' : vi.transactionExpense,
+        icon: 'arrow-down-circle',
+        iconBg: palette.expenseSoft,
+        iconColor: palette.expenseInk,
+      },
+      {
+        value: 'income',
+        label: vi.transactionIncome,
+        icon: 'arrow-up-circle',
+        iconBg: palette.incomeSoft,
+        iconColor: palette.incomeInk,
+      },
+      {
+        value: 'transfer',
+        label: vi.transactionTransfer,
+        icon: 'swap-horizontal-circle',
+        iconBg: palette.purpleSoft,
+        iconColor: palette.purpleInk,
+      },
+    ],
+    [palette, language],
+  );
+
+  const walletOptions = useMemo(
+    () =>
+      wallets
+        .filter((w) => !w.is_archived || w.id === row?.wallet_id)
+        .map((w) => {
+          const visual = walletKindVisual(w.kind, palette);
+          return {
+            value: w.id,
+            label: `${displayWalletName(w.name, language)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    [wallets, row?.wallet_id, palette, language],
+  );
+
+  const toWalletOptions = useMemo(
+    () =>
+      wallets
+        .filter(
+          (w) =>
+            w.id !== walletId && (!w.is_archived || w.id === row?.to_wallet_id),
+        )
+        .map((w) => {
+          const visual = walletKindVisual(w.kind, palette);
+          return {
+            value: w.id,
+            label: `${displayWalletName(w.name, language)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    [wallets, walletId, row?.to_wallet_id, palette, language],
+  );
+
+  const categoryOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: vi.transactionUncategorized,
+        icon: 'help-circle-outline',
+        iconBg: palette.surfaceMuted,
+        iconColor: palette.textMuted,
+      },
+      ...availableCategories.map((c) => {
+        const isExpense = c.kind === 'expense';
+        const parent = c.parent_id
+          ? categories.find((p) => p.id === c.parent_id)
+          : null;
+        return {
+          value: c.id,
+          label: displayCategoryName(c.name, language),
+          icon: c.icon || 'tag-outline',
+          iconBg: isExpense ? palette.expenseSoft : palette.incomeSoft,
+          iconColor:
+            c.color || (isExpense ? palette.expenseInk : palette.incomeInk),
+          subtitle: parent
+            ? `${language === 'en' ? 'Under' : 'Thuộc'}: ${displayCategoryName(parent.name, language)}`
+            : undefined,
+        };
+      }),
+    ],
+    [availableCategories, categories, palette, language],
+  );
+
   const handleParseNatural = async () => {
     if (!naturalText.trim() || disabled) return;
     setNaturalBusy(true);
@@ -1058,13 +1221,19 @@ export function TransactionForm({
       const context = await withDatabase(readQuickEntryContext);
       const parsed = parseEntry(naturalText, {
         clock: { now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' },
+        currency: usePreferences.getState().currency,
         ...context,
       });
       if (!parsed.candidates.length) {
         setNaturalError(vi.quickInvalid);
         return;
       }
-      const drafts = makeEntryDrafts(parsed, context, uuid.v4);
+      const drafts = makeEntryDrafts(
+        parsed,
+        context,
+        uuid.v4,
+        usePreferences.getState().currency,
+      );
       setNaturalSession({ result: parsed, drafts, context });
     } catch {
       setNaturalError(vi.quickParseError);
@@ -1082,6 +1251,7 @@ export function TransactionForm({
         naturalSession.result,
         drafts,
         new Date(),
+        usePreferences.getState().exchangeRate,
       );
       await withDatabase((db) =>
         saveParsedEntries(
@@ -1144,22 +1314,64 @@ export function TransactionForm({
 
           <View style={localStyles.sampleRow}>
             <Pill
-              label="ăn sáng 30k"
+              label={
+                language === 'en'
+                  ? selectedCurrency === 'USD'
+                    ? 'spent $10 on breakfast'
+                    : 'spent 10000 VND on breakfast'
+                  : 'ăn sáng 30k'
+              }
               tone="primary"
               size="sm"
-              onPress={() => setNaturalText('ăn sáng 30k')}
+              onPress={() =>
+                setNaturalText(
+                  language === 'en'
+                    ? selectedCurrency === 'USD'
+                      ? 'spent $10 on breakfast'
+                      : 'spent 10000 VND on breakfast'
+                    : 'ăn sáng 30k',
+                )
+              }
             />
             <Pill
-              label="cf 25k bánh 20k"
+              label={
+                language === 'en'
+                  ? selectedCurrency === 'USD'
+                    ? 'coffee $5 and lunch $12'
+                    : 'coffee 5000 VND and lunch 12000 VND'
+                  : 'cf 25k bánh 20k'
+              }
               tone="glass"
               size="sm"
-              onPress={() => setNaturalText('cf 25k bánh 20k')}
+              onPress={() =>
+                setNaturalText(
+                  language === 'en'
+                    ? selectedCurrency === 'USD'
+                      ? 'coffee $5 and lunch $12'
+                      : 'coffee 5000 VND and lunch 12000 VND'
+                    : 'cf 25k bánh 20k',
+                )
+              }
             />
             <Pill
-              label="lương 15tr"
+              label={
+                language === 'en'
+                  ? selectedCurrency === 'USD'
+                    ? 'salary $500'
+                    : 'salary 500000 VND'
+                  : 'lương 15tr'
+              }
               tone="income"
               size="sm"
-              onPress={() => setNaturalText('lương 15tr')}
+              onPress={() =>
+                setNaturalText(
+                  language === 'en'
+                    ? selectedCurrency === 'USD'
+                      ? 'salary $500'
+                      : 'salary 500000 VND'
+                    : 'lương 15tr',
+                )
+              }
             />
           </View>
 
@@ -1205,33 +1417,24 @@ export function TransactionForm({
       >
         {!row?.debt_id && (
           <>
-            <Text
-              accessibilityRole="header"
-              variant="titleSmall"
-              style={{ color: theme.text.secondary, fontWeight: '700' }}
-            >
-              {vi.transactionKind}
-            </Text>
             <Controller
               control={control}
               name="kind"
               render={({ field }) => (
-                <SegmentedButtons
+                <AppleMenuPicker
+                  label={vi.transactionKind}
                   value={field.value}
-                  onValueChange={(value) => {
+                  options={kindOptions}
+                  disabled={disabled}
+                  onSelect={(value) => {
                     field.onChange(value);
                     setValue('categoryId', '');
                     setValue('toWalletId', '');
-                    setCategoryExpanded(false);
                   }}
-                  buttons={KINDS.map((item) => ({
-                    value: item.value,
-                    label: item.label,
-                    disabled,
-                  }))}
                 />
               )}
             />
+            <Divider style={{ backgroundColor: theme.card.border }} />
           </>
         )}
 
@@ -1241,7 +1444,7 @@ export function TransactionForm({
           rules={{
             validate: (value) => {
               try {
-                parseAmountInput(value);
+                parseAmountInput(value, currency);
                 return true;
               } catch {
                 return vi.transactionAmountInvalid;
@@ -1252,12 +1455,14 @@ export function TransactionForm({
             <View>
               <TextInput
                 mode="outlined"
-                label={vi.transactionAmount}
-                accessibilityLabel={vi.transactionAmount}
-                keyboardType="number-pad"
+                label={`${vi.transactionAmount.replace(' (₫)', '')} (${currency})`}
+                accessibilityLabel={`${vi.transactionAmount.replace(' (₫)', '')} (${currency})`}
+                keyboardType={currency === 'USD' ? 'decimal-pad' : 'number-pad'}
                 value={field.value}
                 onChangeText={(value) =>
-                  field.onChange(formatAmountInput(value, field.value))
+                  field.onChange(
+                    formatAmountInput(value, field.value, currency),
+                  )
                 }
                 onBlur={field.onBlur}
                 disabled={disabled}
@@ -1271,6 +1476,15 @@ export function TransactionForm({
             </View>
           )}
         />
+        {currency === 'USD' && (
+          <Text variant="bodySmall" style={{ color: theme.text.muted }}>
+            {currentRate
+              ? `1 USD ≈ ${formatVnd(Math.round(currentRate))} · ${usePreferences.getState().exchangeRateDate ?? ''}`
+              : usePreferences.getState().language === 'en'
+                ? 'USD/VND rate unavailable. Connect to the internet before saving.'
+                : 'Chưa có tỷ giá USD/VND. Cần kết nối mạng trước khi lưu.'}
+          </Text>
+        )}
       </GlassCard>
 
       <GlassCard
@@ -1279,40 +1493,26 @@ export function TransactionForm({
         padding={DesignSpacing.md}
         style={{ gap: 10 }}
       >
-        <Text
-          accessibilityRole="header"
-          variant="titleSmall"
-          style={{ fontWeight: '700', color: theme.text.primary }}
-        >
-          {kind === 'transfer'
-            ? vi.transactionSourceWallet
-            : vi.transactionWallet}
-        </Text>
         <Controller
           control={control}
           name="walletId"
           rules={{ required: vi.transactionWalletRequired }}
           render={({ field, fieldState }) => (
             <View>
-              <RadioButton.Group
+              <AppleMenuPicker
+                label={
+                  kind === 'transfer'
+                    ? vi.transactionSourceWallet
+                    : vi.transactionWallet
+                }
                 value={field.value}
-                onValueChange={(value) => {
+                options={walletOptions}
+                disabled={disabled}
+                onSelect={(value) => {
                   field.onChange(value);
                   setValue('toWalletId', '');
                 }}
-              >
-                {wallets
-                  .filter((w) => !w.is_archived || w.id === row?.wallet_id)
-                  .map((w) => (
-                    <RadioButton.Item
-                      key={w.id}
-                      value={w.id}
-                      label={`${w.name}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`}
-                      disabled={disabled}
-                      style={{ minHeight: 48 }}
-                    />
-                  ))}
-              </RadioButton.Group>
+              />
               {!!fieldState.error && (
                 <HelperText type="error">{fieldState.error.message}</HelperText>
               )}
@@ -1329,13 +1529,6 @@ export function TransactionForm({
         ) : kind === 'transfer' ? (
           <>
             <Divider style={{ backgroundColor: theme.card.border }} />
-            <Text
-              accessibilityRole="header"
-              variant="titleSmall"
-              style={{ fontWeight: '700', color: theme.text.primary }}
-            >
-              {vi.transactionDestination}
-            </Text>
             <Controller
               control={control}
               name="toWalletId"
@@ -1348,26 +1541,13 @@ export function TransactionForm({
               }}
               render={({ field, fieldState }) => (
                 <View>
-                  <RadioButton.Group
+                  <AppleMenuPicker
+                    label={vi.transactionDestination}
                     value={field.value}
-                    onValueChange={field.onChange}
-                  >
-                    {wallets
-                      .filter(
-                        (w) =>
-                          w.id !== walletId &&
-                          (!w.is_archived || w.id === row?.to_wallet_id),
-                      )
-                      .map((w) => (
-                        <RadioButton.Item
-                          key={w.id}
-                          value={w.id}
-                          label={`${w.name}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`}
-                          disabled={disabled}
-                          style={{ minHeight: 48 }}
-                        />
-                      ))}
-                  </RadioButton.Group>
+                    options={toWalletOptions}
+                    disabled={disabled}
+                    onSelect={field.onChange}
+                  />
                   {!!fieldState.error && (
                     <HelperText type="error">
                       {fieldState.error.message}
@@ -1380,57 +1560,17 @@ export function TransactionForm({
         ) : (
           <>
             <Divider style={{ backgroundColor: theme.card.border }} />
-            <Text
-              accessibilityRole="header"
-              variant="titleSmall"
-              style={{ fontWeight: '700', color: theme.text.primary }}
-            >
-              {vi.transactionCategory}
-            </Text>
             <Controller
               control={control}
               name="categoryId"
               render={({ field }) => (
-                <List.Accordion
-                  title={
-                    availableCategories.find(
-                      (category) => category.id === field.value,
-                    )?.name ?? vi.transactionUncategorized
-                  }
-                  titleNumberOfLines={0}
-                  expanded={categoryExpanded}
-                  onPress={() => {
-                    if (!disabled) setCategoryExpanded((current) => !current);
-                  }}
-                  style={{
-                    backgroundColor: palette.surfaceMuted,
-                    borderRadius: 12,
-                  }}
-                >
-                  <RadioButton.Group
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      setCategoryExpanded(false);
-                    }}
-                  >
-                    <RadioButton.Item
-                      value=""
-                      label={vi.transactionUncategorized}
-                      disabled={disabled}
-                      style={{ minHeight: 48 }}
-                    />
-                    {availableCategories.map((c) => (
-                      <RadioButton.Item
-                        key={c.id}
-                        value={c.id}
-                        disabled={disabled}
-                        style={{ minHeight: 48 }}
-                        label={`${c.parent_id ? `${categories.find((p) => p.id === c.parent_id)?.name ?? ''} › ` : ''}${c.name}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`}
-                      />
-                    ))}
-                  </RadioButton.Group>
-                </List.Accordion>
+                <AppleMenuPicker
+                  label={vi.transactionCategory}
+                  value={field.value}
+                  options={categoryOptions}
+                  disabled={disabled}
+                  onSelect={field.onChange}
+                />
               )}
             />
           </>
@@ -1515,14 +1655,24 @@ export function TransactionForm({
         buttonColor={theme.brand.primaryStrong}
         textColor="#FFFFFF"
         contentStyle={styles.button}
-        disabled={disabled}
+        disabled={
+          disabled || (currency === 'USD' && !currentRate && !row?.booking_rate)
+        }
         loading={disabled}
         onPress={() => {
           void handleSubmit((values) =>
             onSave({
               kind: row?.debt_id ? row.kind : values.kind,
               debtId: row?.debt_id ?? null,
-              amount: parseAmountInput(values.amount),
+              amount: parseAmountInput(values.amount, currency),
+              currency,
+              vndPerUsd:
+                currency === 'USD'
+                  ? row?.original_currency === 'USD' &&
+                    parseAmountInput(values.amount, currency) === originalAmount
+                    ? row.booking_rate
+                    : currentRate
+                  : null,
               walletId: values.walletId,
               toWalletId: values.kind === 'transfer' ? values.toWalletId : null,
               categoryId:

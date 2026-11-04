@@ -48,11 +48,17 @@ describe('Dev Seed Data Toggle (Stage 4 & Stage 6)', () => {
     executedSql.length = 0;
     await removeDevSeedData(fakeDb);
 
-    expect(executedSql.length).toBe(6);
-    for (const delCall of executedSql) {
+    const deletes = executedSql.filter((call) =>
+      call.sql.includes('DELETE FROM'),
+    );
+    expect(deletes).toHaveLength(6);
+    for (const delCall of deletes) {
       expect(delCall.sql).toContain('DELETE FROM');
       expect(delCall.params[0]).toBe(`${DEV_SEED_PREFIX}%`);
     }
+    expect(
+      executedSql.find((call) => call.sql.includes('INSERT INTO settings'))
+        ?.params,
+    ).toEqual(['false']);
   });
 });
-

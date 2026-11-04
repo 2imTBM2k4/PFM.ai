@@ -10,6 +10,15 @@ vi.mock('@/data/connection', () => ({
 }));
 
 describe('Local CSV Export & Import Service (Stage 6)', () => {
+  it('round-trips a USD transaction with its booked VND amount and rate', () => {
+    const original = [{
+      occurredOn: '2026-11-02', kind: 'expense' as const, amount: 255_000,
+      note: 'Rent', categoryName: 'Housing',
+      originalCurrency: 'USD' as const, originalAmountMinor: 1000, bookingRate: 25_500,
+    }];
+    expect(parseTransactionsFromCsv(serializeTransactionsToCsv(original))).toEqual(original);
+    expect(() => parseTransactionsFromCsv('occurred_on,kind,amount,note,category,currency,original_amount_minor,booking_rate\n2026-11-02,expense,1,Rent,Housing,USD,1000,25500')).toThrow('CSV_EXCHANGE_MISMATCH');
+  });
   it('serializes and parses RFC 4180 CSV with commas, quotes, and integer amounts', () => {
     const original = [
       {
@@ -74,4 +83,3 @@ describe('Local CSV Export & Import Service (Stage 6)', () => {
     ).toEqual(['2026-10-28', 'expense', '30000', 'Ăn sáng, cà phê', 'Ăn uống']);
   });
 });
-
