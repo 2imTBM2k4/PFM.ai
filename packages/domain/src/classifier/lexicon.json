@@ -1,0 +1,258 @@
+{
+  "version": 1,
+  "ambiguousPhrases": ["ban tra tien an"],
+  "entries": [
+    {
+      "phrases": [
+        "an sang",
+        "breakfast",
+        "lunch",
+        "dinner",
+        "restaurant",
+        "an trua",
+        "an toi",
+        "an vat",
+        "an ngoai",
+        "quan an",
+        "nha hang",
+        "do an",
+        "com",
+        "bun",
+        "pho",
+        "banh mi",
+        "lau",
+        "nhau"
+      ],
+      "kind": "expense",
+      "category": "expense.food.eating_out",
+      "weight": 1.0
+    },
+    {
+      "phrases": [
+        "cf",
+        "coffee",
+        "cafe",
+        "ca phe",
+        "caphe",
+        "tra sua",
+        "tra da",
+        "tra chanh",
+        "sinh to",
+        "nuoc ep"
+      ],
+      "kind": "expense",
+      "category": "expense.food.coffee",
+      "weight": 1.0
+    },
+    {
+      "phrases": [
+        "di cho",
+        "groceries",
+        "supermarket",
+        "sieu thi",
+        "tap hoa",
+        "bach hoa xanh",
+        "winmart",
+        "coopmart"
+      ],
+      "kind": "expense",
+      "category": "expense.food.groceries",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["do xang", "xang", "thay nhot"],
+      "kind": "expense",
+      "category": "expense.transport.fuel",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["grab", "gojek", "xanh sm", "taxi", "xe om"],
+      "kind": "expense",
+      "category": "expense.transport.ride",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["gui xe", "phi gui xe", "tram thu phi", "phi cau duong"],
+      "kind": "expense",
+      "category": "expense.transport.parking",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["tien nha", "tien tro", "thue nha", "thue phong", "rent", "room rent"],
+      "kind": "expense",
+      "category": "expense.housing.rent",
+      "weight": 1.2
+    },
+    {
+      "phrases": ["tien dien", "tien nuoc", "dien nuoc", "tien gas"],
+      "kind": "expense",
+      "category": "expense.housing.utilities",
+      "weight": 1.2
+    },
+    {
+      "phrases": ["internet", "wifi", "tien mang", "cuoc dien thoai"],
+      "kind": "expense",
+      "category": "expense.housing.internet",
+      "weight": 1.0
+    },
+    {
+      "phrases": [
+        "mua sam",
+        "quan ao",
+        "giay dep",
+        "shopee",
+        "lazada",
+        "tiki",
+        "tiktok shop"
+      ],
+      "kind": "expense",
+      "category": "expense.shopping",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["kham benh", "thuoc", "benh vien", "nha thuoc", "nha khoa"],
+      "kind": "expense",
+      "category": "expense.health",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["hoc phi", "sach vo", "khoa hoc", "hoc them"],
+      "kind": "expense",
+      "category": "expense.education",
+      "weight": 1.2
+    },
+    {
+      "phrases": [
+        "xem phim",
+        "rap phim",
+        "game",
+        "karaoke",
+        "du lich",
+        "di choi"
+      ],
+      "kind": "expense",
+      "category": "expense.entertainment",
+      "weight": 1.0
+    },
+    {
+      "phrases": ["qua tang", "mung cuoi", "phong bi", "li xi cho", "bieu"],
+      "kind": "expense",
+      "category": "expense.family_gifts",
+      "weight": 1.0
+    },
+    {
+      "phrases": [
+        "nap the dien thoai",
+        "nap the",
+        "hoa don",
+        "netflix",
+        "spotify",
+        "youtube premium",
+        "phi dich vu",
+        "bao hiem"
+      ],
+      "kind": "expense",
+      "category": "expense.bills_subscriptions",
+      "weight": 1.3
+    },
+
+    {
+      "phrases": ["luong", "tien luong", "salary", "paycheck"],
+      "kind": "income",
+      "category": "income.salary",
+      "weight": 1.3
+    },
+    {
+      "phrases": [
+        "khach tra",
+        "khach chuyen khoan",
+        "ban hang",
+        "doanh thu",
+        "thu tien hang"
+      ],
+      "kind": "income",
+      "category": "income.business",
+      "weight": 1.3
+    },
+    {
+      "phrases": ["thuong", "thuong tet", "hoa hong"],
+      "kind": "income",
+      "category": "income.bonus",
+      "weight": 1.1
+    },
+    {
+      "phrases": [
+        "me gui",
+        "ba gui",
+        "bo gui",
+        "duoc cho",
+        "duoc tang",
+        "nhan li xi"
+      ],
+      "kind": "income",
+      "category": "income.gift",
+      "weight": 1.2
+    },
+    {
+      "phrases": ["tien lai", "lai suat", "co tuc", "lai tiet kiem"],
+      "kind": "income",
+      "category": "income.investment",
+      "weight": 1.2
+    },
+    {
+      "phrases": ["hoan tien"],
+      "kind": "income",
+      "category": "income.other",
+      "weight": 1.0
+    },
+
+    {
+      "phrases": ["chuyen vi", "nap vi", "rut atm", "rut tien", "nap momo"],
+      "kind": "transfer",
+      "category": null,
+      "weight": 1.3
+    },
+
+    {
+      "phrases": ["cho muon", "cho vay"],
+      "kind": "debt_lend",
+      "category": null,
+      "weight": 1.5
+    },
+    {
+      "phrases": ["muon", "vay"],
+      "kind": "debt_borrow",
+      "category": null,
+      "weight": 1.0
+    }
+  ],
+  "debtRepayPatterns": [
+    { "pattern": "tra no <name>", "kind": "debt_repay_paid" },
+    { "pattern": "<name> tra no", "kind": "debt_repay_received" }
+  ],
+  "stopwords": [
+    "tien",
+    "mua",
+    "di",
+    "cho",
+    "la",
+    "va",
+    "o",
+    "tai",
+    "mot",
+    "cai",
+    "hom",
+    "nay",
+    "qua",
+    "hang"
+  ],
+  "walletHints": {
+    "momo": "ewallet",
+    "zalopay": "ewallet",
+    "vcb": "bank",
+    "tcb": "bank",
+    "tm": "cash",
+    "tien mat": "cash",
+    "atm": "bank"
+  }
+}

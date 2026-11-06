@@ -1,6 +1,7 @@
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { formatVnd, today } from '@pfm/domain';
+import { today } from '@pfm/domain';
+import { formatMoney as formatVnd } from '@/utils/display-money';
 import {
   DebtChangesSchema,
   DebtInputSchema,
@@ -15,13 +16,24 @@ import { Alert, BackHandler, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
+  Divider,
+  IconButton,
   List,
   RadioButton,
+  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
 } from 'react-native-paper';
-import { Screen, styles } from '@/components/screen';
+import {
+  EmptyStateCard,
+  IconBadge,
+  Screen,
+  StatusPill,
+  styles,
+} from '@/components/screen';
+import { DateField } from '@/components/ui';
+import { useFinancePalette } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
   createDebt,
@@ -50,6 +62,8 @@ import {
   useRecurringStatus,
 } from '@/features/recurring/mobile';
 import { vi } from '@/messages/vi';
+import { displayWalletName } from '@/messages/seed-labels';
+import { formatDisplayDate } from '@/utils/display';
 import { useApp } from '@/state/app';
 import { DEBT_KIND_LABELS } from './labels';
 
@@ -76,6 +90,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
     request = useRef(0),
     ids = useRef({ debt: '', transaction: '' });
   const { colors } = useTheme();
+  const palette = useFinancePalette();
   const status = useRecurringStatus();
   const selectedId = selected?.id;
   const load = useCallback(async () => {
@@ -244,103 +259,214 @@ export function DebtManager({ onClose }: { onClose(): void }) {
         }
       />
     );
+
+  const visibleDebts = rows.filter(
+    (row) => (row.status === 'closed') === closed,
+  );
+
   return (
-    <Screen title={selected ? selected.counterparty_label : vi.debtsTitle}>
-      <Button contentStyle={styles.button} disabled={busy} onPress={back}>
-        {vi.back}
-      </Button>
-      {loading && <ActivityIndicator />}
+    <Screen
+      title={selected ? selected.counterparty_label : vi.debtsTitle}
+      subtitle={!selected ? vi.debtDescription : undefined}
+      onBack={back}
+      backDisabled={busy}
+      headerRight={
+        <IconButton
+          icon="refresh"
+          mode="contained-tonal"
+          size={20}
+          accessibilityLabel={vi.refresh}
+          disabled={loading || busy}
+          onPress={() => {
+            setError('');
+            void load();
+          }}
+        />
+      }
+    >
+      {loading && (
+        <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+          <ActivityIndicator size="large" />
+        </View>
+      )}
       {!!error && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {error}
         </Text>
       )}
-      <Button
-        contentStyle={styles.button}
-        disabled={loading || busy}
-        onPress={() => {
-          setError('');
-          void load();
-        }}
-      >
-        {vi.refresh}
-      </Button>
       {undo && (
-        <Button
-          contentStyle={styles.button}
-          disabled={busy || loading}
-          onPress={() => void mutate((db) => undoDeleteTransaction(db, undo))}
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.warningSoft,
+              borderColor: palette.warning,
+            },
+          ]}
         >
-          {vi.transactionUndo}
-        </Button>
+          <Button
+            mode="contained-tonal"
+            disabled={busy || loading}
+            onPress={() => void mutate((db) => undoDeleteTransaction(db, undo))}
+          >
+            {vi.transactionUndo}
+          </Button>
+        </View>
       )}
       {selected ? (
         <>
-          <Text>
-            {selected.direction === 'borrowed' ? vi.debtBorrowed : vi.debtLent}
-          </Text>
-          <Text variant="titleLarge">
-            {vi.debtOutstanding}: {formatVnd(selected.outstanding)}
-          </Text>
-          <Text>
-            {vi.debtPrincipal}: {formatVnd(selected.principal)} ·{' '}
-            {vi.debtRepaid}: {formatVnd(selected.repaid)}
-          </Text>
-          <Text>
-            {selected.status === 'closed' ? vi.debtClosed : vi.debtOpen}
-          </Text>
-          {selected.due_on && (
-            <Text>
-              {vi.debtDue}: {selected.due_on}
+          <View
+            style={[
+              styles.panel,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}
+          >
+            <View style={styles.row}>
+              <StatusPill
+                icon="handshake-outline"
+                label={
+                  selected.direction === 'borrowed'
+                    ? vi.debtBorrowed
+                    : vi.debtLent
+                }
+                bg={
+                  selected.direction === 'borrowed'
+                    ? palette.warningSoft
+                    : palette.primarySoft
+                }
+                fg={
+                  selected.direction === 'borrowed'
+                    ? palette.warningInk
+                    : palette.primaryInk
+                }
+              />
+              <StatusPill
+                label={
+                  selected.status === 'closed' ? vi.debtClosed : vi.debtOpen
+                }
+                bg={
+                  selected.status === 'closed'
+                    ? palette.incomeSoft
+                    : palette.surfaceMuted
+                }
+                fg={
+                  selected.status === 'closed'
+                    ? palette.incomeInk
+                    : palette.textMuted
+                }
+              />
+            </View>
+
+            <View style={{ gap: 4 }}>
+              <Text variant="labelLarge" style={{ color: palette.textMuted }}>
+                {vi.debtOutstanding}
+              </Text>
+              <Text
+                variant="headlineMedium"
+                style={[styles.number, { fontWeight: '700' }]}
+              >
+                {formatVnd(selected.outstanding)}
+              </Text>
+            </View>
+
+            <Text
+              variant="bodyMedium"
+              style={[styles.number, { color: palette.textMuted }]}
+            >
+              {vi.debtPrincipal}: {formatVnd(selected.principal)} ·{' '}
+              {vi.debtRepaid}: {formatVnd(selected.repaid)}
             </Text>
-          )}
-          {!!selected.note && <Text>{selected.note}</Text>}
-          <View style={styles.row}>
-            <Button
-              contentStyle={styles.button}
-              disabled={busy || loading}
-              onPress={() => {
-                setError('');
-                setEditing('metadata');
-              }}
-            >
-              {vi.debtEdit}
-            </Button>
-            <Button
-              mode="contained"
-              contentStyle={styles.button}
-              disabled={busy || loading || selected.outstanding <= 0}
-              onPress={() => {
-                ids.current.transaction = uuid.v4();
-                setError('');
-                setEditing('repay');
-              }}
-            >
-              {selected.direction === 'borrowed'
-                ? vi.debtRepayPaid
-                : vi.debtRepayReceived}
-            </Button>
+
+            {selected.due_on && (
+              <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+                {vi.debtDue}: {formatDisplayDate(selected.due_on)}
+              </Text>
+            )}
+            {!!selected.note && <Text>{selected.note}</Text>}
+
+            <Divider style={{ backgroundColor: palette.borderSubtle }} />
+
+            <View style={styles.row}>
+              <Button
+                mode="outlined"
+                icon="pencil-outline"
+                contentStyle={styles.compactButton}
+                disabled={busy || loading}
+                onPress={() => {
+                  setError('');
+                  setEditing('metadata');
+                }}
+              >
+                {vi.debtEdit}
+              </Button>
+              <Button
+                mode="contained"
+                icon="cash-check"
+                contentStyle={styles.compactButton}
+                disabled={busy || loading || selected.outstanding <= 0}
+                onPress={() => {
+                  ids.current.transaction = uuid.v4();
+                  setError('');
+                  setEditing('repay');
+                }}
+              >
+                {selected.direction === 'borrowed'
+                  ? vi.debtRepayPaid
+                  : vi.debtRepayReceived}
+              </Button>
+            </View>
           </View>
-          <Text accessibilityRole="header" variant="titleMedium">
+
+          <Text
+            accessibilityRole="header"
+            variant="titleMedium"
+            style={{ fontWeight: '700' }}
+          >
             {vi.debtHistory}
           </Text>
           {history.map((row) => (
             <View
               key={row.id}
-              style={[styles.panel, { backgroundColor: colors.surfaceVariant }]}
+              style={[
+                styles.panel,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                  padding: 16,
+                },
+              ]}
             >
-              <Text>
-                {row.occurred_on} · {DEBT_KIND_LABELS[row.kind]}
-              </Text>
-              <Text>
-                {formatVnd(row.amount)} ·{' '}
-                {wallets.find((wallet) => wallet.id === row.wallet_id)?.name}
-              </Text>
-              {!!row.note && <Text>{row.note}</Text>}
               <View style={styles.row}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text variant="titleSmall" style={{ fontWeight: '700' }}>
+                    {DEBT_KIND_LABELS[row.kind]}
+                  </Text>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: palette.textMuted }}
+                  >
+                    {formatDisplayDate(row.occurred_on)} ·{' '}
+                    {
+                      wallets.find((wallet) => wallet.id === row.wallet_id)
+                        ?.name
+                    }
+                  </Text>
+                </View>
+                <Text
+                  variant="titleMedium"
+                  style={[styles.number, { fontWeight: '700' }]}
+                >
+                  {formatVnd(row.amount)}
+                </Text>
+              </View>
+              {!!row.note && <Text>{row.note}</Text>}
+              <Divider style={{ backgroundColor: palette.borderSubtle }} />
+              <View style={[styles.row, { justifyContent: 'flex-end' }]}>
                 <Button
+                  compact
+                  mode="contained-tonal"
+                  icon="pencil-outline"
                   disabled={busy || loading}
-                  contentStyle={styles.button}
                   onPress={() => {
                     setError('');
                     setEditing(row);
@@ -349,8 +475,11 @@ export function DebtManager({ onClose }: { onClose(): void }) {
                   {vi.editTransaction}
                 </Button>
                 <Button
+                  compact
+                  mode="text"
+                  textColor={palette.danger}
+                  icon="trash-can-outline"
                   disabled={busy || loading}
-                  contentStyle={styles.button}
                   onPress={() =>
                     Alert.alert(
                       vi.deleteTransaction,
@@ -376,6 +505,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
           ))}
           {more && (
             <Button
+              mode="outlined"
               disabled={busy || loading}
               contentStyle={styles.button}
               onPress={() => void loadMore()}
@@ -386,9 +516,9 @@ export function DebtManager({ onClose }: { onClose(): void }) {
         </>
       ) : (
         <>
-          <Text>{vi.debtDescription}</Text>
           <Button
             mode="contained"
+            icon="plus"
             disabled={
               busy || loading || !wallets.some((wallet) => !wallet.is_archived)
             }
@@ -401,78 +531,146 @@ export function DebtManager({ onClose }: { onClose(): void }) {
           >
             {vi.debtAdd}
           </Button>
-          <Button
-            disabled={busy}
-            contentStyle={styles.button}
-            onPress={() => setClosed(!closed)}
+
+          <SegmentedButtons
+            value={closed ? 'closed' : 'open'}
+            onValueChange={(value) => setClosed(value === 'closed')}
+            buttons={[
+              { value: 'open', label: vi.debtShowOpen, disabled: busy },
+              { value: 'closed', label: vi.debtShowClosed, disabled: busy },
+            ]}
+          />
+
+          <View
+            style={[
+              styles.subtlePanel,
+              { backgroundColor: palette.surface, borderColor: palette.border },
+            ]}
           >
-            {closed ? vi.debtShowOpen : vi.debtShowClosed}
-          </Button>
-          <Text>{vi.debtReminderHint}</Text>
-          <Button
-            disabled={busy || loading}
-            contentStyle={styles.button}
-            onPress={async () => {
-              if (working.current) return;
-              working.current = true;
-              setBusy(true);
-              try {
-                await requestRecurringNotifications();
-              } finally {
-                working.current = false;
-                setBusy(false);
-              }
-            }}
-          >
-            {vi.recurringEnableNotifications}
-          </Button>
-          {status.permission === 'denied' && (
-            <Text>{vi.recurringNotificationDenied}</Text>
-          )}
-          {status.error && (
-            <Text accessibilityRole="alert" style={{ color: colors.error }}>
-              {vi.debtNotificationError}
-            </Text>
-          )}
-          {!loading &&
-            !rows.some((row) => (row.status === 'closed') === closed) && (
-              <Text>{vi.debtEmpty}</Text>
-            )}
-          {rows
-            .filter((row) => (row.status === 'closed') === closed)
-            .map((row) => (
-              <View
-                key={row.id}
-                style={[
-                  styles.panel,
-                  { backgroundColor: colors.surfaceVariant },
-                ]}
+            <View style={styles.inlineRow}>
+              <IconBadge
+                icon="bell-ring-outline"
+                bg={palette.purpleSoft}
+                fg={palette.purpleInk}
+                size={36}
+                iconSize={18}
+              />
+              <Text
+                variant="bodySmall"
+                style={{ color: palette.textMuted, flex: 1 }}
               >
-                <Text variant="titleMedium">{row.counterparty_label}</Text>
-                <Text>
-                  {row.direction === 'borrowed' ? vi.debtBorrowed : vi.debtLent}
-                </Text>
-                <Text>
-                  {vi.debtOutstanding}: {formatVnd(row.outstanding)}
-                </Text>
-                {row.due_on && (
-                  <Text>
-                    {vi.debtDue}: {row.due_on}
+                {vi.debtReminderHint}
+              </Text>
+            </View>
+            <Button
+              compact
+              mode="contained-tonal"
+              disabled={busy || loading}
+              onPress={async () => {
+                if (working.current) return;
+                working.current = true;
+                setBusy(true);
+                try {
+                  await requestRecurringNotifications();
+                } finally {
+                  working.current = false;
+                  setBusy(false);
+                }
+              }}
+            >
+              {vi.recurringEnableNotifications}
+            </Button>
+            {status.permission === 'denied' && (
+              <Text variant="bodySmall" style={{ color: palette.warningInk }}>
+                {vi.recurringNotificationDenied}
+              </Text>
+            )}
+            {status.error && (
+              <Text accessibilityRole="alert" style={{ color: colors.error }}>
+                {vi.debtNotificationError}
+              </Text>
+            )}
+          </View>
+
+          {!loading && !visibleDebts.length && (
+            <EmptyStateCard icon="handshake-outline" message={vi.debtEmpty} />
+          )}
+          {visibleDebts.map((row) => (
+            <View
+              key={row.id}
+              style={[
+                styles.panel,
+                {
+                  backgroundColor: palette.surface,
+                  borderColor: palette.border,
+                },
+              ]}
+            >
+              <View style={styles.row}>
+                <View style={[styles.inlineRow, { flex: 1 }]}>
+                  <IconBadge
+                    icon="handshake-outline"
+                    bg={
+                      row.direction === 'borrowed'
+                        ? palette.warningSoft
+                        : palette.primarySoft
+                    }
+                    fg={
+                      row.direction === 'borrowed'
+                        ? palette.warningInk
+                        : palette.primaryInk
+                    }
+                  />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+                      {row.counterparty_label}
+                    </Text>
+                    <Text
+                      variant="bodySmall"
+                      style={{ color: palette.textMuted }}
+                    >
+                      {row.direction === 'borrowed'
+                        ? vi.debtBorrowed
+                        : vi.debtLent}
+                      {row.due_on
+                        ? ` · ${vi.debtDue}: ${formatDisplayDate(row.due_on)}`
+                        : ''}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text
+                    variant="labelSmall"
+                    style={{ color: palette.textMuted }}
+                  >
+                    {vi.debtOutstanding}
                   </Text>
-                )}
-                <Button
-                  disabled={busy || loading}
-                  contentStyle={styles.button}
-                  onPress={() => {
-                    setError('');
-                    setUndo(null);
-                    setSelected(row);
-                  }}
-                >
-                  {vi.debtDetails}
-                </Button>
+                  <Text
+                    variant="titleMedium"
+                    style={[styles.number, { fontWeight: '700' }]}
+                  >
+                    {formatVnd(row.outstanding)}
+                  </Text>
+                </View>
               </View>
-            ))}
+              <Button
+                mode="contained-tonal"
+                icon="chevron-right"
+                contentStyle={[
+                  styles.compactButton,
+                  { flexDirection: 'row-reverse' },
+                ]}
+                disabled={busy || loading}
+                onPress={() => {
+                  setError('');
+                  setUndo(null);
+                  setSelected(row);
+                }}
+              >
+                {vi.debtDetails}
+              </Button>
+            </View>
+          ))}
         </>
       )}
     </Screen>
@@ -524,7 +722,8 @@ function DebtForm({
     [expanded, setExpanded] = useState(false);
   const date = useWatch({ control, name: 'date' });
   const disabled = busy || isSubmitting,
-    { colors } = useTheme();
+    { colors } = useTheme(),
+    palette = useFinancePalette();
   let future = false;
   try {
     future = isFutureDate(date, new Date());
@@ -534,17 +733,37 @@ function DebtForm({
   const fields = [
     ...(mode !== 'repay'
       ? [
-          { name: 'name' as const, label: vi.debtCounterparty },
-          { name: 'due' as const, label: vi.debtDueInput },
+          {
+            name: 'name' as const,
+            label: vi.debtCounterparty,
+            icon: 'account-outline',
+          },
+          {
+            name: 'due' as const,
+            label: vi.debtDueInput,
+            icon: 'calendar-clock-outline',
+          },
         ]
       : []),
     ...(mode !== 'metadata'
       ? [
-          { name: 'amount' as const, label: vi.transactionAmount },
-          { name: 'date' as const, label: vi.transactionDate },
+          {
+            name: 'amount' as const,
+            label: vi.transactionAmount,
+            icon: 'cash',
+          },
+          {
+            name: 'date' as const,
+            label: vi.transactionDate,
+            icon: 'calendar',
+          },
         ]
       : []),
-    { name: 'note' as const, label: vi.transactionNote },
+    {
+      name: 'note' as const,
+      label: vi.transactionNote,
+      icon: 'note-text-outline',
+    },
   ];
   return (
     <Screen
@@ -555,101 +774,137 @@ function DebtForm({
             ? vi.debtEdit
             : vi.debtRepayment
       }
+      onBack={onBack}
+      backDisabled={disabled}
     >
-      <Button disabled={disabled} contentStyle={styles.button} onPress={onBack}>
-        {vi.back}
-      </Button>
       {debt && (
-        <Text>
-          {debt.counterparty_label} · {vi.debtOutstanding}:{' '}
-          {formatVnd(debt.outstanding)}
-        </Text>
+        <View
+          style={[
+            styles.subtlePanel,
+            { backgroundColor: palette.surface, borderColor: palette.border },
+          ]}
+        >
+          <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+            {debt.counterparty_label} · {vi.debtOutstanding}:{' '}
+            {formatVnd(debt.outstanding)}
+          </Text>
+        </View>
       )}
-      {mode === 'create' && (
-        <Controller
-          control={control}
-          name="direction"
-          render={({ field }) => (
-            <RadioButton.Group
-              value={field.value}
-              onValueChange={field.onChange}
-            >
-              <RadioButton.Item
-                value="borrowed"
-                label={vi.debtBorrowed}
-                disabled={disabled}
-              />
-              <RadioButton.Item
-                value="lent"
-                label={vi.debtLent}
-                disabled={disabled}
-              />
-            </RadioButton.Group>
-          )}
-        />
-      )}
-      {mode !== 'metadata' && (
-        <Controller
-          control={control}
-          name="wallet"
-          render={({ field }) => (
-            <List.Accordion
-              title={vi.transactionWallet}
-              description={
-                wallets.find((wallet) => wallet.id === field.value)?.name ??
-                vi.noWallet
-              }
-              expanded={expanded}
-              onPress={() => setExpanded(!expanded)}
-            >
-              <RadioButton.Group
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        {mode === 'create' && (
+          <Controller
+            control={control}
+            name="direction"
+            render={({ field }) => (
+              <SegmentedButtons
                 value={field.value}
-                onValueChange={(value) => {
-                  field.onChange(value);
-                  setExpanded(false);
+                onValueChange={field.onChange}
+                buttons={[
+                  { value: 'borrowed', label: vi.debtBorrowed, disabled },
+                  { value: 'lent', label: vi.debtLent, disabled },
+                ]}
+              />
+            )}
+          />
+        )}
+        {mode !== 'metadata' && (
+          <Controller
+            control={control}
+            name="wallet"
+            render={({ field }) => (
+              <List.Accordion
+                title={vi.transactionWallet}
+                description={
+                  wallets.find((wallet) => wallet.id === field.value)?.name ??
+                  vi.noWallet
+                }
+                expanded={expanded}
+                onPress={() => setExpanded(!expanded)}
+                style={{
+                  backgroundColor: palette.surfaceMuted,
+                  borderRadius: 12,
                 }}
               >
-                {wallets
-                  .filter((wallet) => !wallet.is_archived)
-                  .map((wallet) => (
-                    <RadioButton.Item
-                      key={wallet.id}
-                      value={wallet.id}
-                      label={wallet.name}
-                      disabled={disabled}
-                    />
-                  ))}
-              </RadioButton.Group>
-            </List.Accordion>
-          )}
-        />
-      )}
-      {fields.map((item) => (
-        <Controller
-          key={item.name}
-          control={control}
-          name={item.name}
-          render={({ field }) => (
-            <TextInput
-              mode="outlined"
-              label={item.label}
-              value={field.value}
-              disabled={disabled}
-              onBlur={field.onBlur}
-              keyboardType={item.name === 'amount' ? 'number-pad' : 'default'}
-              onChangeText={(value) =>
-                field.onChange(
-                  item.name === 'amount'
-                    ? formatAmountInput(value, field.value)
-                    : value,
-                )
-              }
-            />
-          )}
-        />
-      ))}
+                <RadioButton.Group
+                  value={field.value}
+                  onValueChange={(value) => {
+                    field.onChange(value);
+                    setExpanded(false);
+                  }}
+                >
+                  {wallets
+                    .filter((wallet) => !wallet.is_archived)
+                    .map((wallet) => (
+                      <RadioButton.Item
+                        key={wallet.id}
+                        value={wallet.id}
+                        label={displayWalletName(wallet.name)}
+                        disabled={disabled}
+                      />
+                    ))}
+                </RadioButton.Group>
+              </List.Accordion>
+            )}
+          />
+        )}
+        {fields.map((item) => (
+          <Controller
+            key={item.name}
+            control={control}
+            name={item.name}
+            render={({ field }) =>
+              item.name === 'due' ? (
+                <DateField
+                  label={vi.debtDue}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={disabled}
+                  allowClear
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={item.label}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  keyboardType={
+                    item.name === 'amount' ? 'number-pad' : 'default'
+                  }
+                  onChangeText={(value) =>
+                    field.onChange(
+                      item.name === 'amount'
+                        ? formatAmountInput(value, field.value)
+                        : value,
+                    )
+                  }
+                />
+              )
+            }
+          />
+        ))}
+      </View>
+
       {future && mode !== 'metadata' && (
-        <Text accessibilityRole="alert">{vi.transactionFutureWarning}</Text>
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.warningSoft,
+              borderColor: palette.warning,
+            },
+          ]}
+        >
+          <Text accessibilityRole="alert" style={{ color: palette.warningInk }}>
+            {vi.transactionFutureWarning}
+          </Text>
+        </View>
       )}
       {(invalid || error) && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
@@ -658,6 +913,7 @@ function DebtForm({
       )}
       <Button
         mode="contained"
+        icon="check"
         contentStyle={styles.button}
         disabled={disabled}
         loading={disabled}

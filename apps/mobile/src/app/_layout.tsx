@@ -7,8 +7,9 @@ import {
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
-import { Platform, useColorScheme } from 'react-native';
+import { Appearance, Platform, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -20,12 +21,19 @@ import {
 import AppTabs from '@/components/app-tabs';
 import { Onboarding } from '@/components/onboarding';
 import { Screen } from '@/components/screen';
+import { DesignColors } from '@/constants/design-tokens';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
+import { usePreferences } from '@/state/preferences';
 import { LockGate } from '@/features/lock/lock-gate';
 import { BudgetNotificationWatcher } from '@/features/budgets/notification-watcher';
 import { RecurringWatcher } from '@/features/recurring/watcher';
+import { AddTransactionModal } from '@/features/transactions/add-transaction-modal';
+import { AIChatModal } from '@/features/chat/ai-chat-modal';
 
+/**
+ * Global route error boundary fallback screen.
+ */
 export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   return (
     <Screen title={vi.appName}>
@@ -35,28 +43,59 @@ export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   );
 }
 
+/**
+ * Root application layout synchronizing native iOS appearance, Pastel Sunset tokens, and tabs.
+ */
 export default function RootLayout() {
-  const dark = useColorScheme() === 'dark';
+  const themeMode = usePreferences((state) => state.themeMode);
+  const hydratePreferences = usePreferences(
+    (state) => state.hydratePreferences,
+  );
+  const dark = themeMode === 'dark';
+  const tokens = DesignColors[themeMode];
+
   useEffect(() => {
     void SplashScreen.hideAsync().catch(() => undefined);
-  }, []);
+    void hydratePreferences();
+  }, [hydratePreferences]);
+
+  useEffect(() => {
+    // Synchronize native iOS/Android window color scheme with the app's selected themeMode
+    // so NativeTabs Liquid Glass and native surfaces stay bright in Light Mode even if OS Dark Mode is on.
+    try {
+      Appearance.setColorScheme(themeMode);
+    } catch {
+      // Ignore if unsupported on web
+    }
+    void SystemUI.setBackgroundColorAsync(tokens.sky.upperMid).catch(
+      () => undefined,
+    );
+  }, [themeMode, tokens.sky.upperMid]);
+
   const base = dark ? MD3DarkTheme : MD3LightTheme;
   const theme = {
     ...base,
+    roundness: 20,
     colors: {
       ...base.colors,
-      primary: dark ? '#9CC5FF' : '#195DB7',
-      onPrimary: dark ? '#102747' : '#FFFFFF',
-      primaryContainer: dark ? '#203957' : '#E3EFFF',
-      onPrimaryContainer: dark ? '#D9E8FC' : '#143C70',
-      background: dark ? '#111111' : '#F7F7F7',
-      surface: dark ? '#191919' : '#FFFFFF',
-      surfaceVariant: dark ? '#262626' : '#EEEEEE',
-      onSurfaceVariant: dark ? '#C5C5C5' : '#555555',
-      onBackground: dark ? '#EEEEEE' : '#191919',
-      onSurface: dark ? '#EEEEEE' : '#191919',
-      outline: dark ? '#858585' : '#767676',
-      outlineVariant: dark ? '#383838' : '#DDDDDD',
+      primary: tokens.brand.primaryStrong,
+      onPrimary: tokens.text.onPrimary,
+      primaryContainer: tokens.brand.primarySoft,
+      onPrimaryContainer: tokens.brand.primaryText,
+      secondary: tokens.brand.primary,
+      secondaryContainer: tokens.brand.primarySoft,
+      onSecondaryContainer: tokens.brand.primaryText,
+      background: tokens.sky.upperMid,
+      surface: tokens.card.surfaceElevated,
+      surfaceVariant: tokens.card.surfaceSubtle,
+      onSurfaceVariant: tokens.text.secondary,
+      onBackground: tokens.text.primary,
+      onSurface: tokens.text.primary,
+      outline: tokens.text.muted,
+      outlineVariant: tokens.card.border,
+      error: tokens.finance.expense,
+      errorContainer: tokens.finance.expenseSoft,
+      onErrorContainer: tokens.finance.expenseText,
     },
   };
   const navigation = dark ? DarkTheme : DefaultTheme;
@@ -70,23 +109,28 @@ export default function RootLayout() {
           ...navigation,
           colors: {
             ...navigation.colors,
-            primary: theme.colors.primary,
-            background: theme.colors.background,
-            card: theme.colors.surface,
-            text: theme.colors.onSurface,
-            border: theme.colors.outlineVariant,
+            primary: tokens.brand.primary,
+            background: tokens.sky.upperMid,
+            card: tokens.card.surfaceElevated,
+            text: tokens.text.primary,
+            border: tokens.card.border,
           },
         }}
       >
-        <StatusBar style={dark ? 'light' : 'dark'} />
-        <LockGate>
-          <ApplicationContent />
-        </LockGate>
+        <View style={[styles.root, { backgroundColor: tokens.sky.upperMid }]}>
+          <StatusBar style={dark ? 'light' : 'dark'} />
+          <LockGate>
+            <ApplicationContent />
+          </LockGate>
+        </View>
       </ThemeProvider>
     </PaperProvider>
   );
 }
 
+/**
+ * Manages database initialization, onboarding state, and main tab rendering.
+ */
 function ApplicationContent() {
   const status = useApp((state) => state.status);
   const onboarded = useApp((state) => state.onboarded);
@@ -113,6 +157,14 @@ function ApplicationContent() {
       <BudgetNotificationWatcher />
       <RecurringWatcher />
       <AppTabs />
+      <AddTransactionModal />
+      <AIChatModal />
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+});

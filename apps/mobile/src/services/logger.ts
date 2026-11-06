@@ -2,7 +2,22 @@ type LogLevel = 'debug' | 'info' | 'error';
 type LogEntry = { level: LogLevel } & Record<string, string | number>;
 
 const VALUES: Record<string, readonly string[]> = {
-  route: ['startup', 'database', 'lock'],
+  action: [
+    'confirm_open',
+    'save_started',
+    'save_committed',
+    'save_published',
+    'save_publication_skipped',
+    'save_failed',
+    'confirm_cancelled',
+    'screen_blurred',
+    'screen_unmounted',
+    'save_in_history_page',
+    'save_outside_history_page',
+    'history_with_parsed',
+    'history_without_parsed',
+  ],
+  route: ['startup', 'database', 'lock', 'entry'],
   status: ['loading', 'ready', 'failed'],
   errorCode: [
     'DATABASE_OPEN_FAILED',

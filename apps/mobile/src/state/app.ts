@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { uuid } from 'expo';
 import { logAppEvent } from '@/services/logger';
 import { withDatabase, deletePreviewData } from '@/data/connection';
 import { pinLock, lockSession } from '@/features/lock/mobile';
@@ -21,6 +22,7 @@ interface AppState {
   deleting: boolean;
   wallets: WalletRow[];
   recurringVersion: number;
+  chatSessionId: string;
   refreshRecurring(recheck?: boolean): Promise<void>;
   initialize(): Promise<void>;
   completeOnboarding(balance: number): Promise<void>;
@@ -35,6 +37,7 @@ export const useApp = create<AppState>()((set, get) => ({
   deleting: false,
   wallets: [],
   recurringVersion: 0,
+  chatSessionId: uuid.v4(),
   async refreshRecurring(recheck = false) {
     if (get().status !== 'ready' || !get().onboarded) return;
     try {
@@ -91,6 +94,7 @@ export const useApp = create<AppState>()((set, get) => ({
       await lockSession.getState().initialize();
       set({
         wallets: [],
+        chatSessionId: uuid.v4(),
         onboarded: false,
         status: 'idle',
         deleteFailed: false,

@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCompactVnd, formatVnd, toMoney } from './money';
+import { convertMoney, formatCompactVnd, formatVnd, toMoney } from './money';
+
+describe('convertMoney', () => {
+  it('converts USD cents to booked VND and VND to displayed USD cents', () => {
+    expect(convertMoney(1000, 'USD', 'VND', 25_500)).toBe(255_000);
+    expect(convertMoney(255_000, 'VND', 'USD', 25_500)).toBe(1000);
+    expect(convertMoney(1, 'USD', 'VND', 25_500)).toBe(255);
+  });
+
+  it('preserves the original minor unit without a rate', () => {
+    expect(convertMoney(1234, 'USD', 'USD', null)).toBe(1234);
+  });
+
+  it('rejects missing rates, unsafe results and invalid minor amounts', () => {
+    expect(() => convertMoney(100, 'USD', 'VND', null)).toThrow(RangeError);
+    expect(() => convertMoney(100, 'USD', 'VND', 0)).toThrow(RangeError);
+    expect(() => convertMoney(0.5, 'USD', 'VND', 25_500)).toThrow(RangeError);
+    expect(() => convertMoney(100_000_000_000, 'USD', 'VND', 25_500)).toThrow(RangeError);
+  });
+});
 
 describe('formatCompactVnd', () => {
   it.each([
