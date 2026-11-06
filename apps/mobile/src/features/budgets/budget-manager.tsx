@@ -32,6 +32,7 @@ import {
   styles,
 } from '@/components/screen';
 import { DesignSpacing, useFinancePalette } from '@/constants/theme';
+import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
 import {
@@ -61,8 +62,10 @@ type Mode =
 
 export function BudgetManager({
   onSwitchToStats,
+  onSwitchTab,
 }: {
   onSwitchToStats?(): void;
+  onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
 } = {}) {
   const [month, setMonth] = useState(() =>
     monthKey(today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' })),
@@ -76,6 +79,7 @@ export function BudgetManager({
     [notice, setNotice] = useState('');
   const working = useRef(false);
   const hasLoadedOnce = useRef(false);
+  const tabBarScroll = useTabBarScroll();
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const load = useCallback(async () => {
@@ -197,22 +201,35 @@ export function BudgetManager({
     );
   return (
     <Screen title={vi.budgets} scroll={false}>
-      {!!onSwitchToStats && (
+      {(!!onSwitchTab || !!onSwitchToStats) && mode.type === 'list' && (
         <SegmentedButtons
           value="budgets"
+          density="small"
           onValueChange={(value) => {
-            if (value === 'stats') onSwitchToStats();
+            if (onSwitchTab) {
+              onSwitchTab(value as 'budgets' | 'goals' | 'stats');
+            } else if (value === 'stats' && onSwitchToStats) {
+              onSwitchToStats();
+            }
           }}
           buttons={[
             {
               value: 'stats',
               label: vi.statsTabTitle,
-              icon: 'chart-box-outline',
+              showSelectedCheck: false,
+              labelStyle: localStyles.segmentLabel,
             },
             {
               value: 'budgets',
               label: vi.budgetsTabTitle,
-              icon: 'bullseye-arrow',
+              showSelectedCheck: false,
+              labelStyle: localStyles.segmentLabel,
+            },
+            {
+              value: 'goals',
+              label: vi.goals,
+              showSelectedCheck: false,
+              labelStyle: localStyles.segmentLabel,
             },
           ]}
         />
@@ -306,6 +323,8 @@ export function BudgetManager({
           style={styles.fill}
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
+          onScroll={tabBarScroll.onScroll}
+          scrollEventThrottle={tabBarScroll.scrollEventThrottle}
           data={rows}
           keyExtractor={(row) => row.id}
           renderItem={renderItem}
@@ -808,5 +827,9 @@ const localStyles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 16,
     borderWidth: 1,
+  },
+  segmentLabel: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

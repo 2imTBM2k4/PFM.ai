@@ -7,6 +7,8 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -17,6 +19,11 @@ import {
 } from 'react-native-safe-area-context';
 import { GradientBackground } from '@/components/ui/gradient-background';
 import {
+  DUO_SIDE_RAIL_WIDTH,
+  getCameraClearance,
+  useResponsiveLayout,
+} from '@/constants/responsive-layout';
+import {
   createSoftShadow,
   DesignRadius,
   DesignSpacing,
@@ -24,6 +31,7 @@ import {
   useFinancePalette,
 } from '@/constants/theme';
 import { vi } from '@/messages/vi';
+import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 
 /**
  * Shared screen wrapper with safe area handling, keyboard avoidance, and glassmorphic header.
@@ -34,7 +42,11 @@ export function Screen({
   onBack,
   backDisabled,
   headerRight,
+  rightRail,
   hideHeader = false,
+  inModal = false,
+  autoHideTabBar = true,
+  onScroll,
   children,
   scroll = true,
 }: PropsWithChildren<{
@@ -43,16 +55,57 @@ export function Screen({
   onBack?: () => void;
   backDisabled?: boolean;
   headerRight?: ReactNode;
+  rightRail?: ReactNode;
   hideHeader?: boolean;
+  inModal?: boolean;
+  autoHideTabBar?: boolean;
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scroll?: boolean;
 }>) {
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
   const insets = useSafeAreaInsets();
+  const { width, height, isDuoClosedPortrait } = useResponsiveLayout();
+  const cameraClearance = getCameraClearance(width, height, insets.top);
+  const tabBarScroll = useTabBarScroll({
+    enabled: !inModal && autoHideTabBar,
+  });
+  // The Duo camera sits in the reserved right rail, so left-side content can
+  // use the upper space while the rail controls remain below the camera.
+  const contentCameraClearance = inModal
+    ? 0
+    : isDuoClosedPortrait
+      ? 0
+      : cameraClearance;
+  const horizontalPadding =
+    width <= 340
+      ? DesignSpacing.sm
+      : width < 390
+        ? DesignSpacing.md
+        : DesignSpacing.screenPadding;
+  const compactHeight = height < 700;
   const content = (
     <Animated.View
       entering={FadeIn.duration(240)}
-      style={[styles.column, scroll ? styles.scrollColumn : styles.fill]}
+      style={[
+        styles.column,
+        scroll ? styles.scrollColumn : styles.fill,
+        {
+          paddingLeft: horizontalPadding,
+          paddingRight:
+            horizontalPadding + (isDuoClosedPortrait ? DUO_SIDE_RAIL_WIDTH : 0),
+          paddingTop: inModal
+            ? DesignSpacing.xs
+            : (compactHeight ? DesignSpacing.xs : DesignSpacing.sm) +
+              contentCameraClearance,
+          paddingBottom: inModal
+            ? DesignSpacing.md
+            : compactHeight
+              ? DesignSpacing.md
+              : DesignSpacing.xl,
+          gap: compactHeight ? DesignSpacing.sm : DesignSpacing.md,
+        },
+      ]}
     >
       {!hideHeader && (
         <View style={styles.headerContainer}>
@@ -111,6 +164,30 @@ export function Screen({
       {children}
     </Animated.View>
   );
+  if (inModal) {
+    return (
+      <View style={[styles.fill, { backgroundColor: 'transparent' }]}>
+        {scroll ? (
+          <ScrollView
+            style={styles.fill}
+            contentInsetAdjustmentBehavior="automatic"
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={[
+              styles.scroll,
+              { paddingBottom: Math.max(insets.bottom, DesignSpacing.md) },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {content}
+          </ScrollView>
+        ) : (
+          content
+        )}
+      </View>
+    );
+  }
+
   return (
     <View
       style={[styles.rootScreen, { backgroundColor: designTheme.sky.upperMid }]}
@@ -127,11 +204,18 @@ export function Screen({
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              onScroll={(e) => {
+                tabBarScroll.onScroll(e);
+                onScroll?.(e);
+              }}
+              scrollEventThrottle={tabBarScroll.scrollEventThrottle}
               contentContainerStyle={[
                 styles.scroll,
                 {
                   paddingBottom:
-                    DesignSpacing.bottomTabClearance + insets.bottom,
+                    (isDuoClosedPortrait
+                      ? DesignSpacing.xl
+                      : DesignSpacing.bottomTabClearance) + insets.bottom,
                 },
               ]}
               showsVerticalScrollIndicator={false}
@@ -142,6 +226,18 @@ export function Screen({
             content
           )}
         </KeyboardAvoidingView>
+        {isDuoClosedPortrait && !!rightRail && (
+          <View
+            style={[
+              styles.rightRail,
+              {
+                top: Math.max(insets.top, cameraClearance) + DesignSpacing.xl,
+              },
+            ]}
+          >
+            {rightRail}
+          </View>
+        )}
       </SafeAreaView>
     </View>
   );
@@ -323,10 +419,13 @@ export const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 720,
     alignSelf: 'center',
-    paddingHorizontal: DesignSpacing.screenPadding,
-    paddingTop: 12,
-    paddingBottom: 24,
-    gap: 16,
+  },
+  rightRail: {
+    position: 'absolute',
+    right: DesignSpacing.sm,
+    width: 56,
+    alignItems: 'center',
+    zIndex: 40,
   },
   headerContainer: {
     gap: 10,

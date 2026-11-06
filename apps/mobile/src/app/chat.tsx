@@ -128,7 +128,13 @@ function SwipeDeleteAction({
  * and the Chat AI conversation screen (right purple user bubbles, left AI bubbles with orb avatar
  * and category percentage column chart).
  */
-export default function Chat() {
+export default function Chat({
+  onClose,
+  isModal = false,
+}: {
+  onClose?: () => void;
+  isModal?: boolean;
+} = {}) {
   const [messages, setMessages] = useState<ChatRow[]>([]);
   const [aiReplies, setAiReplies] = useState<Record<string, AIResponsePayload>>(
     {},
@@ -526,11 +532,13 @@ export default function Chat() {
 
   return (
     <GestureHandlerRootView style={styles.fill}>
-      <SafeAreaView edges={['bottom']} style={styles.fill}>
+      <SafeAreaView edges={isModal ? [] : ['bottom']} style={styles.fill}>
         <Screen
           title={vi.chat}
           scroll={false}
-          onBack={() => router.navigate('/')}
+          onBack={onClose ?? (() => router.navigate('/'))}
+          hideHeader={isModal}
+          inModal={isModal}
           headerRight={
             <View style={localStyles.headerActions}>
               <Pill
@@ -571,6 +579,51 @@ export default function Chat() {
             </View>
           }
         >
+          {isModal && (
+            <View
+              style={[
+                localStyles.modalSubheader,
+                { borderBottomColor: theme.card.border },
+              ]}
+            >
+              <Pill
+                label={historyOpen ? vi.back : vi.aiHistory}
+                icon={historyOpen ? 'arrow-left' : 'history'}
+                tone="primary"
+                size="sm"
+                onPress={() => {
+                  if (historyOpen) {
+                    setHistoryOpen(false);
+                    setOpenSwipeId(null);
+                    openSwipeIdRef.current = null;
+                    setSelecting(false);
+                    setSelectedIds([]);
+                  } else void openHistory();
+                }}
+              />
+              {historyOpen && sessions.length > 0 ? (
+                <Pill
+                  label={selecting ? vi.cancel : vi.aiSelectDelete}
+                  icon="checkbox-marked-outline"
+                  tone="glass"
+                  size="sm"
+                  onPress={() => {
+                    setSelecting(!selecting);
+                    setSelectedIds([]);
+                    setOpenSwipeId(null);
+                    openSwipeIdRef.current = null;
+                  }}
+                />
+              ) : !historyOpen && messages.length > 0 ? (
+                <IconButton
+                  icon="plus"
+                  size={20}
+                  accessibilityLabel={vi.aiNewChat}
+                  onPress={startNewChat}
+                />
+              ) : null}
+            </View>
+          )}
           {loadError && (
             <View style={styles.subtlePanel}>
               <Text accessibilityRole="alert" style={{ color: palette.danger }}>
@@ -827,6 +880,15 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  modalSubheader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 6,
   },
   introContainer: {
     flexGrow: 1,

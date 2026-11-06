@@ -1,4 +1,5 @@
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
+import { Alert } from 'react-native';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   APP_TAB_ITEMS,
@@ -7,21 +8,48 @@ import {
 } from '@/components/app-tabs';
 import {
   FloatingTabBarView,
+  getFloatingTabBarLayout,
   TabIconButton,
 } from '@/components/ui/floating-tab-bar';
 import { vi as viMessages } from '@/messages/vi';
 import { usePreferences } from '@/state/preferences';
 
 const mockNavigate = vi.fn();
+const { mockWindowDimensions } = vi.hoisted(() => ({
+  mockWindowDimensions: { width: 390, height: 844 },
+}));
+
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  return {
+    ...actual,
+    useEffect: (effect: () => void) => effect(),
+    useState: <T>(initial: T) => [initial, vi.fn()],
+  };
+});
 
 vi.mock('@/data/connection', () => ({
   withDatabase: async () => undefined,
+}));
+
+vi.mock('expo-image-picker', () => ({
+  requestCameraPermissionsAsync: vi.fn().mockResolvedValue({ granted: true }),
+  requestMediaLibraryPermissionsAsync: vi
+    .fn()
+    .mockResolvedValue({ granted: true }),
+  launchCameraAsync: vi
+    .fn()
+    .mockResolvedValue({ canceled: false, assets: [{ uri: 'file://receipt.jpg' }] }),
+  launchImageLibraryAsync: vi
+    .fn()
+    .mockResolvedValue({ canceled: false, assets: [{ uri: 'file://receipt.jpg' }] }),
 }));
 
 vi.mock('react-native', () => ({
   View: 'View',
   Pressable: 'Pressable',
   Text: 'Text',
+  Alert: { alert: vi.fn() },
   Platform: {
     OS: 'ios',
     select: <T>(obj: Record<string, T>): T => obj.ios ?? obj.default!,
@@ -29,6 +57,7 @@ vi.mock('react-native', () => ({
   StyleSheet: {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
   },
+  useWindowDimensions: () => mockWindowDimensions,
 }));
 
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({
@@ -36,14 +65,21 @@ vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({
 }));
 
 vi.mock('react-native-reanimated', () => ({
+  Extrapolation: { CLAMP: 'clamp' },
   default: {
     View: 'Animated.View',
   },
+  interpolate: (
+    value: number,
+    input: readonly number[],
+    output: readonly number[],
+  ) => (value <= input[0]! ? output[0] : output[output.length - 1]),
   useSharedValue: (initial: number) => ({
     value: initial,
     set: vi.fn(),
   }),
   useAnimatedStyle: (updater: () => Record<string, unknown>) => updater(),
+  useReducedMotion: () => false,
   withSpring: (target: number) => target,
 }));
 
@@ -166,18 +202,23 @@ function makeMockBottomTabBarProps(
 describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
-    usePreferences.setState({ pendingTransactionEntry: null });
+    mockWindowDimensions.width = 390;
+    mockWindowDimensions.height = 844;
+    usePreferences.setState({
+      pendingTransactionEntry: null,
+      pendingChatAction: null,
+    });
   });
 
-  it('renders all 5 tabs with Vietnamese accessibility labels and marks only the active tab as selected', () => {
+  it('renders 4 primary tabs with Vietnamese accessibility labels and marks only the active tab as selected', () => {
     const onSelect = vi.fn();
-    const onAddPress = vi.fn();
+    const onActionSelect = vi.fn();
 
     const tree = FloatingTabBarView({
       items: APP_TAB_ITEMS,
       activeKey: 'budgets',
       onSelect,
-      onAddPress,
+      onActionSelect,
       bottomInset: 34,
     });
 
@@ -186,7 +227,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
       (el) => el.props.accessibilityRole === 'tab',
     );
 
-    expect(tabButtons).toHaveLength(5);
+    expect(tabButtons).toHaveLength(4);
     for (const button of tabButtons) {
       const style = Object.assign(
         {},
@@ -199,8 +240,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
     }
     expect(tabButtons.map((btn) => btn.props.accessibilityLabel)).toEqual([
       viMessages.overview,
-      viMessages.statsTabTitle,
-      viMessages.chat,
+      viMessages.budgetsTabTitle,
       viMessages.transactions,
       viMessages.settings,
     ]);
@@ -209,7 +249,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
       (btn) =>
         (btn.props.accessibilityState as { selected?: boolean })?.selected,
     );
-    expect(selectedStates).toEqual([false, true, false, false, false]);
+    expect(selectedStates).toEqual([false, true, false, false]);
 
     // Verify active tab uses activeIcon ('chart-box') while inactive tabs use outline icons
     const activeTabIcon = collectElements(
@@ -233,7 +273,23 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
     expect(inactiveTabIcon?.props.name).toBe('chart-box-outline');
   });
 
-  it('invokes navigateToTab when pressing an inactive tab and requestAddTransaction("manual") when pressing "+"', () => {
+  it('fits compact iPhones and caps the navigation width on expanded displays', () => {
+    const compact = getFloatingTabBarLayout(320);
+    expect(compact.compact).toBe(true);
+    expect(compact.rowWidth).toBeLessThanOrEqual(300);
+    expect(compact.inactiveTabWidth).toBeGreaterThanOrEqual(44);
+    expect(compact.showActiveLabel).toBe(false);
+
+    const standard = getFloatingTabBarLayout(390);
+    expect(standard.compact).toBe(false);
+    expect(standard.showActiveLabel).toBe(true);
+    expect(standard.activeTabWidth).toBeGreaterThan(standard.inactiveTabWidth);
+
+    const expanded = getFloatingTabBarLayout(900, 24, 24);
+    expect(expanded.rowWidth).toBe(468);
+  });
+
+  it('navigates primary tabs and routes all three "+" menu actions', () => {
     const { props, emitSpy, navigateToTabSpy } = makeMockBottomTabBarProps(0);
     const tree = CustomBottomTabBar(props);
 
@@ -243,10 +299,10 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
       tree,
       (el) => el.props.accessibilityRole === 'tab',
     );
-    expect(tabButtons).toHaveLength(5);
+    expect(tabButtons).toHaveLength(4);
 
-    // Press the 4th tab ('transactions')
-    const transactionsTab = tabButtons[3]!;
+    // Press the 3rd primary tab ('transactions')
+    const transactionsTab = tabButtons[2]!;
     (transactionsTab.props.onPress as () => void)();
 
     expect(emitSpy).toHaveBeenCalledWith({
@@ -256,23 +312,48 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
     });
     expect(navigateToTabSpy).toHaveBeenCalledWith('transactions-key');
 
-    // Press the separate circular '+' button
+    // The separate '+' button exposes all three actions.
     const addButtons = collectElements(
       tree,
       (el) =>
         el.props.accessibilityRole === 'button' &&
-        el.props.accessibilityLabel === viMessages.addTransaction,
+        el.props.accessibilityLabel === viMessages.quickAddMenu,
     );
     expect(addButtons).toHaveLength(1);
 
-    (addButtons[0]!.props.onPress as () => void)();
-    expect(usePreferences.getState().pendingTransactionEntry).toBe('manual');
-    expect(navigateToTabSpy).toHaveBeenLastCalledWith('transactions-key');
+    const manualAction = collectElements(
+      tree,
+      (el) => el.props.accessibilityLabel === viMessages.quickAddManual,
+    )[0]!;
+    (manualAction.props.onPress as () => void)();
+    expect(usePreferences.getState().isAddTransactionOpen).toBe(true);
+
+    const cameraAction = collectElements(
+      tree,
+      (el) => el.props.accessibilityLabel === viMessages.quickAddCamera,
+    )[0]!;
+    (cameraAction.props.onPress as () => void)();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      viMessages.receiptScan,
+      viMessages.receiptChooseSource,
+      expect.any(Array),
+    );
+
+    const chatAction = collectElements(
+      tree,
+      (el) => el.props.accessibilityLabel === viMessages.quickAddAI,
+    )[0]!;
+    (chatAction.props.onPress as () => void)();
+    expect(usePreferences.getState().isChatOpen).toBe(true);
   });
 
-  it('hides the FloatingTabBar when the active route is "chat" (Option 1.B)', () => {
+  it('hides navigation in regular iPhone Chat and keeps the closed Duo rail', () => {
     const { props } = makeMockBottomTabBarProps(2); // index 2 = 'chat'
-    const tree = CustomBottomTabBar(props);
-    expect(tree).toBeNull();
+
+    expect(CustomBottomTabBar(props)).toBeNull();
+
+    mockWindowDimensions.width = 540;
+    mockWindowDimensions.height = 720;
+    expect(CustomBottomTabBar(props)).not.toBeNull();
   });
 });

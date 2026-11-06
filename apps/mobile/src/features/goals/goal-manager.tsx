@@ -46,7 +46,13 @@ import { displayWalletName } from '@/messages/seed-labels';
 import { formatDisplayDate } from '@/utils/display';
 import { useApp } from '@/state/app';
 
-export function GoalManager({ onClose }: { onClose(): void }) {
+export function GoalManager({
+  onClose,
+  onSwitchTab,
+}: {
+  onClose?(): void;
+  onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
+} = {}) {
   const [rows, setRows] = useState<GoalRow[]>([]);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
   const [editing, setEditing] = useState<GoalRow | null | undefined>(undefined);
@@ -93,7 +99,7 @@ export function GoalManager({ onClose }: { onClose(): void }) {
     if (working.current) return;
     setError('');
     if (editing !== undefined) setEditing(undefined);
-    else onClose();
+    else onClose?.();
   }, [editing, onClose]);
   useFocusEffect(
     useCallback(() => {
@@ -159,24 +165,55 @@ export function GoalManager({ onClose }: { onClose(): void }) {
   return (
     <Screen
       title={vi.goals}
-      onBack={back}
+      onBack={editing !== undefined || onClose ? back : undefined}
       backDisabled={busy}
       headerRight={
-        <Button
-          mode="contained"
-          icon="plus"
-          disabled={busy || loading}
-          contentStyle={styles.compactButton}
-          onPress={() => {
-            newId.current = uuid.v4();
-            setError('');
-            setEditing(null);
-          }}
-        >
-          {vi.addGoal}
-        </Button>
+        editing === undefined ? (
+          <Button
+            mode="contained"
+            icon="plus"
+            disabled={busy || loading}
+            contentStyle={styles.compactButton}
+            onPress={() => {
+              newId.current = uuid.v4();
+              setError('');
+              setEditing(null);
+            }}
+          >
+            {vi.addGoal}
+          </Button>
+        ) : undefined
       }
     >
+      {!!onSwitchTab && editing === undefined && (
+        <SegmentedButtons
+          value="goals"
+          density="small"
+          onValueChange={(value) =>
+            onSwitchTab(value as 'budgets' | 'goals' | 'stats')
+          }
+          buttons={[
+            {
+              value: 'stats',
+              label: vi.statsTabTitle,
+              showSelectedCheck: false,
+              labelStyle: { fontSize: 13, fontWeight: '700' },
+            },
+            {
+              value: 'budgets',
+              label: vi.budgetsTabTitle,
+              showSelectedCheck: false,
+              labelStyle: { fontSize: 13, fontWeight: '700' },
+            },
+            {
+              value: 'goals',
+              label: vi.goals,
+              showSelectedCheck: false,
+              labelStyle: { fontSize: 13, fontWeight: '700' },
+            },
+          ]}
+        />
+      )}
       <SegmentedButtons
         value={archived ? 'archived' : 'active'}
         onValueChange={(value) => setArchived(value === 'archived')}

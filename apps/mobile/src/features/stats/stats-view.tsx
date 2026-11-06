@@ -53,8 +53,10 @@ const localToday = () =>
  */
 export function StatsView({
   onSwitchToBudgets,
+  onSwitchTab,
 }: {
-  onSwitchToBudgets(): void;
+  onSwitchToBudgets?(): void;
+  onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
 }) {
   const [anchorMonth, setAnchorMonth] = useState(() => monthKey(localToday()));
   const [rangeMonths, setRangeMonths] = useState<StatsRange>(6);
@@ -145,19 +147,32 @@ export function StatsView({
     <Screen title={vi.statsTabTitle}>
       <SegmentedButtons
         value="stats"
+        density="small"
         onValueChange={(value) => {
-          if (value === 'budgets') onSwitchToBudgets();
+          if (onSwitchTab) {
+            onSwitchTab(value as 'budgets' | 'goals' | 'stats');
+          } else if (value === 'budgets') {
+            onSwitchToBudgets?.();
+          }
         }}
         buttons={[
           {
             value: 'stats',
             label: vi.statsTabTitle,
-            icon: 'chart-box-outline',
+            showSelectedCheck: false,
+            labelStyle: localStyles.segmentLabel,
           },
           {
             value: 'budgets',
             label: vi.budgetsTabTitle,
-            icon: 'bullseye-arrow',
+            showSelectedCheck: false,
+            labelStyle: localStyles.segmentLabel,
+          },
+          {
+            value: 'goals',
+            label: vi.goals,
+            showSelectedCheck: false,
+            labelStyle: localStyles.segmentLabel,
           },
         ]}
       />
@@ -637,5 +652,9 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+  },
+  segmentLabel: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
