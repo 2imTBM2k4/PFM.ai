@@ -89,7 +89,7 @@ jobs:
         run: |
           cd apps/mobile/ios
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -n 1)
-          SCHEME=$(xcodebuild -list -workspace "$WORKSPACE" -json | jq -r '.workspace.schemes[0]')
+          SCHEME="PFMai"
           mkdir -p ../build
 
           echo "Selected Workspace: $WORKSPACE"
