@@ -28,6 +28,8 @@ import { usePreferences } from '@/state/preferences';
 import { LockGate } from '@/features/lock/lock-gate';
 import { BudgetNotificationWatcher } from '@/features/budgets/notification-watcher';
 import { RecurringWatcher } from '@/features/recurring/watcher';
+import { AddTransactionModal } from '@/features/transactions/add-transaction-modal';
+import { AIChatModal } from '@/features/chat/ai-chat-modal';
 
 /**
  * Global route error boundary fallback screen.
@@ -155,6 +157,8 @@ function ApplicationContent() {
       <BudgetNotificationWatcher />
       <RecurringWatcher />
       <AppTabs />
+      <AddTransactionModal />
+      <AIChatModal />
     </>
   );
 }

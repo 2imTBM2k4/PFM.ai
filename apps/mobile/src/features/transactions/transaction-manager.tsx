@@ -6,7 +6,7 @@ import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput, TransactionFilters } from '@pfm/contracts';
 import { TransactionFilterForm } from './transaction-filters';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   BackHandler,
@@ -22,7 +22,6 @@ import {
   Button,
   Divider,
   HelperText,
-  IconButton,
   Text,
   TextInput,
   useTheme,
@@ -37,6 +36,7 @@ import {
 } from '@/components/screen';
 import { AppleMenuPicker, DateField, GlassCard, Pill } from '@/components/ui';
 import {
+  createSoftShadow,
   DesignRadius,
   DesignSpacing,
   useDesignTheme,
@@ -67,6 +67,7 @@ import {
 } from '@/features/quick-entry/draft';
 import { EntryConfirmation } from '@/features/quick-entry/confirmation';
 import { useApp } from '@/state/app';
+import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import {
   formatTransactionCurrencyAmount,
   usePreferences,
@@ -131,6 +132,7 @@ export function TransactionManager({
   const working = useRef(false);
   const focused = useRef(false);
   const hasLoadedOnce = useRef(false);
+  const tabBarScroll = useTabBarScroll();
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const theme = useDesignTheme();
@@ -182,7 +184,7 @@ export function TransactionManager({
       focused.current = true;
       const pendingEntry = consumeAddTransaction();
       if (pendingEntry) {
-        setMode({ type: 'form', row: null, id: uuid.v4() });
+        usePreferences.getState().openAddTransaction(pendingEntry);
       }
       const frame = requestAnimationFrame(() => {
         void load();
@@ -200,6 +202,19 @@ export function TransactionManager({
       pendingTransactionEntry,
     ]),
   );
+
+  useEffect(() => {
+    if (!focused.current || pendingTransactionEntry === null) return;
+
+    const frame = requestAnimationFrame(() => {
+      const pendingEntry = consumeAddTransaction();
+      if (!pendingEntry || !focused.current) return;
+      usePreferences.getState().openAddTransaction(pendingEntry);
+      setError('');
+      setNotice('');
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [consumeAddTransaction, pendingTransactionEntry]);
 
   const back = useCallback(() => {
     if (!working.current) {
@@ -304,12 +319,6 @@ export function TransactionManager({
 
   const edit = useCallback((row: TransactionRow) => {
     setMode({ type: 'form', row, id: row.id });
-    setError('');
-    setNotice('');
-  }, []);
-
-  const openAdd = useCallback(() => {
-    setMode({ type: 'form', row: null, id: uuid.v4() });
     setError('');
     setNotice('');
   }, []);
@@ -580,13 +589,28 @@ export function TransactionManager({
       title={vi.transactions}
       scroll={false}
       headerRight={
-        <IconButton
-          icon="plus"
-          size={24}
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={vi.addTransaction}
-          disabled={loading || busy || !wallets.some((w) => !w.is_archived)}
-          onPress={openAdd}
-        />
+          hitSlop={6}
+          onPress={() => usePreferences.getState().openAddTransaction()}
+          style={({ pressed }) => [
+            localStyles.headerAddBtn,
+            createSoftShadow(theme.mode, 'sm'),
+            {
+              backgroundColor: pressed
+                ? theme.brand.primarySoft
+                : theme.card.surfaceElevated,
+              borderColor: theme.card.border,
+            },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="plus"
+            size={20}
+            color={theme.text.primary}
+          />
+        </Pressable>
       }
     >
       {/* Instant Search Input Bar */}
@@ -787,6 +811,8 @@ export function TransactionManager({
           style={styles.fill}
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
+          onScroll={tabBarScroll.onScroll}
+          scrollEventThrottle={tabBarScroll.scrollEventThrottle}
           data={filteredRows}
           keyExtractor={(row) => row.id}
           renderItem={renderItem}
@@ -1051,6 +1077,7 @@ export function TransactionForm({
   onBack,
   onNaturalSaved,
   onSave,
+  hideHeader = false,
 }: {
   row: TransactionRow | null;
   wallets: WalletRow[];
@@ -1060,6 +1087,7 @@ export function TransactionForm({
   onBack(): void;
   onNaturalSaved?(): Promise<void>;
   onSave(input: TransactionInput): Promise<void>;
+  hideHeader?: boolean;
 }) {
   const selectedCurrency = usePreferences((state) => state.currency);
   const language = usePreferences((state) => state.language);
@@ -1277,6 +1305,8 @@ export function TransactionForm({
       title={row ? vi.editTransaction : vi.addTransaction}
       onBack={onBack}
       backDisabled={disabled}
+      hideHeader={hideHeader}
+      inModal={hideHeader}
     >
       {/* Natural Language Quick-Entry Card with Confirmation Sheet before saving */}
       {!row && (
@@ -1696,6 +1726,14 @@ export function TransactionForm({
 }
 
 const localStyles = StyleSheet.create({
+  headerAddBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',

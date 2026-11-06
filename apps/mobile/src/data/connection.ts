@@ -15,7 +15,8 @@ let operations: Promise<unknown> = Promise.resolve();
 
 async function initialize() {
   // Prevent a later native build from silently shipping the unencrypted preview.
-  if (!isRunningInExpoGo()) throw new Error('PREVIEW_REQUIRES_EXPO_GO');
+  if (!isRunningInExpoGo() && process.env.EXPO_OS !== 'web')
+    throw new Error('PREVIEW_REQUIRES_EXPO_GO');
   const db = await openDatabaseAsync(DATABASE_NAME);
   // The queue prevents interleaving; keep transactions on the FK-enabled connection.
   const connection: Database & { closeAsync(): Promise<void> } = {

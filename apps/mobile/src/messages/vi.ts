@@ -125,6 +125,10 @@ export const viMessages = {
   filterCategoryHint:
     'Chọn danh mục cha sẽ bao gồm các mục con. Ví được lọc ở cả phía chuyển đi và nhận.',
   addTransaction: 'Thêm giao dịch',
+  quickAddMenu: 'Mở tùy chọn thêm',
+  quickAddManual: 'Nhập tay',
+  quickAddCamera: 'Nhập bằng ảnh chụp',
+  quickAddAI: 'Chat tư vấn với AI',
   editTransaction: 'Sửa giao dịch',
   saveTransaction: 'Lưu giao dịch',
   transactionAmount: 'Số tiền (₫)',
@@ -138,10 +142,12 @@ export const viMessages = {
   receiptChoosePhoto: 'Chọn ảnh',
   receiptCameraDenied: 'Cần cấp quyền camera để chụp hóa đơn.',
   receiptConsentTitle: 'Gửi ảnh hóa đơn tới AI?',
-  receiptConsentBody: 'Ảnh sẽ đi qua máy chủ PFM.ai tới nhà cung cấp AI để đọc giao dịch. Ảnh có thể chứa tên, số điện thoại hoặc số tài khoản; ứng dụng không thể tự xóa chắc chắn các thông tin này. Hãy che thông tin nhạy cảm trước khi chụp. Ảnh không được lưu vào giao dịch.',
+  receiptConsentBody:
+    'Ảnh sẽ đi qua máy chủ PFM.ai tới nhà cung cấp AI để đọc giao dịch. Ảnh có thể chứa tên, số điện thoại hoặc số tài khoản; ứng dụng không thể tự xóa chắc chắn các thông tin này. Hãy che thông tin nhạy cảm trước khi chụp. Ảnh không được lưu vào giao dịch.',
   receiptConsentAgree: 'Đồng ý gửi ảnh',
   receiptConsentWithdraw: 'Thu hồi đồng ý gửi ảnh hóa đơn',
-  receiptConsentWithdrawn: 'Đã thu hồi. Lần quét tiếp theo sẽ hỏi lại trước khi gửi ảnh.',
+  receiptConsentWithdrawn:
+    'Đã thu hồi. Lần quét tiếp theo sẽ hỏi lại trước khi gửi ảnh.',
   receiptTooLarge: 'Ảnh quá lớn sau khi xử lý. Hãy chụp lại gần hóa đơn hơn.',
   receiptScanFailed: 'Không thể đọc hóa đơn. Vui lòng thử lại hoặc nhập tay.',
   transactionTransfer: 'Chuyển ví',
@@ -631,8 +637,11 @@ export const viMessages = {
   txTimeYesterday: 'Hôm qua',
 } as const;
 
-export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(viMessages, {
-  get(target, key: keyof typeof viMessages) {
-    return activeLanguage === 'en' ? en[key] ?? target[key] : target[key];
+export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(
+  viMessages,
+  {
+    get(target, key: keyof typeof viMessages) {
+      return activeLanguage === 'en' ? (en[key] ?? target[key]) : target[key];
+    },
   },
-});
+);

@@ -18,13 +18,40 @@ vi.mock('@/data/seed-data', () => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
-  usePreferences.setState({ seedEnabled: false, language: 'vi' });
+  usePreferences.setState({
+    seedEnabled: false,
+    language: 'vi',
+    pendingChatAction: null,
+  });
+});
+
+it('consumes a requested chat camera action exactly once', () => {
+  usePreferences.getState().requestChatCamera();
+  expect(usePreferences.getState().consumeChatAction()).toBe('camera');
+  expect(usePreferences.getState().consumeChatAction()).toBeNull();
+});
+
+it('handles openChatWithReceipt and consumes receipt asset exactly once', () => {
+  usePreferences
+    .getState()
+    .openChatWithReceipt({ uri: 'file://receipt.jpg', width: 800, height: 600 });
+  expect(usePreferences.getState().isChatOpen).toBe(true);
+  expect(usePreferences.getState().consumeReceiptAsset()).toEqual({
+    uri: 'file://receipt.jpg',
+    width: 800,
+    height: 600,
+  });
+  expect(usePreferences.getState().consumeReceiptAsset()).toBeNull();
 });
 
 it('switches catalog language and persists the selection', async () => {
   await usePreferences.getState().setLanguage('en');
   expect(messages.overview).toBe('Overview');
-  expect(mocks.write).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO settings'), 'pref_language', 'en');
+  expect(mocks.write).toHaveBeenCalledWith(
+    expect.stringContaining('INSERT INTO settings'),
+    'pref_language',
+    'en',
+  );
   await usePreferences.getState().setLanguage('vi');
   expect(messages.overview).toBe('Tổng quan');
 });

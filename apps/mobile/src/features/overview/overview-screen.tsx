@@ -1,11 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import {
-  addMonths,
-  goalProgress,
-  monthKey,
-  today,
-} from '@pfm/domain';
+import { monthKey, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput } from '@pfm/contracts';
 import { useCallback, useRef, useState } from 'react';
@@ -20,19 +15,16 @@ import {
   ActivityIndicator,
   Button,
   Divider,
-  IconButton,
   ProgressBar,
   Text,
-  useTheme,
 } from 'react-native-paper';
 import {
   EmptyStateCard,
   IconBadge,
   Screen,
-  StatusPill,
   styles,
 } from '@/components/screen';
-import { AIOrb, GlassCard, Pill } from '@/components/ui';
+import { GlassCard, Pill } from '@/components/ui';
 import {
   createSoftShadow,
   DesignRadius,
@@ -41,6 +33,7 @@ import {
   useFinancePalette,
   walletKindVisual,
 } from '@/constants/theme';
+import { useResponsiveLayout } from '@/constants/responsive-layout';
 import { withDatabase } from '@/data/connection';
 import { readDashboard, type Dashboard } from '@/data/dashboard';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
@@ -48,8 +41,6 @@ import { NotificationsView } from '@/features/notifications/notifications-view';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
-import { usePreferences } from '@/state/preferences';
-import { formatDisplayMonth } from '@/utils/display';
 import { formatRecentTransactionTime } from './transaction-time';
 
 const localToday = () =>
@@ -74,12 +65,11 @@ function changeLabel(bps: number | null) {
  */
 export function OverviewScreen({
   onWallets,
-  onGoals,
+  onGoals: _onGoals,
 }: {
   onWallets(): void;
-  onGoals(): void;
+  onGoals?(): void;
 }) {
-  const [month, setMonth] = useState(() => monthKey(localToday()));
   const [date, setDate] = useState(localToday);
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,39 +78,33 @@ export function OverviewScreen({
   const request = useRef(0);
   const hasLoadedOnce = useRef(false);
   const recurringVersion = useApp((state) => state.recurringVersion);
-  const requestAddTransaction = usePreferences(
-    (state) => state.requestAddTransaction,
-  );
-  const { colors } = useTheme();
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
+  const { isDuoClosedPortrait } = useResponsiveLayout();
   const router = useRouter();
-  const currentMonthKey = monthKey(localToday());
 
-  const load = useCallback(
-    async (showSpinner = false) => {
-      const id = ++request.current;
-      if (showSpinner || !hasLoadedOnce.current) {
-        setLoading(true);
-      }
-      setError(false);
-      try {
-        const next = await withDatabase((db) => readDashboard(db, month));
-        if (id !== request.current) return;
-        hasLoadedOnce.current = true;
-        setDate(localToday());
-        setData(next);
-        useApp.setState({
-          wallets: next.wallets.filter((wallet) => !wallet.is_archived),
-        });
-      } catch {
-        if (id === request.current) setError(true);
-      } finally {
-        if (id === request.current) setLoading(false);
-      }
-    },
-    [month],
-  );
+  const load = useCallback(async (showSpinner = false) => {
+    const id = ++request.current;
+    if (showSpinner || !hasLoadedOnce.current) {
+      setLoading(true);
+    }
+    setError(false);
+    try {
+      const currentMonth = monthKey(localToday());
+      const next = await withDatabase((db) => readDashboard(db, currentMonth));
+      if (id !== request.current) return;
+      hasLoadedOnce.current = true;
+      setDate(localToday());
+      setData(next);
+      useApp.setState({
+        wallets: next.wallets.filter((wallet) => !wallet.is_archived),
+      });
+    } catch {
+      if (id === request.current) setError(true);
+    } finally {
+      if (id === request.current) setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -146,8 +130,53 @@ export function OverviewScreen({
     return <NotificationsView onClose={() => setShowNotifications(false)} />;
   }
 
+  const headerActions = (
+    <View
+      style={[
+        localStyles.headerButtons,
+        isDuoClosedPortrait && localStyles.verticalHeaderButtons,
+        isDuoClosedPortrait && createSoftShadow(designTheme.mode, 'sm'),
+        isDuoClosedPortrait && {
+          backgroundColor: designTheme.card.surface,
+          borderColor: designTheme.card.border,
+        },
+      ]}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={vi.notificationsTitle}
+        onPress={() => setShowNotifications(true)}
+        style={({ pressed }) => [
+          localStyles.circleHeaderBtn,
+          !isDuoClosedPortrait && createSoftShadow(designTheme.mode, 'sm'),
+          {
+            backgroundColor: isDuoClosedPortrait
+              ? pressed
+                ? designTheme.brand.primarySoft
+                : 'transparent'
+              : designTheme.card.surfaceElevated,
+            borderColor: isDuoClosedPortrait
+              ? 'transparent'
+              : designTheme.card.border,
+            opacity: pressed ? 0.78 : 1,
+          },
+        ]}
+      >
+        <MaterialCommunityIcons
+          name="bell-outline"
+          size={20}
+          color={designTheme.text.primary}
+        />
+      </Pressable>
+    </View>
+  );
+
   return (
-    <Screen title={vi.overviewTitle} hideHeader>
+    <Screen
+      title={vi.overviewTitle}
+      hideHeader
+      rightRail={isDuoClosedPortrait ? headerActions : undefined}
+    >
       {/* Top Header: Avatar + Greeting + 2 Circular Action Buttons */}
       <View style={localStyles.topHeader}>
         <View style={localStyles.greetingGroup}>
@@ -185,92 +214,8 @@ export function OverviewScreen({
           </View>
         </View>
 
-        <View style={localStyles.headerButtons}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={vi.transactionFilters}
-            onPress={() => router.navigate('/transactions')}
-            style={({ pressed }) => [
-              localStyles.circleHeaderBtn,
-              createSoftShadow(designTheme.mode, 'sm'),
-              {
-                backgroundColor: designTheme.card.surfaceElevated,
-                borderColor: designTheme.card.border,
-                opacity: pressed ? 0.78 : 1,
-              },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="magnify"
-              size={21}
-              color={designTheme.text.primary}
-            />
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={vi.notificationsTitle}
-            onPress={() => setShowNotifications(true)}
-            style={({ pressed }) => [
-              localStyles.circleHeaderBtn,
-              createSoftShadow(designTheme.mode, 'sm'),
-              {
-                backgroundColor: designTheme.card.surfaceElevated,
-                borderColor: designTheme.card.border,
-                opacity: pressed ? 0.78 : 1,
-              },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="bell-outline"
-              size={20}
-              color={designTheme.text.primary}
-            />
-          </Pressable>
-        </View>
+        {!isDuoClosedPortrait && headerActions}
       </View>
-
-      {/* Glassmorphic Month Selector Pill Bar */}
-      <GlassCard radius="xl" padding={8} style={localStyles.monthBar}>
-        <View style={styles.inlineRow}>
-          <IconButton
-            icon="chevron-left"
-            size={20}
-            style={localStyles.monthNavBtn}
-            accessibilityLabel={vi.budgetPreviousMonth}
-            disabled={month <= '0001-06'}
-            onPress={() => setMonth(monthKey(addMonths(`${month}-01`, -1)))}
-          />
-          <Text
-            variant="titleMedium"
-            accessibilityLiveRegion="polite"
-            style={[
-              styles.number,
-              { fontWeight: '800', color: designTheme.text.primary },
-            ]}
-          >
-            {formatDisplayMonth(month)}
-          </Text>
-          <IconButton
-            icon="chevron-right"
-            size={20}
-            style={localStyles.monthNavBtn}
-            accessibilityLabel={vi.budgetNextMonth}
-            disabled={month >= '9999-12'}
-            onPress={() => setMonth(monthKey(addMonths(`${month}-01`, 1)))}
-          />
-        </View>
-        <Pill
-          label={vi.overviewCurrentMonth}
-          tone={month === currentMonthKey ? 'primary' : 'glass'}
-          size="sm"
-          onPress={
-            month === currentMonthKey
-              ? undefined
-              : () => setMonth(currentMonthKey)
-          }
-        />
-      </GlassCard>
 
       {loading && !data && (
         <View style={localStyles.centerBox}>
@@ -327,29 +272,6 @@ export function OverviewScreen({
                   {formatVnd(data.balance)}
                 </Text>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={vi.addTransaction}
-                onPress={() => {
-                  requestAddTransaction('manual');
-                  router.navigate('/transactions');
-                }}
-                style={({ pressed }) => [
-                  localStyles.heroAddCircle,
-                  createSoftShadow(designTheme.mode, 'md'),
-                  {
-                    backgroundColor: designTheme.brand.primary,
-                    opacity: pressed ? 0.85 : 1,
-                    transform: [{ scale: pressed ? 0.95 : 1 }],
-                  },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="plus"
-                  size={26}
-                  color={designTheme.text.onPrimary}
-                />
-              </Pressable>
             </View>
 
             {/* Wallet shortcut + active wallets strip */}
@@ -561,85 +483,100 @@ export function OverviewScreen({
             </GlassCard>
           </View>
 
-          {/* AI Assistant Card with Holographic Skia AIOrb */}
+          {/* Phân tích chi tiêu: positioned right below Thu trừ chi */}
           <GlassCard
             variant="elevated"
             radius="xl"
             padding={18}
-            onPress={() => router.navigate('/chat')}
-            accessibilityLabel={vi.chat}
+            onPress={() =>
+              router.navigate({
+                pathname: '/budgets',
+                params: { tab: 'stats' },
+              })
+            }
+            accessibilityLabel={vi.overviewAnalysis}
           >
-            <View style={localStyles.aiCardRow}>
-              <AIOrb size={62} />
-              <View style={{ flex: 1, gap: 4 }}>
-                <View style={styles.inlineRow}>
-                  <Pill label={vi.appName} tone="primary" size="sm" />
+            <View style={styles.row}>
+              <View style={[styles.inlineRow, { flex: 1 }]}>
+                <IconBadge
+                  icon="chart-donut"
+                  bg={designTheme.brand.primarySoft}
+                  fg={designTheme.brand.primaryText}
+                  size={42}
+                  iconSize={22}
+                />
+                <View style={{ flex: 1, gap: 2 }}>
                   <Text
                     variant="titleMedium"
                     style={{
-                      color: designTheme.text.primary,
                       fontWeight: '800',
+                      color: designTheme.text.primary,
                     }}
                   >
-                    {vi.chat}
+                    {vi.overviewAnalysis}
+                  </Text>
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: designTheme.text.secondary }}
+                  >
+                    {vi.overviewAnalysisHint}
                   </Text>
                 </View>
-                <Text
-                  variant="bodySmall"
-                  numberOfLines={3}
-                  style={{
-                    color: designTheme.text.secondary,
-                    lineHeight: 18,
-                  }}
-                >
-                  {vi.chatEmpty}
-                </Text>
               </View>
-              <View
-                style={[
-                  localStyles.aiGoCircle,
-                  { backgroundColor: designTheme.brand.primary },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="arrow-top-right"
-                  size={20}
-                  color={designTheme.text.onPrimary}
-                />
-              </View>
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={24}
+                color={designTheme.text.muted}
+              />
             </View>
 
-            <View style={localStyles.aiChipsRow}>
-              <Pill
-                icon="lightning-bolt-outline"
-                label={vi.quickTitle}
-                tone="glass"
-                size="sm"
-                onPress={() => {
-                  requestAddTransaction('natural');
-                  router.navigate('/transactions');
-                }}
-              />
-              <Pill
-                icon="bullseye-arrow"
-                label={vi.goals}
-                tone="glass"
-                size="sm"
-                onPress={onGoals}
-              />
-              <Pill
-                icon="chart-pie"
-                label={vi.overviewBudgets}
-                tone="glass"
-                size="sm"
-                onPress={() =>
-                  router.navigate({
-                    pathname: '/budgets',
-                    params: { tab: 'budgets' },
-                  })
-                }
-              />
-            </View>
+            {data.topCategories.length > 0 && (
+              <View style={{ marginTop: 14, gap: 8 }}>
+                <Divider style={{ backgroundColor: palette.borderSubtle }} />
+                <View style={{ gap: 8, marginTop: 4 }}>
+                  {data.topCategories.slice(0, 3).map((cat) => {
+                    const totalExpense = data.current.expense || 1;
+                    const pct = Math.round((cat.amount / totalExpense) * 100);
+                    return (
+                      <View key={cat.id ?? cat.name} style={{ gap: 4 }}>
+                        <View style={styles.row}>
+                          <Text
+                            variant="labelMedium"
+                            numberOfLines={1}
+                            style={{
+                              color: designTheme.text.primary,
+                              fontWeight: '600',
+                              flex: 1,
+                            }}
+                          >
+                            {cat.name
+                              ? displayCategoryName(cat.name)
+                              : vi.transactionUncategorized}
+                          </Text>
+                          <Text
+                            variant="labelMedium"
+                            style={[
+                              styles.number,
+                              {
+                                color: designTheme.text.secondary,
+                                fontWeight: '700',
+                              },
+                            ]}
+                          >
+                            {formatVnd(cat.amount)} ({pct}%)
+                          </Text>
+                        </View>
+                        <ProgressBar
+                          progress={Math.min(1, cat.amount / totalExpense)}
+                          color={designTheme.brand.primary}
+                          style={localStyles.categoryProgressBar}
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
           </GlassCard>
 
           {/* Recent Transactions Card (See All) */}
@@ -791,250 +728,6 @@ export function OverviewScreen({
               )}
             </View>
           </GlassCard>
-
-          {/* Analytics moved to the Statistics tab; keep one lightweight entry point here. */}
-          <GlassCard
-            variant="elevated"
-            radius="xl"
-            padding={18}
-            onPress={() => router.navigate('/budgets')}
-            accessibilityLabel={vi.overviewAnalysis}
-          >
-            <View style={styles.row}>
-              <View style={[styles.inlineRow, { flex: 1 }]}>
-                <IconBadge
-                  icon="chart-donut"
-                  bg={designTheme.brand.primarySoft}
-                  fg={designTheme.brand.primaryText}
-                  size={42}
-                  iconSize={22}
-                />
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text
-                    variant="titleMedium"
-                    style={{
-                      fontWeight: '700',
-                      color: designTheme.text.primary,
-                    }}
-                  >
-                    {vi.overviewAnalysis}
-                  </Text>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: designTheme.text.secondary }}
-                  >
-                    {vi.overviewAnalysisHint}
-                  </Text>
-                </View>
-              </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color={designTheme.text.muted}
-              />
-            </View>
-          </GlassCard>
-
-          {/* Monthly Budgets Summary Card */}
-          <GlassCard radius="xl" padding={20}>
-            <View style={styles.row}>
-              <Text
-                variant="titleMedium"
-                accessibilityRole="header"
-                style={{ fontWeight: '800', flex: 1 }}
-              >
-                {vi.overviewBudgets}
-              </Text>
-              <Pill
-                label={vi.overviewOpenBudgets}
-                tone="primary"
-                size="sm"
-                onPress={() =>
-                  router.navigate({
-                    pathname: '/budgets',
-                    params: { tab: 'budgets' },
-                  })
-                }
-              />
-            </View>
-            <View style={{ marginTop: 12 }}>
-              {!data.budgets.length ? (
-                <EmptyStateCard
-                  icon="chart-arc"
-                  message={vi.overviewNoBudgets}
-                />
-              ) : (
-                <View style={{ gap: 12 }}>
-                  {data.budgets.map((budget) => {
-                    const ratio = Math.min(1, budget.spent / budget.amount);
-                    const pct = Math.round(
-                      (budget.spent / budget.amount) * 100,
-                    );
-                    return (
-                      <View
-                        key={budget.id}
-                        style={[
-                          styles.subtlePanel,
-                          {
-                            backgroundColor: designTheme.card.surfaceSubtle,
-                            borderColor: designTheme.card.border,
-                          },
-                        ]}
-                      >
-                        <View style={styles.row}>
-                          <Text
-                            variant="titleSmall"
-                            style={{ fontWeight: '700', flex: 1 }}
-                          >
-                            {budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall}
-                          </Text>
-                          <StatusPill
-                            label={`${pct}%`}
-                            bg={
-                              pct >= 100
-                                ? palette.dangerSoft
-                                : pct >= 80
-                                  ? palette.warningSoft
-                                  : palette.primarySoft
-                            }
-                            fg={
-                              pct >= 100
-                                ? palette.dangerInk
-                                : pct >= 80
-                                  ? palette.warningInk
-                                  : palette.primaryInk
-                            }
-                          />
-                        </View>
-                        <Text
-                          variant="bodySmall"
-                          style={[styles.number, { color: palette.textMuted }]}
-                        >
-                          {formatVnd(budget.spent)} / {formatVnd(budget.amount)}
-                        </Text>
-                        <ProgressBar
-                          progress={ratio}
-                          color={
-                            pct >= 100
-                              ? colors.error
-                              : pct >= 80
-                                ? palette.warning
-                                : colors.primary
-                          }
-                          style={localStyles.progressBar}
-                          accessibilityLabel={
-                            budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall
-                          }
-                          accessibilityValue={{
-                            min: 0,
-                            max: budget.amount,
-                            now: Math.min(budget.spent, budget.amount),
-                          }}
-                        />
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          </GlassCard>
-
-          {/* Current Savings Goals Card */}
-          <GlassCard radius="xl" padding={20}>
-            <View style={styles.row}>
-              <Text
-                variant="titleMedium"
-                accessibilityRole="header"
-                style={{ fontWeight: '800', flex: 1 }}
-              >
-                {vi.overviewCurrentGoals}
-              </Text>
-              <Pill
-                label={vi.viewAll}
-                tone="primary"
-                size="sm"
-                onPress={onGoals}
-              />
-            </View>
-            <View style={{ marginTop: 12 }}>
-              {!data.goals.length ? (
-                <EmptyStateCard icon="bullseye-arrow" message={vi.goalEmpty} />
-              ) : (
-                <View style={{ gap: 12 }}>
-                  {data.goals.map((goal) => {
-                    const progress = goalProgress(
-                      goal.target_amount,
-                      goal.progress,
-                      date,
-                      goal.deadline_on,
-                    );
-                    const ratio = Math.max(
-                      0,
-                      Math.min(1, goal.progress / goal.target_amount),
-                    );
-                    return (
-                      <View
-                        key={goal.id}
-                        style={[
-                          styles.subtlePanel,
-                          {
-                            backgroundColor: designTheme.card.surfaceSubtle,
-                            borderColor: designTheme.card.border,
-                          },
-                        ]}
-                      >
-                        <View style={styles.row}>
-                          <Text
-                            variant="titleSmall"
-                            style={{ fontWeight: '700', flex: 1 }}
-                          >
-                            {goal.name}
-                          </Text>
-                          {progress.achieved && (
-                            <StatusPill
-                              icon="check-circle"
-                              label={vi.goalAchieved}
-                              bg={palette.incomeSoft}
-                              fg={palette.incomeInk}
-                            />
-                          )}
-                        </View>
-                        <Text
-                          variant="bodySmall"
-                          style={[styles.number, { color: palette.textMuted }]}
-                        >
-                          {formatVnd(goal.progress)} /{' '}
-                          {formatVnd(goal.target_amount)}
-                        </Text>
-                        <ProgressBar
-                          progress={ratio}
-                          color={
-                            progress.achieved ? palette.income : colors.primary
-                          }
-                          style={localStyles.progressBar}
-                        />
-                        {!progress.achieved &&
-                          progress.requiredPerMonth !== null && (
-                            <Text
-                              variant="bodySmall"
-                              style={{ color: palette.textMuted }}
-                            >
-                              {vi.goalMonthly}:{' '}
-                              <Text
-                                variant="bodySmall"
-                                style={[styles.number, { fontWeight: '700' }]}
-                              >
-                                {formatVnd(progress.requiredPerMonth)}
-                              </Text>
-                            </Text>
-                          )}
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          </GlassCard>
         </>
       )}
     </Screen>
@@ -1080,6 +773,14 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  verticalHeaderButtons: {
+    flexDirection: 'column',
+    gap: 2,
+    width: 56,
+    padding: 5,
+    borderWidth: 1,
+    borderRadius: DesignRadius.pill,
+  },
   circleHeaderBtn: {
     width: 44,
     height: 44,
@@ -1087,16 +788,6 @@ const localStyles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  monthBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  monthNavBtn: {
-    margin: 0,
   },
   centerBox: {
     paddingVertical: 32,
@@ -1114,13 +805,6 @@ const localStyles = StyleSheet.create({
     lineHeight: 40,
     fontWeight: '800',
     letterSpacing: -0.8,
-  },
-  heroAddCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   walletsStrip: {
     flexDirection: 'row',
@@ -1159,26 +843,8 @@ const localStyles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 6,
   },
-  aiCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  aiGoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 14,
-  },
-  progressBar: {
-    height: 8,
-    borderRadius: 4,
+  categoryProgressBar: {
+    height: 6,
+    borderRadius: 3,
   },
 });

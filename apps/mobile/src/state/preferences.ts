@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { create } from 'zustand';
 import { convertMoney } from '@pfm/domain';
 import type {
@@ -18,9 +19,28 @@ export interface UserPreferences {
   seedEnabled: boolean;
 }
 
+export type ChatActionType = 'camera' | 'library' | 'prompt';
+
+export interface ReceiptAssetPayload {
+  uri: string;
+  width?: number;
+  height?: number;
+}
+
 interface PreferencesState extends UserPreferences {
   hydrated: boolean;
   pendingTransactionEntry: 'manual' | 'natural' | null;
+  pendingChatAction: ChatActionType | null;
+  pendingReceiptAsset: ReceiptAssetPayload | null;
+  isAddTransactionOpen: boolean;
+  isChatOpen: boolean;
+  isTabBarVisible: boolean;
+  setTabBarVisible(visible: boolean): void;
+  openAddTransaction(mode?: 'manual' | 'natural'): void;
+  closeAddTransaction(): void;
+  openChat(action?: ChatActionType): void;
+  openChatWithReceipt(asset: ReceiptAssetPayload): void;
+  closeChat(): void;
   exchangeRate: number | null;
   exchangeRateDate: string | null;
   exchangeRateCached: boolean;
@@ -32,6 +52,9 @@ interface PreferencesState extends UserPreferences {
   setSeedEnabled(enabled: boolean): Promise<void>;
   requestAddTransaction(mode?: 'manual' | 'natural'): void;
   consumeAddTransaction(): 'manual' | 'natural' | null;
+  requestChatCamera(action?: ChatActionType): void;
+  consumeChatAction(): ChatActionType | null;
+  consumeReceiptAsset(): ReceiptAssetPayload | null;
 }
 
 const PREF_KEYS = {
@@ -140,10 +163,16 @@ export function formatTransactionCurrencyAmount(
   rate: number | null,
 ): string {
   if (row.original_currency !== 'USD')
-    return formatCurrencyAmount(row.amount, currency, rate ? { rate } : undefined);
+    return formatCurrencyAmount(
+      row.amount,
+      currency,
+      rate ? { rate } : undefined,
+    );
   const originalCents = row.original_amount_minor ?? 0;
   if (currency === 'USD') {
-    const dollars = Math.floor(originalCents / 100).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const dollars = Math.floor(originalCents / 100)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     return `$${dollars}.${(originalCents % 100).toString().padStart(2, '0')}`;
   }
   return formatCurrencyAmount(
@@ -159,6 +188,42 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   seedEnabled: false,
   hydrated: false,
   pendingTransactionEntry: null,
+  pendingChatAction: null,
+  pendingReceiptAsset: null,
+  isAddTransactionOpen: false,
+  isChatOpen: false,
+  isTabBarVisible: true,
+
+  setTabBarVisible(visible: boolean) {
+    if (get().isTabBarVisible !== visible) {
+      set({ isTabBarVisible: visible });
+    }
+  },
+
+  openAddTransaction(mode = 'manual') {
+    set({ isAddTransactionOpen: true, pendingTransactionEntry: mode });
+  },
+
+  closeAddTransaction() {
+    set({ isAddTransactionOpen: false, pendingTransactionEntry: null });
+  },
+
+  openChat(action?: ChatActionType) {
+    set({ isChatOpen: true, pendingChatAction: action ?? null });
+  },
+
+  openChatWithReceipt(asset: ReceiptAssetPayload) {
+    set({
+      isChatOpen: true,
+      pendingReceiptAsset: asset,
+      pendingChatAction: null,
+    });
+  },
+
+  closeChat() {
+    set({ isChatOpen: false, pendingChatAction: null, pendingReceiptAsset: null });
+  },
+
   exchangeRate: null,
   exchangeRateDate: null,
   exchangeRateCached: false,
@@ -177,13 +242,33 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   },
 
   requestAddTransaction(mode = 'manual') {
-    set({ pendingTransactionEntry: mode });
+    set({ isAddTransactionOpen: true, pendingTransactionEntry: mode });
   },
 
   consumeAddTransaction() {
     const current = get().pendingTransactionEntry;
     if (current !== null) {
       set({ pendingTransactionEntry: null });
+    }
+    return current;
+  },
+
+  requestChatCamera(action: ChatActionType = 'camera') {
+    set({ isChatOpen: true, pendingChatAction: action });
+  },
+
+  consumeChatAction() {
+    const current = get().pendingChatAction;
+    if (current !== null) {
+      set({ pendingChatAction: null });
+    }
+    return current;
+  },
+
+  consumeReceiptAsset() {
+    const current = get().pendingReceiptAsset;
+    if (current !== null) {
+      set({ pendingReceiptAsset: null });
     }
     return current;
   },
@@ -259,3 +344,15 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     set({ seedEnabled: enabled });
   },
 }));
+
+export function useIsTabBarVisible() {
+  const [visible, setVisible] = useState(
+    () => usePreferences.getState().isTabBarVisible,
+  );
+  useEffect(() => {
+    return usePreferences.subscribe((state) => {
+      setVisible(state.isTabBarVisible);
+    });
+  }, []);
+  return visible;
+}

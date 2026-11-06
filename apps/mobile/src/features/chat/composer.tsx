@@ -47,7 +47,10 @@ import {
   type EntryDraft,
 } from '../quick-entry/draft';
 import { EntryConfirmation, entryKindLabel } from '../quick-entry/confirmation';
-import { hasReceiptConsent, saveReceiptConsent } from '../quick-entry/receipt-consent';
+import {
+  hasReceiptConsent,
+  saveReceiptConsent,
+} from '../quick-entry/receipt-consent';
 import { receiptToParseResult } from '../quick-entry/receipt';
 import { routeChatInput } from './intent';
 import { publishChatCommit } from './commit';
@@ -114,9 +117,20 @@ export function ChatComposer({
   const theme = useDesignTheme();
   const selectedCurrency = usePreferences((state) => state.currency);
   const language = usePreferences((state) => state.language);
-  const quickSample = language === 'en'
-    ? selectedCurrency === 'USD' ? 'spent $10 on breakfast' : 'spent 10000 VND on breakfast'
-    : vi.aiQuickMorningSample;
+  const pendingChatAction = usePreferences((state) => state.pendingChatAction);
+  const consumeChatAction = usePreferences((state) => state.consumeChatAction);
+  const pendingReceiptAsset = usePreferences(
+    (state) => state.pendingReceiptAsset,
+  );
+  const consumeReceiptAsset = usePreferences(
+    (state) => state.consumeReceiptAsset,
+  );
+  const quickSample =
+    language === 'en'
+      ? selectedCurrency === 'USD'
+        ? 'spent $10 on breakfast'
+        : 'spent 10000 VND on breakfast'
+      : vi.aiQuickMorningSample;
   const router = useRouter();
 
   const load = useCallback(async () => {
@@ -212,7 +226,12 @@ export function ChatComposer({
     });
     setSession({
       result: preview.parsed,
-      drafts: makeEntryDrafts(preview.parsed, context, uuid.v4, usePreferences.getState().currency),
+      drafts: makeEntryDrafts(
+        preview.parsed,
+        context,
+        uuid.v4,
+        usePreferences.getState().currency,
+      ),
       messageId: uuid.v4(),
       chatSessionId,
     });
@@ -396,8 +415,12 @@ export function ChatComposer({
     setShowQuickBar(false);
   };
 
-  const captureReceipt = async (source: 'camera' | 'library') => {
-    if (working.current || disabled || !context) return;
+  const processReceiptAsset = async (asset: {
+    uri: string;
+    width?: number;
+    height?: number;
+  }) => {
+    if (working.current || disabled || !context || !mounted.current) return;
     if (!context.wallets.length) {
       setError(vi.transactionWalletRequired);
       return;
@@ -407,70 +430,170 @@ export function ChatComposer({
     setError('');
     let processedImageUri: string | null = null;
     try {
-      if (source === 'camera') {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) throw new Error(vi.receiptCameraDenied);
-      }
-      const selected = source === 'camera'
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'] })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false });
-      if (selected.canceled || !focused.current) return;
-      const asset = selected.assets[0];
-      if (!asset) return;
       const hasConsent = await withDatabase(hasReceiptConsent);
-      if (!focused.current) return;
+      if (!mounted.current) return;
       if (!hasConsent) {
-        const agreed = await new Promise<boolean>((resolve) => Alert.alert(
-          vi.receiptConsentTitle,
-          vi.receiptConsentBody,
-          [
-            { text: vi.cancel, style: 'cancel', onPress: () => resolve(false) },
-            { text: vi.receiptConsentAgree, onPress: () => resolve(true) },
-          ],
-          { cancelable: true, onDismiss: () => resolve(false) },
-        ));
-        if (!agreed || !focused.current) return;
-        await withDatabase((db) => saveReceiptConsent(db, new Date().toISOString()));
+        const agreed = await new Promise<boolean>((resolve) =>
+          Alert.alert(
+            vi.receiptConsentTitle,
+            vi.receiptConsentBody,
+            [
+              {
+                text: vi.cancel,
+                style: 'cancel',
+                onPress: () => resolve(false),
+              },
+              { text: vi.receiptConsentAgree, onPress: () => resolve(true) },
+            ],
+            { cancelable: true, onDismiss: () => resolve(false) },
+          ),
+        );
+        if (!agreed || !mounted.current) return;
+        await withDatabase((db) =>
+          saveReceiptConsent(db, new Date().toISOString()),
+        );
       }
-      const resize = asset.width >= asset.height
-        ? { width: Math.min(asset.width, 1600) }
-        : { height: Math.min(asset.height, 1600) };
+      const assetWidth = asset.width ?? 1200;
+      const assetHeight = asset.height ?? 1600;
+      const resize =
+        assetWidth >= assetHeight
+          ? { width: Math.min(assetWidth, 1600) }
+          : { height: Math.min(assetHeight, 1600) };
       const image = await ImageManipulator.manipulateAsync(
         asset.uri,
         [{ resize }],
-        { format: ImageManipulator.SaveFormat.JPEG, compress: 0.75, base64: true },
+        {
+          format: ImageManipulator.SaveFormat.JPEG,
+          compress: 0.75,
+          base64: true,
+        },
       );
       processedImageUri = image.uri;
-      if (!image.base64 || Math.floor(image.base64.length * 3 / 4) > 2 * 1024 * 1024)
+      if (
+        !image.base64 ||
+        Math.floor((image.base64.length * 3) / 4) > 2 * 1024 * 1024
+      )
         throw new Error(vi.receiptTooLarge);
-      if (!focused.current) return;
+      if (!mounted.current) return;
       const deviceId = await getOrCreateDeviceId();
-      if (!focused.current) return;
+      if (!mounted.current) return;
       const result = await scanReceipt(
         image.base64,
         getProxyBaseUrl(),
         deviceId,
       );
-      if (!focused.current) return;
+      if (!mounted.current) return;
       const parsed = receiptToParseResult(result.receipt);
       setShowQuickBar(false);
       setSession({
         result: parsed,
-        drafts: makeEntryDrafts(parsed, context, uuid.v4, usePreferences.getState().currency),
+        drafts: makeEntryDrafts(
+          parsed,
+          context,
+          uuid.v4,
+          usePreferences.getState().currency,
+        ),
         messageId: uuid.v4(),
         chatSessionId,
       });
     } catch (failure) {
-      if (focused.current)
-        setError(failure instanceof Error && failure.message.length <= 200
-          ? failure.message : vi.receiptScanFailed);
+      if (mounted.current)
+        setError(
+          failure instanceof Error && failure.message.length <= 200
+            ? failure.message
+            : vi.receiptScanFailed,
+        );
     } finally {
       if (processedImageUri)
-        await FileSystem.deleteAsync(processedImageUri, { idempotent: true }).catch(() => {});
+        await FileSystem.deleteAsync(processedImageUri, {
+          idempotent: true,
+        }).catch(() => {});
       working.current = false;
       if (mounted.current) setBusy(false);
     }
   };
+
+  const captureReceipt = async (source: 'camera' | 'library') => {
+    if (working.current || disabled || !context || !mounted.current) return;
+    if (!context.wallets.length) {
+      setError(vi.transactionWalletRequired);
+      return;
+    }
+    try {
+      if (source === 'camera') {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) throw new Error(vi.receiptCameraDenied);
+      } else {
+        const permission =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) throw new Error(vi.receiptCameraDenied);
+      }
+      const selected =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'] })
+          : await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsMultipleSelection: false,
+            });
+      if (selected.canceled || !mounted.current || !selected.assets?.[0]) return;
+      await processReceiptAsset(selected.assets[0]);
+    } catch (failure) {
+      if (mounted.current)
+        setError(
+          failure instanceof Error && failure.message.length <= 200
+            ? failure.message
+            : vi.receiptScanFailed,
+        );
+    }
+  };
+
+  useEffect(() => {
+    if (!pendingReceiptAsset || loading || disabled || !context || !mounted.current)
+      return;
+
+    const frame = requestAnimationFrame(() => {
+      const asset = consumeReceiptAsset();
+      if (asset) {
+        void processReceiptAsset(asset);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+    // processReceiptAsset intentionally runs once for the consumed navigation receipt asset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consumeReceiptAsset, context, disabled, loading, pendingReceiptAsset]);
+
+  useEffect(() => {
+    if (
+      !pendingChatAction ||
+      loading ||
+      disabled ||
+      !context ||
+      !mounted.current
+    )
+      return;
+
+    const frame = requestAnimationFrame(() => {
+      const action = consumeChatAction();
+      if (action === 'camera' || action === 'library') {
+        void captureReceipt(action);
+      } else if (action === 'prompt') {
+        Alert.alert(vi.receiptScan, vi.receiptChooseSource, [
+          { text: vi.cancel, style: 'cancel' },
+          {
+            text: vi.receiptTakePhoto,
+            onPress: () => void captureReceipt('camera'),
+          },
+          {
+            text: vi.receiptChoosePhoto,
+            onPress: () => void captureReceipt('library'),
+          },
+        ]);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+    // captureReceipt intentionally runs once for the consumed navigation action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consumeChatAction, context, disabled, loading, pendingChatAction]);
 
   const ready =
     !busy &&
@@ -518,11 +641,19 @@ export function ChatComposer({
             icon="camera-outline"
             tone="primary"
             size="sm"
-            onPress={() => Alert.alert(vi.receiptScan, vi.receiptChooseSource, [
-              { text: vi.cancel, style: 'cancel' },
-              { text: vi.receiptTakePhoto, onPress: () => void captureReceipt('camera') },
-              { text: vi.receiptChoosePhoto, onPress: () => void captureReceipt('library') },
-            ])}
+            onPress={() =>
+              Alert.alert(vi.receiptScan, vi.receiptChooseSource, [
+                { text: vi.cancel, style: 'cancel' },
+                {
+                  text: vi.receiptTakePhoto,
+                  onPress: () => void captureReceipt('camera'),
+                },
+                {
+                  text: vi.receiptChoosePhoto,
+                  onPress: () => void captureReceipt('library'),
+                },
+              ])
+            }
           />
           <Pill
             label={quickSample}
