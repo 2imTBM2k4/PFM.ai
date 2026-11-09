@@ -25,7 +25,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField } from '@/components/ui';
+import { DateField, MoneyInput } from '@/components/ui';
 import { useFinancePalette } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
@@ -480,24 +480,27 @@ function GoalForm({
                   disabled={disabled}
                   allowClear
                 />
-              ) : (
-                <TextInput
-                  mode="outlined"
+              ) : item.name === 'target' ? (
+                <MoneyInput
                   label={item.label}
+                  accessibilityLabel={item.label}
                   value={field.value}
                   disabled={disabled}
                   onBlur={field.onBlur}
                   left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType={
-                    item.name === 'target' ? 'number-pad' : 'default'
-                  }
-                  onChangeText={(value) =>
-                    field.onChange(
-                      item.name === 'target'
-                        ? formatAmountInput(value, field.value)
-                        : value,
-                    )
-                  }
+                  onChangeText={field.onChange}
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  keyboardType="default"
+                  onChangeText={field.onChange}
                 />
               )
             }
@@ -566,17 +569,14 @@ function GoalForm({
             control={control}
             name="manual"
             render={({ field }) => (
-              <TextInput
-                mode="outlined"
+              <MoneyInput
                 label={vi.goalManual}
-                keyboardType="number-pad"
+                accessibilityLabel={vi.goalManual}
                 value={field.value}
                 disabled={disabled}
                 onBlur={field.onBlur}
                 left={<TextInput.Icon icon="piggy-bank-outline" />}
-                onChangeText={(value) =>
-                  field.onChange(formatAmountInput(value, field.value))
-                }
+                onChangeText={field.onChange}
               />
             )}
           />

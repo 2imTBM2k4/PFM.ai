@@ -24,7 +24,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField } from '@/components/ui';
+import { DateField, MoneyInput } from '@/components/ui';
 import { useFinancePalette } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
@@ -129,6 +129,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
         committed = true;
       });
       setEditing(undefined);
+      useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
       await useApp.getState().refreshRecurring(true);
       await load();
     } catch {
@@ -575,24 +576,27 @@ function RecurringForm({
                   disabled={disabled}
                   allowClear={item.name === 'end'}
                 />
-              ) : (
-                <TextInput
-                  mode="outlined"
+              ) : item.name === 'amount' ? (
+                <MoneyInput
                   label={item.label}
+                  accessibilityLabel={item.label}
                   value={field.value}
                   onBlur={field.onBlur}
                   disabled={disabled}
                   left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType={
-                    item.name === 'amount' ? 'number-pad' : 'default'
-                  }
-                  onChangeText={(value) =>
-                    field.onChange(
-                      item.name === 'amount'
-                        ? formatAmountInput(value, field.value)
-                        : value,
-                    )
-                  }
+                  onChangeText={field.onChange}
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  disabled={disabled}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  keyboardType="default"
+                  onChangeText={field.onChange}
                 />
               )
             }

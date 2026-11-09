@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { View } from 'react-native';
 import { Button, Text, TextInput, useTheme } from 'react-native-paper';
-import { AppleMenuPicker, DateField } from '@/components/ui';
+import { AppleMenuPicker, DateField, MoneyInput } from '@/components/ui';
 import { Screen, styles } from '@/components/screen';
 import { useFinancePalette } from '@/constants/theme';
 import type { WalletRow } from '@/data/repository';
@@ -91,31 +91,31 @@ export function TransactionFilterForm({
             key={item.name}
             control={control}
             name={item.name}
-            render={({ field }) => (
-              <TextInput
-                mode="outlined"
-                label={item.label}
-                accessibilityLabel={item.label}
-                value={field.value}
-                disabled={disabled}
-                onBlur={field.onBlur}
-                left={<TextInput.Icon icon={item.icon} />}
-                keyboardType={
-                  item.name.includes('Amount')
-                    ? 'number-pad'
-                    : item.name === 'text'
-                      ? 'default'
-                      : 'numbers-and-punctuation'
-                }
-                onChangeText={(value) =>
-                  field.onChange(
-                    item.name.includes('Amount')
-                      ? formatAmountInput(value, field.value)
-                      : value,
-                  )
-                }
-              />
-            )}
+            render={({ field }) =>
+              item.name.includes('Amount') ? (
+                <MoneyInput
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  onChangeText={field.onChange}
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  keyboardType="default"
+                  onChangeText={field.onChange}
+                />
+              )
+            }
           />
         ))}
         {(['from', 'to'] as const).map((name) => (

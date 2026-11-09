@@ -34,7 +34,13 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { AppleMenuPicker, DateField, GlassCard, Pill } from '@/components/ui';
+import {
+  AppleMenuPicker,
+  DateField,
+  GlassCard,
+  MoneyInput,
+  Pill,
+} from '@/components/ui';
 import {
   createSoftShadow,
   DesignRadius,
@@ -257,7 +263,10 @@ export function TransactionManager({
       setRows(data.rows);
       setMore(data.rows.length === 50);
       setWallets(data.wallets);
-      useApp.setState({ wallets: data.wallets.filter((w) => !w.is_archived) });
+      useApp.setState((s) => ({
+        wallets: data.wallets.filter((w) => !w.is_archived),
+        recurringVersion: s.recurringVersion + 1,
+      }));
       setMode({ type: 'list' });
       setNotice(vi.transactionSaved);
       void useApp.getState().refreshRecurring(true);
@@ -509,6 +518,9 @@ export function TransactionManager({
         onNaturalSaved={async () => {
           setMode({ type: 'list' });
           setNotice(vi.quickSaved);
+          useApp.setState((s) => ({
+            recurringVersion: s.recurringVersion + 1,
+          }));
           await load();
         }}
         onSave={(input) =>
@@ -1483,21 +1495,15 @@ export function TransactionForm({
           }}
           render={({ field, fieldState }) => (
             <View>
-              <TextInput
-                mode="outlined"
+              <MoneyInput
+                currency={currency}
                 label={`${vi.transactionAmount.replace(' (₫)', '')} (${currency})`}
                 accessibilityLabel={`${vi.transactionAmount.replace(' (₫)', '')} (${currency})`}
-                keyboardType={currency === 'USD' ? 'decimal-pad' : 'number-pad'}
                 value={field.value}
-                onChangeText={(value) =>
-                  field.onChange(
-                    formatAmountInput(value, field.value, currency),
-                  )
-                }
+                onChangeText={field.onChange}
                 onBlur={field.onBlur}
                 disabled={disabled}
                 error={!!fieldState.error}
-                maxLength={20}
                 left={<TextInput.Icon icon="cash" />}
               />
               {!!fieldState.error && (

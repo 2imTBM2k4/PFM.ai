@@ -24,13 +24,13 @@ import {
 } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { Screen, styles } from '@/components/screen';
-import { AppleMenuPicker, DateField } from '@/components/ui';
+import { AppleMenuPicker, DateField, MoneyInput } from '@/components/ui';
 import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { usePreferences } from '@/state/preferences';
 import { formatDisplayDate } from '@/utils/display';
-import { formatAmountInput, isFutureDate } from '../transactions/form';
+import { isFutureDate } from '../transactions/form';
 import type { EntryDraft, EntryReferences } from './draft';
 
 export const ENTRY_KINDS = [
@@ -358,31 +358,34 @@ function CandidateFields({
       name={`${path}.${name}`}
       render={({ field }) => (
         <View>
-          <TextInput
-            mode="outlined"
-            label={label}
-            accessibilityLabel={label}
-            value={field.value}
-            disabled={disabled || !draft.selected}
-            keyboardType={
-              name === 'amount'
-                ? draft.currency === 'USD'
-                  ? 'decimal-pad'
-                  : 'number-pad'
-                : 'default'
-            }
-            multiline={name === 'note'}
-            onBlur={field.onBlur}
-            outlineColor={low ? palette.warning : undefined}
-            onChangeText={(value) => {
-              field.onChange(
-                name === 'amount'
-                  ? formatAmountInput(value, field.value, draft.currency)
-                  : value,
-              );
-              if (name === 'amount') setValue(`${path}.amountConfirmed`, false);
-            }}
-          />
+          {name === 'amount' ? (
+            <MoneyInput
+              currency={draft.currency}
+              label={label}
+              accessibilityLabel={label}
+              value={field.value}
+              disabled={disabled || !draft.selected}
+              onBlur={field.onBlur}
+              outlineColor={low ? palette.warning : undefined}
+              onChangeText={(value) => {
+                field.onChange(value);
+                setValue(`${path}.amountConfirmed`, false);
+              }}
+            />
+          ) : (
+            <TextInput
+              mode="outlined"
+              label={label}
+              accessibilityLabel={label}
+              value={field.value}
+              disabled={disabled || !draft.selected}
+              keyboardType="default"
+              multiline={name === 'note'}
+              onBlur={field.onBlur}
+              outlineColor={low ? palette.warning : undefined}
+              onChangeText={field.onChange}
+            />
+          )}
           {low && <HelperText type="info">{vi.quickCheckField}</HelperText>}
         </View>
       )}

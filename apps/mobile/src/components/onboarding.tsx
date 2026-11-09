@@ -11,6 +11,7 @@ import { Pressable, View } from 'react-native';
 import { MAX_AMOUNT_VND } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { IconBadge, Screen, styles } from '@/components/screen';
+import { MoneyInput } from '@/components/ui';
 import { useFinancePalette } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
@@ -81,15 +82,12 @@ export function Onboarding() {
           }}
           render={({ field: { value, onChange, onBlur }, fieldState }) => (
             <View style={{ gap: 8 }}>
-              <TextInput
-                mode="outlined"
+              <MoneyInput
                 label={vi.startingBalance}
                 accessibilityLabel={vi.startingBalance}
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
-                keyboardType="number-pad"
-                maxLength={12}
                 error={!!fieldState.error}
                 disabled={isSubmitting || skipping}
                 left={<TextInput.Icon icon="cash" />}

@@ -26,6 +26,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
+import { MoneyInput } from '@/components/ui';
 import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
@@ -544,15 +545,13 @@ function WalletForm({
           }}
           render={({ field, fieldState }) => (
             <View>
-              <TextInput
-                mode="outlined"
+              <MoneyInput
+                allowNegative
                 label={vi.initialBalance}
                 accessibilityLabel={vi.initialBalance}
                 value={field.value}
                 onChangeText={field.onChange}
                 onBlur={field.onBlur}
-                keyboardType="numbers-and-punctuation"
-                maxLength={13}
                 error={!!fieldState.error}
                 disabled={disabled}
                 left={<TextInput.Icon icon="cash" />}
