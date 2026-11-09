@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { monthKey, today } from '@pfm/domain';
 import { withDatabase } from '@/data/connection';
 import { vi } from '@/messages/vi';
+import { usePreferences } from '@/state/preferences';
 import { processBudgetAlerts } from './alerts';
 
 export const BUDGET_NOTIFICATION_PREFIX = 'pfm-budget-';
@@ -14,12 +15,21 @@ export const useBudgetNotifications = create<{
 }>(() => ({ status: 'unknown' }));
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: false,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification?: Notifications.Notification) => {
+    const showBanner = Boolean(
+      (
+        notification?.request?.content?.data as
+          | { showBanner?: boolean }
+          | undefined
+      )?.showBanner,
+    );
+    return {
+      shouldShowBanner: showBanner,
+      shouldShowList: true,
+      shouldPlaySound: showBanner,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 function permissionGranted(
@@ -43,6 +53,10 @@ async function ensureChannel() {
 
 let pending: Promise<void> | undefined;
 export function checkBudgetAlerts() {
+  const prefs = usePreferences.getState();
+  if (!prefs.notificationsEnabled || !prefs.notifyBudgetAlerts) {
+    return Promise.resolve();
+  }
   pending ??= withDatabase((db) =>
     processBudgetAlerts(
       db,

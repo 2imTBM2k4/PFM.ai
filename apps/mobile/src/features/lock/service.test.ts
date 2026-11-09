@@ -8,10 +8,10 @@ let storage: LockStorage;
 let lock: PinLock;
 const derive = async (pin: string, salt: string) =>
   scryptSync(pin, salt, 32, {
-    N: 65536,
+    N: 128,
     r: 8,
     p: 1,
-    maxmem: 128 * 1024 * 1024,
+    maxmem: 4 * 1024 * 1024,
   }).toString('hex');
 const createLock = () =>
   new PinLock(

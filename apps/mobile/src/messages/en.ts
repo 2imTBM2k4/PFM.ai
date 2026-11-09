@@ -579,4 +579,40 @@ export const en: Record<keyof typeof viMessages, string> = {
   aiQuickMorningSample: 'Spent $10 on breakfast',
   txTimeToday: 'Today',
   txTimeYesterday: 'Yesterday',
+  settingsSecurityTitle: 'Security',
+  settingsSecuritySubtitle: 'PIN lock and data management (delete all data).',
+  securityPinMenuTitle: 'PIN code',
+  securityDataMenuTitle: 'Data management',
+  securityDataMenuSubtitle:
+    'Delete all on-device data and manage privacy consents.',
+  settingsNotificationsMenuTitle: 'Notifications',
+  settingsNotificationsMenuSubtitle:
+    'Budgets, daily expense reminders, AI replies, debts, and recurring entries.',
+  notificationMasterSwitchLabel: 'Allow notifications',
+  notificationMasterSwitchDescription:
+    'Enable app notifications on this device.',
+  notificationBudgetMenuTitle: 'Budgets',
+  notificationBudgetMenuSubtitle:
+    'Alerts when spending reaches a budget warning threshold or limit.',
+  notificationBudgetSwitchLabel: 'Budget notifications',
+  notificationDailyExpenseLabel: 'Daily expense note reminder',
+  notificationDailyExpenseDescription:
+    'Remind you to log daily expenses at your chosen time.',
+  notificationDailyExpenseTimeLabel: 'Notification time',
+  notificationDailyExpenseChannel: 'Daily expense reminders',
+  dailyExpenseNotificationTitle: 'Log your expenses today',
+  dailyExpenseNotificationBody:
+    'Take a moment to record your daily income and expenses in PFM.ai.',
+  notificationAIReplyLabel: 'Notify when AI finishes replying',
+  notificationAIReplyDescription:
+    'Get notified when the AI assistant finishes replying while you are in another app or tab.',
+  aiReplyNotificationTitle: 'AI assistant replied',
+  aiReplyNotificationBody:
+    'PFM.ai has finished preparing your answer. Tap to view.',
+  notificationDebtsLabel: 'Borrowing and lending alerts',
+  notificationDebtsDescription:
+    'Reminders when borrowed or lent amounts approach their due date.',
+  notificationRecurringLabel: 'Recurring transactions when due',
+  notificationRecurringDescription:
+    'Reminders when a recurring transaction reaches its scheduled date.',
 };

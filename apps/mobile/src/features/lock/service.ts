@@ -11,6 +11,7 @@ interface PinRecord {
   verifier: string;
   attempts: number;
   blockedUntil: number;
+  fast?: boolean;
 }
 
 function validatePin(pin: string) {
@@ -33,6 +34,10 @@ export class PinLock {
     private readonly derive: (pin: string, salt: string) => Promise<string>,
     private readonly randomSalt: () => string,
     private readonly now: () => number,
+    private readonly deriveLegacy?: (
+      pin: string,
+      salt: string,
+    ) => Promise<string>,
   ) {}
 
   private serialize<T>(task: () => Promise<T>): Promise<T> {
@@ -92,6 +97,7 @@ export class PinLock {
       verifier,
       attempts: 0,
       blockedUntil: 0,
+      fast: true,
     };
     await this.storage.set(JSON.stringify(record));
   }
@@ -120,9 +126,20 @@ export class PinLock {
       JSON.stringify({ ...record, attempts, blockedUntil: this.now() + delay }),
     );
     const verifier = await this.derive(pin, record.salt);
-    if (!equalVerifier(verifier, record.verifier)) return false;
+    let matched = equalVerifier(verifier, record.verifier);
+    if (!matched && !record.fast && this.deriveLegacy) {
+      const legacyVerifier = await this.deriveLegacy(pin, record.salt);
+      matched = equalVerifier(legacyVerifier, record.verifier);
+    }
+    if (!matched) return false;
     await this.storage.set(
-      JSON.stringify({ ...record, attempts: 0, blockedUntil: 0 }),
+      JSON.stringify({
+        ...record,
+        verifier,
+        fast: true,
+        attempts: 0,
+        blockedUntil: 0,
+      }),
     );
     return true;
   }

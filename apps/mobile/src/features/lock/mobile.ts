@@ -3,7 +3,7 @@ import { getRandomValues } from 'expo-crypto';
 import { isRunningInExpoGo } from 'expo';
 import * as SecureStore from 'expo-secure-store';
 import { useStore } from 'zustand';
-import { derivePinVerifier } from './kdf';
+import { deriveLegacyPinVerifier, derivePinVerifier } from './kdf';
 import { PinLock } from './service';
 import { createLockSession } from './session';
 import { logAppEvent } from '../../services/logger';
@@ -121,6 +121,7 @@ export const pinLock = new PinLock(
   // getRandomValues fails if unavailable; getRandomBytes has a development Math.random fallback.
   () => bytesToHex(getRandomValues(new Uint8Array(32))),
   Date.now,
+  deriveLegacyPinVerifier,
 );
 
 // Owner deferred PIN only in Expo Go after measuring a 44-second derivation.

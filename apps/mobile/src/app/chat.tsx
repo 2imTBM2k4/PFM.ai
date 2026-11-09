@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { uuid } from 'expo';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   Alert,
+  AppState,
   FlatList,
   Platform,
   Pressable,
@@ -47,8 +48,10 @@ import {
 import { AICategoryBarChart } from '@/features/chat/ai-category-chart';
 import { ChatComposer } from '@/features/chat/composer';
 import { mergeChatMessages } from '@/features/chat/history';
+import { notifyAIReplyCompleted } from '@/features/notifications/notification-settings-service';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
+import { usePreferences } from '@/state/preferences';
 import {
   ADVICE_CLOCK,
   defaultAIService,
@@ -153,6 +156,7 @@ export default function Chat({
   const cursor = useRef<ChatRow | undefined>(undefined);
   const paging = useRef(false);
   const mounted = useRef(true);
+  const screenFocused = useRef(true);
   const deletingRef = useRef(false);
   const historySessionId = useRef<string | null>(null);
   const openSwipeIdRef = useRef<string | null>(null);
@@ -168,6 +172,15 @@ export default function Chat({
       mounted.current = false;
     };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      screenFocused.current = true;
+      return () => {
+        screenFocused.current = false;
+      };
+    }, []),
+  );
 
   const load = useCallback(
     async (before?: ChatRow) => {
@@ -252,8 +265,15 @@ export default function Chat({
         const saved = await withDatabase((db) =>
           savePersistedAIReplyIfMessageExists(db, reply),
         );
+        if (!saved) return;
+        const isAppBackground = AppState.currentState !== 'active';
+        const isAwayFromChat = isModal
+          ? !usePreferences.getState().isChatOpen || !mounted.current
+          : !screenFocused.current || !mounted.current;
+        if (isAppBackground || isAwayFromChat) {
+          void notifyAIReplyCompleted(reply.replyText);
+        }
         if (
-          !saved ||
           !mounted.current ||
           useApp.getState().chatSessionId !== sessionId
         )
@@ -284,7 +304,7 @@ export default function Chat({
         }
       }
     },
-    [],
+    [isModal],
   );
 
   const onMessage = useCallback((message: ChatRow, sessionId: string) => {

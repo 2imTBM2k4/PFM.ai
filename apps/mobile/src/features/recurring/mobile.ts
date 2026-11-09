@@ -17,6 +17,7 @@ import {
   DEBT_NOTIFICATION_PREFIX,
 } from '@/features/debts/reminders';
 import { vi } from '@/messages/vi';
+import { usePreferences } from '@/state/preferences';
 import {
   buildRecurringReminders,
   RECURRING_NOTIFICATION_PREFIX,
@@ -61,14 +62,21 @@ async function reconcileReminders(
     0,
     Math.min(32, 48 - (scheduled.length - own.length)),
   );
-  const desired = granted
-    ? [
-        ...buildRecurringReminders(rules, exclusions, now, capacity),
-        ...buildDebtReminders(debts, now),
-      ]
-        .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
-        .slice(0, capacity)
-    : [];
+  const prefs = usePreferences.getState();
+  const masterEnabled = prefs.notificationsEnabled;
+  const allowRecurring = masterEnabled && prefs.notifyRecurring;
+  const allowDebts = masterEnabled && prefs.notifyDebts;
+  const desired =
+    granted && masterEnabled
+      ? [
+          ...(allowRecurring
+            ? buildRecurringReminders(rules, exclusions, now, capacity)
+            : []),
+          ...(allowDebts ? buildDebtReminders(debts, now) : []),
+        ]
+          .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id))
+          .slice(0, capacity)
+      : [];
   const ids = new Set(desired.map((item) => item.id));
   for (const item of own)
     if (!ids.has(item.identifier))

@@ -90,3 +90,24 @@ it('changes sample switch state only after data and preference writes finish', a
   expect(usePreferences.getState().seedEnabled).toBe(true);
   expect(mocks.apply).toHaveBeenCalledOnce();
 });
+
+it('persists notification preferences and reminder time', async () => {
+  await usePreferences.getState().setNotificationsEnabled(false);
+  expect(usePreferences.getState().notificationsEnabled).toBe(false);
+  expect(mocks.write).toHaveBeenCalledWith(
+    expect.stringContaining('INSERT INTO settings'),
+    'pref_notifications_enabled',
+    'false',
+  );
+
+  await usePreferences.getState().setNotifyDailyExpenseReminder(true);
+  await usePreferences.getState().setDailyExpenseReminderTime('21:30');
+  expect(usePreferences.getState().notifyDailyExpenseReminder).toBe(true);
+  expect(usePreferences.getState().dailyExpenseReminderTime).toBe('21:30');
+  expect(mocks.write).toHaveBeenCalledWith(
+    expect.stringContaining('INSERT INTO settings'),
+    'pref_daily_expense_time',
+    '21:30',
+  );
+});
+

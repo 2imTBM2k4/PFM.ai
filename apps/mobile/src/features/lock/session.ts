@@ -85,11 +85,16 @@ export function createLockSession(
       const startedAtRevision = revision;
       try {
         const valid = await service.verify(pin);
-        const record = await service.status();
-        set({ blockedUntil: record.blockedUntil });
+        if (!valid) {
+          const record = await service.status();
+          set({ blockedUntil: record.blockedUntil });
+          if (startedAtRevision !== revision || !get().visible)
+            return 'cancelled';
+          return 'invalid';
+        }
+        set({ blockedUntil: 0 });
         if (startedAtRevision !== revision || !get().visible)
           return 'cancelled';
-        if (!valid) return 'invalid';
         set({ status: 'unlocked' });
         return 'unlocked';
       } catch (error) {

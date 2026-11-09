@@ -17,6 +17,13 @@ export interface UserPreferences {
   currency: CurrencyCode;
   themeMode: ThemeMode;
   seedEnabled: boolean;
+  notificationsEnabled: boolean;
+  notifyBudgetAlerts: boolean;
+  notifyDailyExpenseReminder: boolean;
+  dailyExpenseReminderTime: string;
+  notifyAIReply: boolean;
+  notifyDebts: boolean;
+  notifyRecurring: boolean;
 }
 
 export type ChatActionType = 'camera' | 'library' | 'prompt';
@@ -50,6 +57,13 @@ interface PreferencesState extends UserPreferences {
   setCurrency(currency: CurrencyCode): Promise<void>;
   setThemeMode(themeMode: ThemeMode): Promise<void>;
   setSeedEnabled(enabled: boolean): Promise<void>;
+  setNotificationsEnabled(enabled: boolean): Promise<void>;
+  setNotifyBudgetAlerts(enabled: boolean): Promise<void>;
+  setNotifyDailyExpenseReminder(enabled: boolean): Promise<void>;
+  setDailyExpenseReminderTime(time: string): Promise<void>;
+  setNotifyAIReply(enabled: boolean): Promise<void>;
+  setNotifyDebts(enabled: boolean): Promise<void>;
+  setNotifyRecurring(enabled: boolean): Promise<void>;
   requestAddTransaction(mode?: 'manual' | 'natural'): void;
   consumeAddTransaction(): 'manual' | 'natural' | null;
   requestChatCamera(action?: ChatActionType): void;
@@ -62,6 +76,13 @@ const PREF_KEYS = {
   currency: 'pref_currency',
   themeMode: 'pref_theme_mode',
   seedEnabled: 'pref_seed_enabled',
+  notificationsEnabled: 'pref_notifications_enabled',
+  notifyBudgetAlerts: 'pref_notify_budget_alerts',
+  notifyDailyExpenseReminder: 'pref_notify_daily_expense',
+  dailyExpenseReminderTime: 'pref_daily_expense_time',
+  notifyAIReply: 'pref_notify_ai_reply',
+  notifyDebts: 'pref_notify_debts',
+  notifyRecurring: 'pref_notify_recurring',
 } as const;
 
 /**
@@ -186,6 +207,13 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   currency: 'VND',
   themeMode: 'light',
   seedEnabled: false,
+  notificationsEnabled: true,
+  notifyBudgetAlerts: true,
+  notifyDailyExpenseReminder: false,
+  dailyExpenseReminderTime: '20:00',
+  notifyAIReply: true,
+  notifyDebts: true,
+  notifyRecurring: true,
   hydrated: false,
   pendingTransactionEntry: null,
   pendingChatAction: null,
@@ -284,6 +312,31 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
         const currency = await readSettingValue(db, PREF_KEYS.currency);
         const themeMode = await readSettingValue(db, PREF_KEYS.themeMode);
         const seedEnabled = await readSettingValue(db, PREF_KEYS.seedEnabled);
+        const notificationsEnabled = await readSettingValue(
+          db,
+          PREF_KEYS.notificationsEnabled,
+        );
+        const notifyBudgetAlerts = await readSettingValue(
+          db,
+          PREF_KEYS.notifyBudgetAlerts,
+        );
+        const notifyDailyExpenseReminder = await readSettingValue(
+          db,
+          PREF_KEYS.notifyDailyExpenseReminder,
+        );
+        const dailyExpenseReminderTime = await readSettingValue(
+          db,
+          PREF_KEYS.dailyExpenseReminderTime,
+        );
+        const notifyAIReply = await readSettingValue(
+          db,
+          PREF_KEYS.notifyAIReply,
+        );
+        const notifyDebts = await readSettingValue(db, PREF_KEYS.notifyDebts);
+        const notifyRecurring = await readSettingValue(
+          db,
+          PREF_KEYS.notifyRecurring,
+        );
         return {
           language: (language === 'en' || language === 'vi'
             ? language
@@ -295,6 +348,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
             ? themeMode
             : 'light') as ThemeMode,
           seedEnabled: seedEnabled === 'true',
+          notificationsEnabled: notificationsEnabled !== 'false',
+          notifyBudgetAlerts: notifyBudgetAlerts !== 'false',
+          notifyDailyExpenseReminder: notifyDailyExpenseReminder === 'true',
+          dailyExpenseReminderTime:
+            dailyExpenseReminderTime &&
+            /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(dailyExpenseReminderTime)
+              ? dailyExpenseReminderTime
+              : '20:00',
+          notifyAIReply: notifyAIReply !== 'false',
+          notifyDebts: notifyDebts !== 'false',
+          notifyRecurring: notifyRecurring !== 'false',
         };
       });
       set({ ...loaded, hydrated: true });
@@ -346,6 +410,88 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
       else await removeDevSeedData(db);
     });
     set({ seedEnabled: enabled });
+  },
+
+  async setNotificationsEnabled(enabled) {
+    set({ notificationsEnabled: enabled });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.notificationsEnabled, String(enabled)),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
+  },
+
+  async setNotifyBudgetAlerts(enabled) {
+    set({ notifyBudgetAlerts: enabled });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.notifyBudgetAlerts, String(enabled)),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
+  },
+
+  async setNotifyDailyExpenseReminder(enabled) {
+    set({ notifyDailyExpenseReminder: enabled });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(
+          db,
+          PREF_KEYS.notifyDailyExpenseReminder,
+          String(enabled),
+        ),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
+  },
+
+  async setDailyExpenseReminderTime(time) {
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) return;
+    set({ dailyExpenseReminderTime: time });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.dailyExpenseReminderTime, time),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
+  },
+
+  async setNotifyAIReply(enabled) {
+    set({ notifyAIReply: enabled });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.notifyAIReply, String(enabled)),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
+  },
+
+  async setNotifyDebts(enabled) {
+    set({ notifyDebts: enabled });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.notifyDebts, String(enabled)),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
+  },
+
+  async setNotifyRecurring(enabled) {
+    set({ notifyRecurring: enabled });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.notifyRecurring, String(enabled)),
+      );
+    } catch {
+      // Keep in-memory state if persistence is unavailable in tests.
+    }
   },
 }));
 

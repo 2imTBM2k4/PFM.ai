@@ -644,6 +644,43 @@ export const viMessages = {
   aiQuickMorningSample: 'Ăn sáng 30k',
   txTimeToday: 'Hôm nay',
   txTimeYesterday: 'Hôm qua',
+  settingsSecurityTitle: 'Bảo mật',
+  settingsSecuritySubtitle:
+    'Mã PIN và quản lý dữ liệu (xóa toàn bộ dữ liệu).',
+  securityPinMenuTitle: 'Mã PIN',
+  securityDataMenuTitle: 'Quản lý dữ liệu',
+  securityDataMenuSubtitle:
+    'Xóa toàn bộ dữ liệu và quản lý quyền riêng tư trên thiết bị.',
+  settingsNotificationsMenuTitle: 'Thông báo',
+  settingsNotificationsMenuSubtitle:
+    'Ngân sách, nhắc ghi chi tiêu, phản hồi AI, nợ và giao dịch định kỳ.',
+  notificationMasterSwitchLabel: 'Cho phép thông báo',
+  notificationMasterSwitchDescription:
+    'Bật để nhận thông báo từ ứng dụng trên thiết bị này.',
+  notificationBudgetMenuTitle: 'Ngân sách',
+  notificationBudgetMenuSubtitle:
+    'Cảnh báo khi chi tiêu chạm ngưỡng hoặc vượt hạn mức ngân sách.',
+  notificationBudgetSwitchLabel: 'Thông báo ngân sách',
+  notificationDailyExpenseLabel: 'Đặt giờ thông báo ghi chú chi tiêu',
+  notificationDailyExpenseDescription:
+    'Nhắc bạn ghi lại các khoản thu chi hằng ngày vào khung giờ tự chọn.',
+  notificationDailyExpenseTimeLabel: 'Thời gian nhận thông báo',
+  notificationDailyExpenseChannel: 'Nhắc ghi chú chi tiêu',
+  dailyExpenseNotificationTitle: 'Nhắc ghi chú chi tiêu hôm nay',
+  dailyExpenseNotificationBody:
+    'Đừng quên ghi lại các khoản thu chi trong ngày vào PFM.ai nhé!',
+  notificationAIReplyLabel: 'Thông báo khi AI trả lời xong',
+  notificationAIReplyDescription:
+    'Nhận thông báo khi chatbot AI trả lời xong lúc bạn đang ở ứng dụng khác hoặc tab khác.',
+  aiReplyNotificationTitle: 'Trợ lý AI đã trả lời xong',
+  aiReplyNotificationBody:
+    'PFM.ai đã chuẩn bị xong câu trả lời cho bạn. Chạm để xem chi tiết.',
+  notificationDebtsLabel: 'Thông báo về vay và cho vay',
+  notificationDebtsDescription:
+    'Nhắc nhở khi các khoản vay hoặc cho vay sắp đến ngày hẹn trả.',
+  notificationRecurringLabel: 'Giao dịch định kỳ khi tới ngày',
+  notificationRecurringDescription:
+    'Nhắc lịch khi có giao dịch định kỳ đến ngày thực hiện.',
 } as const;
 
 export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(

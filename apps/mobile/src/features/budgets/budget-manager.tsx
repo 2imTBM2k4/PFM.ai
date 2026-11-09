@@ -50,12 +50,7 @@ import {
   formatAmountInput,
   parseAmountInput,
 } from '@/features/transactions/form';
-import {
-  checkBudgetAlerts,
-  requestBudgetNotifications,
-  testBudgetNotification,
-  useBudgetNotifications,
-} from './mobile';
+import { checkBudgetAlerts } from './mobile';
 
 type Mode =
   { type: 'list' } | { type: 'form'; row: BudgetRow | null; id: string };
@@ -332,7 +327,6 @@ export function BudgetManager({
             gap: 14,
             paddingBottom: DesignSpacing.bottomTabClearance,
           }}
-          ListHeaderComponent={<NotificationControls />}
           ListEmptyComponent={
             <EmptyStateCard icon="chart-arc" message={vi.budgetEmpty} />
           }
@@ -534,102 +528,6 @@ const BudgetItem = memo(function BudgetItem({
     </View>
   );
 });
-
-function NotificationControls() {
-  const status = useBudgetNotifications((state) => state.status);
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState(false),
-    [scheduled, setScheduled] = useState(false),
-    [expanded, setExpanded] = useState(false);
-  const { colors } = useTheme();
-  const palette = useFinancePalette();
-  const run = async (test: boolean) => {
-    if (busy) return;
-    setBusy(true);
-    setError(false);
-    setScheduled(false);
-    try {
-      if (test) setScheduled(await testBudgetNotification());
-      else await requestBudgetNotifications();
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <View style={{ marginBottom: 6, gap: 10 }}>
-      {(status === 'denied' || status === 'error' || error) && (
-        <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {status === 'denied'
-            ? vi.budgetNotificationDenied
-            : vi.budgetNotificationError}
-        </Text>
-      )}
-      <View
-        style={{
-          backgroundColor: palette.surface,
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: palette.border,
-          overflow: 'hidden',
-        }}
-      >
-        <List.Accordion
-          title={vi.budgetNotifications}
-          left={(props) => <List.Icon {...props} icon="bell-ring-outline" />}
-          expanded={expanded}
-          onPress={() => setExpanded((current) => !current)}
-          style={{ backgroundColor: palette.surface }}
-        >
-          <View style={{ gap: 12, padding: 16, paddingTop: 4 }}>
-            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {vi.budgetNotificationDescription}
-            </Text>
-            {status === 'granted' && (
-              <StatusPill
-                icon="check-circle-outline"
-                label={vi.budgetNotificationGranted}
-                bg={palette.incomeSoft}
-                fg={palette.incomeInk}
-              />
-            )}
-            <View style={styles.row}>
-              <Button
-                mode="contained-tonal"
-                disabled={busy}
-                loading={busy}
-                onPress={() => {
-                  void run(false);
-                }}
-              >
-                {vi.budgetNotificationEnable}
-              </Button>
-              <Button
-                mode="outlined"
-                disabled={busy || status !== 'granted'}
-                onPress={() => {
-                  void run(true);
-                }}
-              >
-                {vi.budgetNotificationTest}
-              </Button>
-            </View>
-            {scheduled && (
-              <Text
-                accessibilityLiveRegion="polite"
-                variant="bodySmall"
-                style={{ color: palette.income, fontWeight: '600' }}
-              >
-                {vi.budgetNotificationTestScheduled}
-              </Text>
-            )}
-          </View>
-        </List.Accordion>
-      </View>
-    </View>
-  );
-}
 
 interface BudgetFields {
   amount: string;

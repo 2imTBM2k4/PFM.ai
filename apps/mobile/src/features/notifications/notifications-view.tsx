@@ -2,22 +2,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { monthKey, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Text } from 'react-native-paper';
-import { EmptyStateCard, IconBadge, Screen, styles } from '@/components/screen';
+import { View } from 'react-native';
+import { ActivityIndicator, Text } from 'react-native-paper';
+import { EmptyStateCard, Screen, styles } from '@/components/screen';
 import { GlassCard, Pill } from '@/components/ui';
-import {
-  DesignSpacing,
-  useDesignTheme,
-  useFinancePalette,
-} from '@/constants/theme';
+import { DesignSpacing, useDesignTheme } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import { readDashboard } from '@/data/dashboard';
-import {
-  requestBudgetNotifications,
-  testBudgetNotification,
-  useBudgetNotifications,
-} from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { displayCategoryName } from '@/messages/seed-labels';
 import { usePreferences } from '@/state/preferences';
@@ -32,17 +23,13 @@ interface NotificationAlertItem {
 }
 
 /**
- * Basic Notifications screen (Stage 6) displaying real-time budget threshold alerts,
- * savings goal updates, and local notification controls.
+ * Notifications reader screen displaying real-time budget threshold alerts,
+ * monthly cash-flow summary, and savings goal updates.
  */
 export function NotificationsView({ onClose }: { onClose(): void }) {
   const [items, setItems] = useState<NotificationAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
   const theme = useDesignTheme();
-  const palette = useFinancePalette();
-  const permissionStatus = useBudgetNotifications((state) => state.status);
   const language = usePreferences((state) => state.language);
 
   const fetchNotifications = useCallback(async () => {
@@ -133,85 +120,6 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
 
   return (
     <Screen title={vi.notificationsTitle} onBack={onClose}>
-      {/* Permission & Test Notification Card */}
-      <GlassCard
-        variant="elevated"
-        radius="xl"
-        padding={DesignSpacing.md}
-        style={{ gap: 10 }}
-      >
-        <View style={styles.inlineRow}>
-          <IconBadge
-            icon="bell-check-outline"
-            bg={theme.brand.primarySoft}
-            fg={theme.brand.primary}
-          />
-          <View style={{ flex: 1, gap: 2 }}>
-            <Text
-              variant="titleMedium"
-              style={{ fontWeight: '700', color: theme.text.primary }}
-            >
-              {vi.notificationsTitle}
-            </Text>
-            <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-              {vi.notificationsSubtitle}
-            </Text>
-          </View>
-        </View>
-
-        <View style={localStyles.actionsRow}>
-          <Button
-            mode="contained"
-            compact
-            buttonColor={theme.brand.primaryStrong}
-            textColor="#FFFFFF"
-            disabled={busy || permissionStatus === 'granted'}
-            onPress={async () => {
-              setBusy(true);
-              try {
-                await requestBudgetNotifications();
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {permissionStatus === 'granted'
-              ? vi.budgetNotificationGranted
-              : vi.budgetNotificationEnable}
-          </Button>
-          <Button
-            mode="outlined"
-            compact
-            disabled={busy}
-            onPress={async () => {
-              setBusy(true);
-              setNotice('');
-              try {
-                const ok = await testBudgetNotification();
-                setNotice(
-                  ok
-                    ? vi.budgetNotificationTestScheduled
-                    : vi.budgetNotificationDenied,
-                );
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {vi.budgetNotificationTest}
-          </Button>
-        </View>
-
-        {!!notice && (
-          <Text
-            variant="bodySmall"
-            style={{ color: palette.incomeInk, fontWeight: '600' }}
-          >
-            {notice}
-          </Text>
-        )}
-      </GlassCard>
-
       {loading ? (
         <View style={{ paddingVertical: 28, alignItems: 'center' }}>
           <ActivityIndicator size="large" accessibilityLabel={vi.loading} />
@@ -264,11 +172,3 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
     </Screen>
   );
 }
-
-const localStyles = StyleSheet.create({
-  actionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-});
