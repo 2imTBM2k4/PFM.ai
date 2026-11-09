@@ -15,7 +15,17 @@ import { MoneyInput } from '@/components/ui';
 import { useFinancePalette } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
+import { usePreferences } from '@/state/preferences';
 import { PinSettings } from '@/features/lock/pin-controls';
+import {
+  formatBackupErrorMessage,
+  formatBackupTimestamp,
+} from '@/features/backup/backup-settings-view';
+import type { RemoteBackupMetadata } from '@/features/backup/drive-client';
+import {
+  inspectRemoteGoogleDriveBackup,
+  restoreFromGoogleDriveBackup,
+} from '@/features/backup/mobile';
 import { isRunningInExpoGo } from 'expo';
 
 const PRESET_BALANCES = [0, 1_500_000, 5_000_000, 10_000_000] as const;
@@ -29,10 +39,69 @@ export function Onboarding() {
   } = useForm({ defaultValues: { balance: '' } });
   const [error, setError] = useState(false);
   const [skipping, setSkipping] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveMessage, setDriveMessage] = useState('');
+  const [driveError, setDriveError] = useState('');
+  const [remoteMeta, setRemoteMeta] = useState<RemoteBackupMetadata | null>(
+    null,
+  );
+  const [restoreEmail, setRestoreEmail] = useState<string | null>(null);
   const complete = useApp((state) => state.completeOnboarding);
+  const language = usePreferences((state) => state.language);
   const theme = useTheme();
   const palette = useFinancePalette();
   const saving = useRef(false);
+  const inExpoGo = isRunningInExpoGo();
+
+  async function handleInspectDriveBackup() {
+    if (driveBusy || isSubmitting || skipping) return;
+    if (inExpoGo) {
+      setDriveError(vi.backupExpoGoOnlyBanner);
+      return;
+    }
+    setDriveBusy(true);
+    setDriveMessage('');
+    setDriveError('');
+    setRemoteMeta(null);
+    try {
+      const res = await inspectRemoteGoogleDriveBackup({
+        signInIfNeeded: true,
+      });
+      if (!res.ok) {
+        if (res.error !== 'cancelled') {
+          setDriveError(formatBackupErrorMessage(res.error));
+        }
+        return;
+      }
+      if (!res.found) {
+        setDriveMessage(vi.backupRemoteNotFoundNotice);
+        return;
+      }
+      setRemoteMeta(res.metadata);
+      setRestoreEmail(res.accountEmail);
+    } finally {
+      setDriveBusy(false);
+    }
+  }
+
+  async function handleConfirmDriveRestore() {
+    if (driveBusy || !remoteMeta) return;
+    setDriveBusy(true);
+    setDriveMessage('');
+    setDriveError('');
+    try {
+      const res = await restoreFromGoogleDriveBackup({
+        fileId: remoteMeta.fileId,
+        enableAutoBackupAfterRestore: true,
+        accountEmail: restoreEmail,
+      });
+      if (!res.ok) {
+        setDriveError(formatBackupErrorMessage(res.error));
+      }
+    } finally {
+      setDriveBusy(false);
+    }
+  }
   async function save(balance: number) {
     if (saving.current) return;
     saving.current = true;
@@ -182,12 +251,68 @@ export function Onboarding() {
           {vi.saveError}
         </Text>
       )}
+      {!!driveError && (
+        <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>
+          {driveError}
+        </Text>
+      )}
+      {!!driveMessage && (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={{ color: palette.primaryInk, fontWeight: '600' }}
+        >
+          {driveMessage}
+        </Text>
+      )}
+      {!!remoteMeta && (
+        <View
+          style={[
+            styles.panel,
+            {
+              backgroundColor: palette.surface,
+              borderColor: palette.primary,
+              gap: 10,
+            },
+          ]}
+        >
+          <Text variant="titleSmall" style={{ fontWeight: '700' }}>
+            {vi.backupRemoteFoundSummary
+              .replace(
+                '{date}',
+                formatBackupTimestamp(
+                  remoteMeta.createdAt ?? remoteMeta.modifiedTime,
+                  language,
+                ),
+              )
+              .replace('{txCount}', String(remoteMeta.txCount))
+              .replace('{walletCount}', String(remoteMeta.walletCount))}
+          </Text>
+          <Button
+            mode="contained"
+            icon="cloud-download-outline"
+            contentStyle={styles.button}
+            loading={driveBusy}
+            disabled={driveBusy}
+            onPress={() => void handleConfirmDriveRestore()}
+          >
+            {vi.onboardingRestoreConfirmBtn}
+          </Button>
+          <Button
+            mode="outlined"
+            contentStyle={styles.button}
+            disabled={driveBusy}
+            onPress={() => setRemoteMeta(null)}
+          >
+            {vi.cancel}
+          </Button>
+        </View>
+      )}
       <Button
         mode="contained"
         icon="arrow-right"
         contentStyle={[styles.button, { flexDirection: 'row-reverse' }]}
         loading={isSubmitting}
-        disabled={isSubmitting || skipping}
+        disabled={isSubmitting || skipping || driveBusy}
         onPress={() => {
           void handleSubmit(({ balance }) => save(Number(balance || '0')))();
         }}
@@ -197,7 +322,7 @@ export function Onboarding() {
       <Button
         mode="outlined"
         contentStyle={styles.button}
-        disabled={isSubmitting || skipping}
+        disabled={isSubmitting || skipping || driveBusy}
         loading={skipping}
         onPress={async () => {
           setSkipping(true);
@@ -209,6 +334,16 @@ export function Onboarding() {
         }}
       >
         {vi.skip}
+      </Button>
+      <Button
+        mode="text"
+        icon="google-drive"
+        contentStyle={styles.button}
+        loading={driveBusy && !remoteMeta}
+        disabled={isSubmitting || skipping || driveBusy}
+        onPress={() => void handleInspectDriveBackup()}
+      >
+        {vi.onboardingRestoreFromDriveBtn}
       </Button>
     </Screen>
   );
