@@ -10,6 +10,9 @@ import {
   useFinancePalette,
 } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
+import { BackupSettingsView } from '@/features/backup/backup-settings-view';
+import { useBackupRuntimeStatus } from '@/features/backup/mobile';
+import { hasBackupIndicatorIssue } from '@/features/backup/scheduler';
 import { CategoryManager } from '@/features/categories/category-manager';
 import { SecuritySettingsView } from '@/features/lock/security-settings-view';
 import { NotificationSettingsView } from '@/features/notifications/notification-settings-view';
@@ -87,6 +90,7 @@ export default function Settings() {
   const [managingCategories, setManagingCategories] = useState(false);
   const [viewingNotifications, setViewingNotifications] = useState(false);
   const [viewingSecurity, setViewingSecurity] = useState(false);
+  const [viewingBackup, setViewingBackup] = useState(false);
   const [csvBusy, setCsvBusy] = useState(false);
   const [csvNotice, setCsvNotice] = useState('');
   const [csvError, setCsvError] = useState('');
@@ -113,6 +117,8 @@ export default function Settings() {
     (state) => state.refreshExchangeRate,
   );
   const setSeedEnabled = usePreferences((state) => state.setSeedEnabled);
+  const backupStatus = useBackupRuntimeStatus();
+  const showBackupIssueBadge = hasBackupIndicatorIssue(backupStatus.state);
 
   if (managingCategories) {
     return <CategoryManager onClose={() => setManagingCategories(false)} />;
@@ -126,6 +132,9 @@ export default function Settings() {
   }
   if (viewingSecurity) {
     return <SecuritySettingsView onClose={() => setViewingSecurity(false)} />;
+  }
+  if (viewingBackup) {
+    return <BackupSettingsView onClose={() => setViewingBackup(false)} />;
   }
 
   const handleToggleSeed = async (nextValue: boolean) => {
@@ -398,6 +407,81 @@ export default function Settings() {
         </View>
       </GlassCard>
 
+      <GlassCard
+        variant="elevated"
+        radius="xl"
+        padding={DesignSpacing.md}
+        accessibilityLabel={vi.backupMenuTitle}
+        onPress={() => setViewingBackup(true)}
+      >
+        <View style={styles.row}>
+          <View style={[styles.inlineRow, { flex: 1 }]}>
+            <IconBadge
+              icon="google-drive"
+              bg={
+                showBackupIssueBadge
+                  ? palette.warningSoft
+                  : theme.brand.primarySoft
+              }
+              fg={
+                showBackupIssueBadge
+                  ? palette.warningInk
+                  : theme.brand.primary
+              }
+              size={42}
+              iconSize={22}
+            />
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={localStyles.backupTitleRow}>
+                <Text
+                  variant="titleMedium"
+                  style={{ fontWeight: '700', color: theme.text.primary }}
+                >
+                  {vi.backupMenuTitle}
+                </Text>
+                {showBackupIssueBadge && (
+                  <View
+                    style={[
+                      localStyles.issueBadge,
+                      {
+                        backgroundColor: palette.warningSoft,
+                        borderColor: palette.warning,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        localStyles.issueDot,
+                        { backgroundColor: palette.warning },
+                      ]}
+                    />
+                    <Text
+                      variant="labelSmall"
+                      style={{
+                        color: palette.warningInk,
+                        fontWeight: '700',
+                        fontSize: 10,
+                      }}
+                    >
+                      {vi.backupMenuBadgeIssue}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+                {backupStatus.state.accountEmail
+                  ? vi.backupMenuSubtitleConnected.replace(
+                      '{email}',
+                      backupStatus.state.accountEmail,
+                    )
+                  : vi.backupMenuSubtitleDisconnected}
+              </Text>
+            </View>
+          </View>
+          <Icon source="chevron-right" size={24} color={theme.text.muted} />
+        </View>
+      </GlassCard>
+
       {/* 3. Preview / Seed Data (Development builds only) */}
       {isDevSeedToolsEnabled() && (
         <>
@@ -642,5 +726,25 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  backupTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  issueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: DesignRadius.pill,
+    borderWidth: 1,
+  },
+  issueDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
 });

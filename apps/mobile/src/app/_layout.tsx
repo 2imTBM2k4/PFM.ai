@@ -26,6 +26,7 @@ import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
 import { LockGate } from '@/features/lock/lock-gate';
+import { BackupWatcher } from '@/features/backup/mobile';
 import { BudgetNotificationWatcher } from '@/features/budgets/notification-watcher';
 import { RecurringWatcher } from '@/features/recurring/watcher';
 import { AddTransactionModal } from '@/features/transactions/add-transaction-modal';
@@ -159,6 +160,7 @@ function ApplicationContent() {
     <>
       <BudgetNotificationWatcher />
       <RecurringWatcher />
+      <BackupWatcher />
       <AppTabs />
       <AddTransactionModal />
       <AIChatModal />

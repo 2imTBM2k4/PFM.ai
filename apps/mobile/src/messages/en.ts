@@ -269,7 +269,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   biometricsDeferred: 'Face ID is not supported in this Expo Go preview.',
   deleteData: 'Delete all data',
   deleteExplanation:
-    'This permanently removes local app data from this device.',
+    'This permanently removes local app data from this device (it does not delete any existing Google Drive backup).',
   deletePrompt: 'Type DELETE to confirm',
   deleteWord: 'DELETE',
   deleteError: 'Could not delete data. Try again.',
@@ -295,7 +295,7 @@ export const en: Record<keyof typeof viMessages, string> = {
     'A previous data upgrade was interrupted. Your data and recovery snapshot have been preserved. Contact support before choosing to delete data.',
   encryptedStorageTitle: 'Encrypted data on your device',
   encryptedStorageDescription:
-    'Financial data is encrypted with a key stored separately on this device. You can enable a PIN below to lock the app. Recovery after losing the device or key is not available yet.',
+    'Financial data is encrypted on your device with a separate device key. If you enable Google Drive Backup, the backup file stored in your own Google Drive is unencrypted JSON. Losing your device without a Drive backup means your data cannot be recovered.',
   expoGoOnly: 'This feature is available in Expo Go on a device.',
   screenError: 'Could not display this screen. Try again.',
   previewTitle: 'Expo Go preview',
@@ -314,14 +314,15 @@ export const en: Record<keyof typeof viMessages, string> = {
   cash: 'Cash',
   noWallet: 'No active wallets.',
   localData: 'On-device data',
-  localDataDescription: 'Your transactions are stored on this device.',
+  localDataDescription:
+    'Reloading the app keeps your saved data. Uninstalling the app or clearing app data may permanently erase data unless Google Drive backup is enabled.',
   currency: 'Currency',
   currencyValue: 'Vietnamese dong (VND)',
   timeZone: 'Default time zone',
   timeZoneValue: 'Asia/Ho_Chi_Minh',
   security: 'Security and backup',
   securityDescription:
-    'Standalone installations encrypt on-device data. The Expo Go preview is unencrypted. Google Drive backup and recovery after key loss are not available.',
+    'Standalone builds encrypt on-device data (Expo Go is unencrypted). You can enable Google Drive backup in standalone builds to save an unencrypted JSON snapshot in your personal Drive; losing your device without a Drive backup means data cannot be recovered.',
   chatDisconnected: 'On-device logging · AI server advice',
   chatExplanation:
     'Transaction logging and spending lookups run on your device. For financial planning advice, the app sends your question and aggregated summary metrics (never individual transactions or personal notes) to the AI server.',
@@ -543,7 +544,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   csvImportError:
     'Invalid .csv. Check date (YYYY-MM-DD), type (expense/income), and positive amount.',
   csvDriveBackupNote:
-    'Cloud backup and Google Drive sync may be added in a future version.',
+    '.csv files only export basic income/expense rows. To back up all wallets, debts, budgets, goals, and recurring rules, use "Google Drive Backup" above.',
   categorySubcategories: 'Subcategories',
   subcategoriesCount: 'subcategories',
   noSubcategories: 'No subcategories yet',
@@ -667,4 +668,68 @@ export const en: Record<keyof typeof viMessages, string> = {
   aiMockSpendingSampleChartTitle:
     'Reference spending breakdown by category (%)',
   aiMockSpendingActualChartTitle: 'Actual spending breakdown by category (%)',
+  backupMenuTitle: 'Google Drive Backup',
+  backupMenuSubtitleDisconnected:
+    'Automatically back up wallets, transactions, debts, budgets, and goals to your Google Drive.',
+  backupMenuSubtitleConnected: 'Connected: {email}',
+  backupMenuBadgeIssue: 'Needs attention',
+  backupWhatIsBackedUpTitle: 'What is backed up & where it is stored',
+  backupWhatIsBackedUpBody:
+    '• Backs up all wallets, categories, transactions, loans/debts, recurring rules, budgets, and savings goals.\n• Stored in the "PFM.ai" folder (file "pfm-backup-v1.json") in your personal Google Drive (the app can only access files it created).\n• Privacy note: the backup file on Google Drive is UNENCRYPTED JSON and includes transaction notes and borrower/lender names.',
+  backupWhatIsExcludedTitle: 'What is NOT backed up',
+  backupWhatIsExcludedBody:
+    '• AI chat history, raw quick-entry input (raw_input), app PIN lock, sample testing data, and device-specific preferences.',
+  backupExpoGoOnlyBanner:
+    'Available only in standalone/development builds. Google Drive Sign-In is not supported inside Expo Go.',
+  backupSignInButton: 'Sign in with Google to enable backup',
+  backupConnectedAccountLabel: 'Google Drive account',
+  backupAutoSwitchLabel: 'Automatic backup',
+  backupAutoSwitchDescription:
+    'Automatically checks for changes and uploads when data changes, on app launch, or when moving to the background.',
+  backupLastSuccessLabel: 'Last successful backup',
+  backupNeverSucceeded: 'No successful backup yet',
+  backupStatusUploading: 'Syncing with Google Drive…',
+  backupNowButton: 'Back up now',
+  backupNowSuccessNotice: 'Successfully backed up to Google Drive.',
+  backupRestoreButton: 'Restore from Drive',
+  backupCheckRemoteButton: 'Check Drive backup',
+  backupRemoteFoundSummary:
+    'Found backup from {date} · {txCount} transactions · {walletCount} wallets.',
+  backupRemoteNotFoundNotice:
+    'No PFM.ai backup file was found on this Google Drive account.',
+  backupRestoreWarningExplanation:
+    'Restoring will replace all existing wallets, transactions, debts, budgets, and goals on this device with the backup from Google Drive.',
+  backupRestoreConfirmPrompt: 'Type RESTORE to confirm overwriting local data',
+  backupRestoreConfirmWord: 'RESTORE',
+  backupRestoreConfirmButton: 'Confirm data restore',
+  backupRestoreSuccessNotice:
+    'Successfully restored data from Google Drive.',
+  backupDisconnectButton: 'Disconnect Google Drive',
+  backupDisconnectKeepRemoteButton: 'Disconnect (keep file on Drive)',
+  backupDisconnectDeleteRemoteButton: 'Disconnect and delete file on Drive',
+  backupDisconnectExplanation:
+    'Do you want to keep the existing backup file on your Google Drive? By default, the file is kept on your Drive.',
+  backupDisconnectedNotice: 'Disconnected from Google Drive.',
+  backupErrorNeedsReauth:
+    'Your Google session expired or access was revoked. Automatic backup is paused — please sign in again.',
+  backupActionReauth: 'Sign in to Google again',
+  backupErrorQuotaExceeded:
+    'Your Google Drive storage is full. Automatic backup is paused — free up space in Drive and tap Back up now.',
+  backupErrorNetwork:
+    'Could not reach Google Drive due to a network error. The app will retry automatically when back online.',
+  backupErrorSchemaNewer:
+    'This backup was created by a newer version of PFM.ai. Please update the app before restoring.',
+  backupErrorChecksumMismatch:
+    'The backup file on Drive failed its SHA-256 integrity check. Your local data was not modified.',
+  backupErrorVerifyFailed:
+    'Could not verify the backup file on Google Drive after uploading. Please try again.',
+  backupErrorPlayServices:
+    'Google Play Services is unavailable or needs an update on this device.',
+  backupErrorNotConfigured:
+    'Google OAuth Client ID is not configured for this build. See README for setup instructions.',
+  backupErrorCancelled: 'Google sign-in was cancelled.',
+  backupErrorGeneric:
+    'Could not complete the Google Drive operation. Please try again.',
+  onboardingRestoreFromDriveBtn: 'Restore from Google Drive',
+  onboardingRestoreConfirmBtn: 'Restore this backup',
 };

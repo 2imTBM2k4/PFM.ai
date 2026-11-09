@@ -300,7 +300,7 @@ export const viMessages = {
   biometricsDeferred: 'Face ID chưa được hỗ trợ trong bản Expo Go này.',
   deleteData: 'Xóa toàn bộ dữ liệu',
   deleteExplanation:
-    'Xóa tất cả dữ liệu trên thiết bị, gồm ví, giao dịch và tin nhắn. Không thể hoàn tác. Chưa có bản sao lưu Google Drive.',
+    'Xóa tất cả dữ liệu trên thiết bị này, gồm ví, giao dịch và tin nhắn. Không thể hoàn tác (không tự xóa bản sao lưu trên Google Drive nếu đã có).',
   deletePrompt: 'Nhập XOA để xác nhận',
   deleteWord: 'XOA',
   deleteError:
@@ -327,7 +327,7 @@ export const viMessages = {
     'Lần nâng cấp dữ liệu trước bị gián đoạn. Dữ liệu và bản sao phục hồi vẫn được giữ lại. Hãy liên hệ hỗ trợ trước khi chọn xóa dữ liệu.',
   encryptedStorageTitle: 'Dữ liệu được mã hóa trên thiết bị',
   encryptedStorageDescription:
-    'Dữ liệu tài chính được mã hóa và khóa bảo vệ được lưu riêng trên thiết bị. Bạn có thể bật mã PIN bên dưới để khóa ứng dụng. Hiện chưa có khôi phục dữ liệu khi mất thiết bị hoặc mất khóa.',
+    'Dữ liệu tài chính được mã hóa trên máy với khóa bảo vệ riêng của thiết bị. Nếu bạn bật Sao lưu Google Drive, tệp sao lưu trên Drive cá nhân của bạn là JSON không mã hóa. Mất máy mà chưa sao lưu lên Drive thì không thể khôi phục dữ liệu.',
   expoGoOnly:
     'Bản thử nghiệm này cần mở bằng Expo Go trên iPhone hoặc Android.',
   screenError: 'Không hiển thị được màn hình này. Hãy thử lại.',
@@ -350,14 +350,14 @@ export const viMessages = {
   noWallet: 'Chưa có ví đang sử dụng.',
   localData: 'Dữ liệu trên thiết bị',
   localDataDescription:
-    'Tải lại ứng dụng không xóa dữ liệu đã lưu. Gỡ ứng dụng hoặc xóa dữ liệu ứng dụng có thể làm mất dữ liệu.',
+    'Tải lại ứng dụng không xóa dữ liệu đã lưu. Gỡ ứng dụng hoặc xóa dữ liệu ứng dụng có thể làm mất dữ liệu nếu chưa bật sao lưu Google Drive.',
   currency: 'Đơn vị tiền',
   currencyValue: 'Việt Nam đồng (VND)',
   timeZone: 'Múi giờ mặc định',
   timeZoneValue: 'Asia/Ho_Chi_Minh',
   security: 'Mã hóa và sao lưu',
   securityDescription:
-    'Bản cài riêng mã hóa dữ liệu trên thiết bị. Bản xem trước trong Expo Go chưa mã hóa. Chưa hỗ trợ sao lưu Google Drive hoặc khôi phục khi mất khóa.',
+    'Bản cài riêng mã hóa dữ liệu trên thiết bị (Expo Go chưa mã hóa). Bạn có thể bật Sao lưu Google Drive trong bản cài riêng để lưu bản sao JSON (không mã hóa) trên Drive cá nhân; mất máy mà chưa có bản sao lưu trên Drive thì không thể khôi phục.',
   chatDisconnected: 'Ghi giao dịch trên máy · Tư vấn qua máy chủ AI',
   chatExplanation:
     'Ghi giao dịch và tra cứu số liệu thu chi được xử lý ngay trên máy. Khi hỏi tư vấn kế hoạch tài chính, ứng dụng gửi câu hỏi và số liệu tổng hợp (không gửi từng giao dịch hay ghi chú cá nhân) tới máy chủ AI.',
@@ -606,7 +606,7 @@ export const viMessages = {
   csvImportError:
     'Nội dung .csv không hợp lệ. Vui lòng kiểm tra cột ngày (YYYY-MM-DD), loại (expense/income) và số tiền nguyên dương.',
   csvDriveBackupNote:
-    'Chức năng này sau này sẽ gộp chung vào tính năng sao lưu cùng với chức năng đồng bộ sao lưu lên Google Drive.',
+    'Tệp .csv chỉ xuất danh sách giao dịch thu/chi cơ bản. Để sao lưu toàn bộ ví, nợ, ngân sách, mục tiêu và lịch định kỳ, hãy dùng mục "Sao lưu Google Drive" bên trên.',
   categorySubcategories: 'Danh mục con',
   subcategoriesCount: 'danh mục con',
   noSubcategories: 'Chưa có danh mục con nào',
@@ -730,6 +730,70 @@ export const viMessages = {
   aiMockSpendingSampleChartTitle:
     'Phân bổ chi tiêu tham khảo theo danh mục (%)',
   aiMockSpendingActualChartTitle: 'Phân bổ chi tiêu thực tế theo danh mục (%)',
+  backupMenuTitle: 'Sao lưu Google Drive',
+  backupMenuSubtitleDisconnected:
+    'Tự động sao lưu ví, giao dịch, nợ, ngân sách và mục tiêu lên Google Drive cá nhân.',
+  backupMenuSubtitleConnected: 'Đã kết nối: {email}',
+  backupMenuBadgeIssue: 'Cần kiểm tra',
+  backupWhatIsBackedUpTitle: 'Nội dung được sao lưu & nơi lưu trữ',
+  backupWhatIsBackedUpBody:
+    '• Sao lưu toàn bộ ví, danh mục, giao dịch, khoản vay/cho vay, lịch định kỳ, ngân sách và mục tiêu tiết kiệm.\n• Lưu trong thư mục "PFM.ai" (tệp "pfm-backup-v1.json") trên chính Google Drive của bạn (ứng dụng chỉ có quyền truy cập tệp do chính ứng dụng tạo ra).\n• Lưu ý quyền riêng tư: tệp sao lưu trên Google Drive là JSON KHÔNG mã hóa và có chứa ghi chú giao dịch cũng như tên người vay/cho vay.',
+  backupWhatIsExcludedTitle: 'Nội dung KHÔNG sao lưu',
+  backupWhatIsExcludedBody:
+    '• Lịch sử trò chuyện AI, câu nhập thô ban đầu (raw_input), mã PIN khóa ứng dụng, dữ liệu mẫu thử nghiệm và các tùy chọn riêng của từng thiết bị.',
+  backupExpoGoOnlyBanner:
+    'Chỉ có ở bản cài đặt riêng (development/standalone build). Tính năng đăng nhập Google Drive không hoạt động trong Expo Go.',
+  backupSignInButton: 'Đăng nhập Google để bật sao lưu',
+  backupConnectedAccountLabel: 'Tài khoản Google Drive',
+  backupAutoSwitchLabel: 'Tự động sao lưu',
+  backupAutoSwitchDescription:
+    'Tự động kiểm tra và tải lên khi dữ liệu thay đổi, khi mở ứng dụng hoặc khi chuyển sang chạy nền.',
+  backupLastSuccessLabel: 'Lần sao lưu thành công gần nhất',
+  backupNeverSucceeded: 'Chưa có bản sao lưu thành công nào',
+  backupStatusUploading: 'Đang đồng bộ lên Google Drive…',
+  backupNowButton: 'Sao lưu ngay',
+  backupNowSuccessNotice: 'Đã sao lưu lên Google Drive thành công.',
+  backupRestoreButton: 'Khôi phục từ Drive',
+  backupCheckRemoteButton: 'Kiểm tra bản sao lưu trên Drive',
+  backupRemoteFoundSummary:
+    'Tìm thấy bản sao lưu ngày {date} · {txCount} giao dịch · {walletCount} ví.',
+  backupRemoteNotFoundNotice:
+    'Không tìm thấy bản sao lưu PFM.ai nào trên tài khoản Google Drive này.',
+  backupRestoreWarningExplanation:
+    'Khôi phục sẽ thay thế toàn bộ ví, giao dịch, nợ, ngân sách và mục tiêu hiện có trên máy bằng bản sao lưu từ Google Drive.',
+  backupRestoreConfirmPrompt: 'Nhập KHOIPHUC để xác nhận ghi đè dữ liệu',
+  backupRestoreConfirmWord: 'KHOIPHUC',
+  backupRestoreConfirmButton: 'Xác nhận khôi phục dữ liệu',
+  backupRestoreSuccessNotice:
+    'Đã khôi phục dữ liệu từ Google Drive thành công.',
+  backupDisconnectButton: 'Ngắt kết nối Google Drive',
+  backupDisconnectKeepRemoteButton: 'Ngắt kết nối (giữ bản sao trên Drive)',
+  backupDisconnectDeleteRemoteButton: 'Ngắt kết nối và xóa bản sao trên Drive',
+  backupDisconnectExplanation:
+    'Bạn có muốn giữ lại tệp sao lưu hiện có trên Google Drive không? Mặc định ứng dụng sẽ giữ nguyên tệp trên Drive của bạn.',
+  backupDisconnectedNotice: 'Đã ngắt kết nối Google Drive.',
+  backupErrorNeedsReauth:
+    'Phiên đăng nhập Google đã hết hạn hoặc bị thu hồi quyền. Tự động sao lưu đã tạm dừng — vui lòng đăng nhập lại.',
+  backupActionReauth: 'Đăng nhập lại Google',
+  backupErrorQuotaExceeded:
+    'Google Drive của bạn đã hết dung lượng lưu trữ. Tự động sao lưu đã tạm dừng — hãy giải phóng dung lượng Drive rồi bấm Sao lưu ngay.',
+  backupErrorNetwork:
+    'Chưa kết nối được với Google Drive do lỗi mạng. Ứng dụng sẽ tự thử lại khi có mạng.',
+  backupErrorSchemaNewer:
+    'Bản sao lưu này được tạo từ phiên bản PFM.ai mới hơn. Vui lòng cập nhật ứng dụng trước khi khôi phục.',
+  backupErrorChecksumMismatch:
+    'Tệp sao lưu trên Drive không vượt qua kiểm tra toàn vẹn (SHA-256). Dữ liệu trên máy được giữ nguyên.',
+  backupErrorVerifyFailed:
+    'Chưa xác minh được tệp sau khi tải lên Google Drive. Vui lòng thử lại.',
+  backupErrorPlayServices:
+    'Thiết bị thiếu hoặc cần cập nhật Google Play Services để đăng nhập Google.',
+  backupErrorNotConfigured:
+    'Chưa cấu hình Google OAuth Client ID cho bản dựng này. Xem hướng dẫn trong README.',
+  backupErrorCancelled: 'Đã hủy đăng nhập Google.',
+  backupErrorGeneric:
+    'Không thể thực hiện thao tác với Google Drive. Vui lòng thử lại.',
+  onboardingRestoreFromDriveBtn: 'Khôi phục từ Google Drive',
+  onboardingRestoreConfirmBtn: 'Khôi phục bản sao lưu này',
 } as const;
 
 export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(
