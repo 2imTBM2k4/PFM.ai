@@ -57,6 +57,12 @@ it('writes operational fields and rejects sensitive or nested content', () => {
     'text',
     'walletName',
     'error',
+    'accessToken',
+    'token',
+    'accountEmail',
+    'email',
+    'snapshot',
+    'counterparty_label',
   ]) {
     expect(() => log('error', { [field]: 'SENTINEL_PRIVATE_TEXT' })).toThrow(
       'LOG_FIELD_REJECTED',
@@ -66,5 +72,11 @@ it('writes operational fields and rejects sensitive or nested content', () => {
     log('error', { errorCode: { question: 'SENTINEL_PRIVATE_TEXT' } }),
   ).toThrow();
   expect(() => log('info', { status: 'SENTINEL_PRIVATE_TEXT' })).toThrow();
+  expect(() =>
+    log('info', { route: 'backup', action: 'ya29.a0AfH6SM_SECRET_TOKEN' }),
+  ).toThrow('LOG_FIELD_REJECTED');
+  expect(() =>
+    log('info', { route: 'backup', action: 'minh@example.com' }),
+  ).toThrow('LOG_FIELD_REJECTED');
   expect(output).toHaveLength(1);
 });
