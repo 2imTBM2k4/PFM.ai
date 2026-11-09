@@ -286,7 +286,7 @@ export const viMessages = {
   pinEnabled: 'Khóa bằng PIN đang bật',
   pinDisabled: 'Chưa bật khóa bằng PIN',
   pinDescription:
-    'Ứng dụng yêu cầu PIN khi mở lại và sau 60 giây chạy nền. PIN chỉ khóa giao diện; dữ liệu thử nghiệm hiện chưa mã hóa.',
+    'Ứng dụng yêu cầu PIN khi mở lại và sau 60 giây chạy nền. PIN khóa giao diện; dữ liệu trên bản cài riêng được mã hóa bằng khóa riêng của thiết bị.',
   pinForgot: 'Quên PIN',
   pinForgotDescription:
     'Chưa có bản sao lưu trong bản thử nghiệm. Nếu quên PIN, bạn chỉ có thể xóa toàn bộ dữ liệu trên thiết bị để bắt đầu lại.',
@@ -319,6 +319,15 @@ export const viMessages = {
   loading: 'Đang mở dữ liệu trên máy…',
   retry: 'Thử lại',
   databaseError: 'Không mở được dữ liệu trên máy. Hãy thử lại.',
+  databaseKeyError:
+    'Không truy cập được khóa bảo vệ dữ liệu. Hãy mở khóa thiết bị và thử lại. Dữ liệu chưa bị xóa. Nếu mất khóa, chỉ chọn xóa dữ liệu khi bạn chấp nhận bắt đầu lại.',
+  databaseBuildError:
+    'Bản cài này chưa hỗ trợ mã hóa dữ liệu. Hãy cài bản cập nhật có mã hóa để tiếp tục. Dữ liệu chưa bị xóa.',
+  databaseRecoveryError:
+    'Lần nâng cấp dữ liệu trước bị gián đoạn. Dữ liệu và bản sao phục hồi vẫn được giữ lại. Hãy liên hệ hỗ trợ trước khi chọn xóa dữ liệu.',
+  encryptedStorageTitle: 'Dữ liệu được mã hóa trên thiết bị',
+  encryptedStorageDescription:
+    'Dữ liệu tài chính được mã hóa và khóa bảo vệ được lưu riêng trên thiết bị. Bạn có thể bật mã PIN bên dưới để khóa ứng dụng. Hiện chưa có khôi phục dữ liệu khi mất thiết bị hoặc mất khóa.',
   expoGoOnly:
     'Bản thử nghiệm này cần mở bằng Expo Go trên iPhone hoặc Android.',
   screenError: 'Không hiển thị được màn hình này. Hãy thử lại.',
@@ -341,14 +350,14 @@ export const viMessages = {
   noWallet: 'Chưa có ví đang sử dụng.',
   localData: 'Dữ liệu trên thiết bị',
   localDataDescription:
-    'Tải lại ứng dụng không xóa dữ liệu đã lưu. Gỡ Expo Go hoặc xóa dữ liệu ứng dụng có thể làm mất dữ liệu.',
+    'Tải lại ứng dụng không xóa dữ liệu đã lưu. Gỡ ứng dụng hoặc xóa dữ liệu ứng dụng có thể làm mất dữ liệu.',
   currency: 'Đơn vị tiền',
   currencyValue: 'Việt Nam đồng (VND)',
   timeZone: 'Múi giờ mặc định',
   timeZoneValue: 'Asia/Ho_Chi_Minh',
   security: 'Mã hóa và sao lưu',
   securityDescription:
-    'Chưa bật mã hóa cơ sở dữ liệu và chưa kết nối Google Drive trong bản thử nghiệm.',
+    'Bản cài riêng mã hóa dữ liệu trên thiết bị. Bản xem trước trong Expo Go chưa mã hóa. Chưa hỗ trợ sao lưu Google Drive hoặc khôi phục khi mất khóa.',
   chatDisconnected: 'Trợ lý chạy trên máy',
   chatExplanation:
     'Ghi giao dịch hoặc hỏi tư vấn tại đây. Giao dịch cần xác nhận trước khi lưu; câu trả lời được tạo trên máy và không gửi ra ngoài.',

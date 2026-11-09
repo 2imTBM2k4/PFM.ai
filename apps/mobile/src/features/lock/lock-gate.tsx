@@ -10,6 +10,7 @@ import { PinField, pinErrorMessage, RetryDelay } from './pin-controls';
 
 export function LockGate({ children }: PropsWithChildren) {
   const status = useLockSession((state) => state.status);
+  const storageError = useLockSession((state) => state.storageError);
   const visible = useLockSession((state) => state.visible);
   const deleting = useApp((state) => state.deleting);
   const deleteFailed = useApp((state) => state.deleteFailed);
@@ -72,14 +73,16 @@ export function LockGate({ children }: PropsWithChildren) {
   else if (status === 'error')
     content = (
       <Screen title={vi.lockTitle}>
-        <Text accessibilityRole="alert">{vi.pinStorageError}</Text>
+        <Text accessibilityRole="alert">{vi[storageError]}</Text>
         <Button
           contentStyle={styles.button}
           onPress={() => lockSession.getState().initialize()}
         >
           {vi.retry}
         </Button>
-        <Text>{vi.pinForgotDescription}</Text>
+        {storageError === 'pinStorageError' && (
+          <Text>{vi.pinForgotDescription}</Text>
+        )}
         <DeleteDataControl />
       </Screen>
     );

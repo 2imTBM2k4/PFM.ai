@@ -221,7 +221,11 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   },
 
   closeChat() {
-    set({ isChatOpen: false, pendingChatAction: null, pendingReceiptAsset: null });
+    set({
+      isChatOpen: false,
+      pendingChatAction: null,
+      pendingReceiptAsset: null,
+    });
   },
 
   exchangeRate: null,
@@ -344,6 +348,12 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     set({ seedEnabled: enabled });
   },
 }));
+
+/** Clears in-memory settings and pending UI content after explicit data deletion. */
+export function resetPreferences() {
+  usePreferences.setState(usePreferences.getInitialState(), true);
+  setActiveLanguage('vi');
+}
 
 export function useIsTabBarVisible() {
   const [visible, setVisible] = useState(

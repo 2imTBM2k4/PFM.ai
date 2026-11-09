@@ -122,13 +122,13 @@ not mean its checks have run; actual results are in `docs/progress.md`.
 
 ## Preview limitations
 
-Local SQLite is authorized to be unencrypted temporarily. This preview explicitly
-refuses startup outside Expo Go to avoid shipping plaintext in a later native
-build. Native encryption, Face ID, Drive backup and Android device acceptance
-remain deferred. AI chat stores local messages with no provider connection or
-generated answers. The owner deferred PIN in Expo Go after a measured 44-second
-derivation: the preview opens directly and hides PIN controls, preserving existing
-PIN/data. PIN enforcement remains enabled outside Expo Go, where the plaintext
-database connection still refuses startup. Native PIN performance, the original
-post-save error and app-switcher concealment remain pending. Do not enter
-real sensitive information in this development preview.
+Expo Go keeps its separate, unencrypted preview database and deferred PIN controls.
+Standalone installations now require SQLCipher and use a fresh encrypted database
+with a random 256-bit key in device-only secure storage. They do not import or
+delete preview data. First launch presents onboarding without sample transactions;
+subsequent updates retain data. PIN is optional and independent of encryption.
+
+Rebuild the native app to include SQLCipher; a JavaScript-only update is insufficient.
+Native encryption and PIN performance still require iPhone acceptance. Face ID,
+Drive backup and key recovery are not implemented. Losing the device or encryption
+key can make data unrecoverable. See `docs/testing/native-encryption.md` for checks.

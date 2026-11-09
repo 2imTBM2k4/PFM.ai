@@ -7,14 +7,25 @@ import { derivePinVerifier } from './kdf';
 import { PinLock } from './service';
 import { createLockSession } from './session';
 import { logAppEvent } from '../../services/logger';
+import {
+  getDatabaseKey,
+  NATIVE_PIN_KEY,
+  NATIVE_PIN_PROBE_KEY,
+  nativeStorageOptions,
+} from '../../data/native-storage';
 
-const PIN_KEY = 'pfm.preview.pin.v1';
-const PROBE_KEY = 'pfm.preview.pin.probe';
-const options: SecureStore.SecureStoreOptions = {
-  keychainService: 'pfm.preview.lock',
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  requireAuthentication: false,
-};
+const nativeStorage = !isRunningInExpoGo() && process.env.EXPO_OS !== 'web';
+const PIN_KEY = nativeStorage ? NATIVE_PIN_KEY : 'pfm.preview.pin.v1';
+const PROBE_KEY = nativeStorage
+  ? NATIVE_PIN_PROBE_KEY
+  : 'pfm.preview.pin.probe';
+const options: SecureStore.SecureStoreOptions = nativeStorage
+  ? nativeStorageOptions
+  : {
+      keychainService: 'pfm.preview.lock',
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      requireAuthentication: false,
+    };
 
 // Emit bounded diagnostic categories, never native errors or their arguments.
 async function stored<T>(
@@ -48,6 +59,7 @@ async function stored<T>(
 }
 
 export async function checkPinStorage() {
+  if (nativeStorage) await getDatabaseKey();
   let failed = false;
   try {
     await stored('WRITE', () =>
@@ -80,7 +92,10 @@ export async function checkPinStorage() {
 
 export const pinLock = new PinLock(
   {
-    get: () => stored('READ', () => SecureStore.getItemAsync(PIN_KEY, options)),
+    get: async () => {
+      if (nativeStorage) await getDatabaseKey();
+      return stored('READ', () => SecureStore.getItemAsync(PIN_KEY, options));
+    },
     set: (value) =>
       stored('WRITE', () => SecureStore.setItemAsync(PIN_KEY, value, options)),
     remove: async () => {

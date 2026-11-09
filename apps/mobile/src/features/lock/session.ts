@@ -3,6 +3,7 @@ import type { PinLock } from './service';
 
 interface LockSession {
   status: 'checking' | 'locked' | 'unlocked' | 'error';
+  storageError: 'pinStorageError' | 'databaseKeyError';
   enabled: boolean;
   visible: boolean;
   busy: boolean;
@@ -14,6 +15,17 @@ interface LockSession {
   setVisible(visible: boolean): void;
 }
 
+function storageErrorMessage(error: unknown): LockSession['storageError'] {
+  return error instanceof Error &&
+    [
+      'DATABASE_KEY_MISSING',
+      'DATABASE_KEY_INVALID',
+      'DATABASE_KEY_UNAVAILABLE',
+    ].includes(error.message)
+    ? 'databaseKeyError'
+    : 'pinStorageError';
+}
+
 export function createLockSession(
   service: Pick<PinLock, 'status' | 'verify'>,
   now: () => number,
@@ -23,6 +35,7 @@ export function createLockSession(
   let revision = 0;
   return createStore<LockSession>()((set, get) => ({
     status: 'checking',
+    storageError: 'pinStorageError',
     enabled: false,
     visible: true,
     busy: false,
@@ -32,7 +45,7 @@ export function createLockSession(
         set({ status: 'unlocked', enabled: false, blockedUntil: 0 });
         return;
       }
-      set({ status: 'checking' });
+      set({ status: 'checking', storageError: 'pinStorageError' });
       try {
         const record = await service.status();
         set({
@@ -40,8 +53,8 @@ export function createLockSession(
           blockedUntil: record.blockedUntil,
           status: record.enabled ? 'locked' : 'unlocked',
         });
-      } catch {
-        set({ status: 'error' });
+      } catch (error) {
+        set({ status: 'error', storageError: storageErrorMessage(error) });
       }
     },
     async refresh() {
@@ -60,7 +73,7 @@ export function createLockSession(
               : 'unlocked',
         });
       } catch (error) {
-        set({ status: 'error' });
+        set({ status: 'error', storageError: storageErrorMessage(error) });
         throw error;
       }
     },
@@ -82,8 +95,11 @@ export function createLockSession(
       } catch (error) {
         try {
           set({ blockedUntil: (await service.status()).blockedUntil });
-        } catch {
-          set({ status: 'error' });
+        } catch (storageError) {
+          set({
+            status: 'error',
+            storageError: storageErrorMessage(storageError),
+          });
         }
         throw error;
       } finally {

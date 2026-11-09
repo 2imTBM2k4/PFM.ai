@@ -7,17 +7,51 @@ import {
 
 import { checkIntegrity, migrate, MIGRATIONS, type Database } from './migrate';
 import { seed } from './seed';
+import {
+  ENCRYPTED_DATABASE_NAME,
+  ENCRYPTED_SNAPSHOT_NAME,
+  databaseFileExists,
+  getDatabaseKey,
+  deleteDatabaseKey,
+  deleteEncryptedDatabaseFiles,
+} from './native-storage';
 
-const DATABASE_NAME = 'pfm-preview.db';
-const SNAPSHOT_NAME = 'pfm-preview-migration.db';
+const encrypted = !isRunningInExpoGo() && process.env.EXPO_OS !== 'web';
+const DATABASE_NAME = encrypted ? ENCRYPTED_DATABASE_NAME : 'pfm-preview.db';
+const SNAPSHOT_NAME = encrypted
+  ? ENCRYPTED_SNAPSHOT_NAME
+  : 'pfm-preview-migration.db';
 let opening: ReturnType<typeof initialize> | undefined;
 let operations: Promise<unknown> = Promise.resolve();
 
+/** Opens a connection and rejects builds that cannot encrypt native storage. */
+async function openDatabase(name: string, key?: string) {
+  const db = await openDatabaseAsync(name);
+  try {
+    if (key) {
+      const cipher = await db.getFirstAsync<{ cipher_version: string }>(
+        'PRAGMA cipher_version',
+      );
+      if (!cipher?.cipher_version)
+        throw new Error('DATABASE_CIPHER_UNAVAILABLE');
+      await db.execAsync(`PRAGMA key = "x'${key}'"`);
+      // Force authentication before any schema writes or migration backup.
+      await db.getFirstAsync('SELECT count(*) FROM sqlite_master');
+    }
+    return db;
+  } catch (error) {
+    await db.closeAsync();
+    throw error;
+  }
+}
+
+/** Initializes the selected storage without importing the plaintext Expo Go preview. */
 async function initialize() {
-  // Prevent a later native build from silently shipping the unencrypted preview.
-  if (!isRunningInExpoGo() && process.env.EXPO_OS !== 'web')
-    throw new Error('PREVIEW_REQUIRES_EXPO_GO');
-  const db = await openDatabaseAsync(DATABASE_NAME);
+  const key = encrypted ? await getDatabaseKey() : undefined;
+  // A process interruption may leave an incomplete snapshot. Never overwrite either file automatically.
+  if (encrypted && databaseFileExists(SNAPSHOT_NAME))
+    throw new Error('DATABASE_RECOVERY_REQUIRED');
+  const db = await openDatabase(DATABASE_NAME, key);
   // The queue prevents interleaving; keep transactions on the FK-enabled connection.
   const connection: Database & { closeAsync(): Promise<void> } = {
     execAsync: db.execAsync.bind(db),
@@ -37,7 +71,8 @@ async function initialize() {
     if (version > MIGRATIONS.at(-1)!.version)
       throw new Error('SCHEMA_NEWER_THAN_APP');
     if (version < MIGRATIONS.at(-1)!.version) {
-      const snapshot = await openDatabaseAsync(SNAPSHOT_NAME);
+      const snapshot = await openDatabase(SNAPSHOT_NAME, key);
+      let rolledBack = false;
       try {
         await backupDatabaseAsync({
           sourceDatabase: db,
@@ -51,12 +86,16 @@ async function initialize() {
             destDatabase: db,
           });
           await checkIntegrity(db);
+          rolledBack = true;
           throw error;
         }
       } finally {
         await snapshot.closeAsync();
+        if (encrypted && rolledBack)
+          deleteEncryptedDatabaseFiles(ENCRYPTED_SNAPSHOT_NAME);
       }
-      await deleteDatabaseAsync(SNAPSHOT_NAME);
+      if (encrypted) deleteEncryptedDatabaseFiles(ENCRYPTED_SNAPSHOT_NAME);
+      else await deleteDatabaseAsync(SNAPSHOT_NAME);
     } else {
       await checkIntegrity(db);
     }
@@ -88,9 +127,16 @@ export function withDatabase<T>(
 export function deletePreviewData(): Promise<void> {
   const operation = operations.then(async () => {
     if (opening) {
-      const db = await opening;
-      await db.closeAsync();
+      const db = await opening.catch(() => undefined);
+      await db?.closeAsync();
       opening = undefined;
+    }
+    if (encrypted) {
+      // Deletion must also work when the key is lost or the file cannot be decrypted.
+      deleteEncryptedDatabaseFiles(ENCRYPTED_SNAPSHOT_NAME);
+      deleteEncryptedDatabaseFiles(ENCRYPTED_DATABASE_NAME);
+      await deleteDatabaseKey();
+      return;
     }
     for (const name of [SNAPSHOT_NAME, DATABASE_NAME]) {
       // Ensure an absent file is handled identically to an existing file.

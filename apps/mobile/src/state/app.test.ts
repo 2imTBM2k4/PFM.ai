@@ -20,9 +20,13 @@ const operations = vi.hoisted(() => ({
   created: 0,
   runs: 0,
   onboarded: false,
+  startupError: null as string | null,
 }));
 vi.mock('@/data/connection', () => ({
-  withDatabase: async () => ({ onboarded: operations.onboarded, wallets: [] }),
+  withDatabase: async () => {
+    if (operations.startupError) throw new Error(operations.startupError);
+    return { onboarded: operations.onboarded, wallets: [] };
+  },
   deletePreviewData: async () => {
     operations.calls.push('delete-database');
     if (operations.failDatabase) throw new Error('DATABASE_DELETE_FAILED');
@@ -62,6 +66,54 @@ beforeEach(() => {
   operations.created = 0;
   operations.runs = 0;
   operations.onboarded = false;
+  operations.startupError = null;
+});
+
+it.each([
+  ['DATABASE_KEY_MISSING', 'databaseKeyError'],
+  ['DATABASE_KEY_INVALID', 'databaseKeyError'],
+  ['DATABASE_KEY_UNAVAILABLE', 'databaseKeyError'],
+  ['DATABASE_CIPHER_UNAVAILABLE', 'databaseBuildError'],
+  ['DATABASE_RECOVERY_REQUIRED', 'databaseRecoveryError'],
+  ['PRIVATE_NATIVE_ERROR', 'databaseError'],
+])(
+  'shows a safe startup explanation for %s without deleting data',
+  async (error, message) => {
+    operations.startupError = error;
+    const { useApp } = await import('./app');
+    await useApp.getState().initialize();
+    expect(useApp.getState()).toMatchObject({
+      status: 'error',
+      startupError: message,
+    });
+    expect(operations.calls).toEqual([]);
+    operations.startupError = null;
+    await useApp.getState().initialize();
+    expect(useApp.getState()).toMatchObject({
+      status: 'ready',
+      startupError: 'databaseError',
+    });
+  },
+);
+
+it('explicit deletion resets sample preferences and pending UI state to new-user defaults', async () => {
+  const { usePreferences } = await import('./preferences');
+  usePreferences.setState({
+    seedEnabled: true,
+    language: 'en',
+    currency: 'USD',
+    isChatOpen: true,
+    pendingReceiptAsset: { uri: 'private.jpg', width: 1, height: 1 },
+  });
+  const { useApp } = await import('./app');
+  await useApp.getState().deleteData();
+  expect(usePreferences.getState()).toMatchObject({
+    seedEnabled: false,
+    language: 'vi',
+    currency: 'VND',
+    isChatOpen: false,
+    pendingReceiptAsset: null,
+  });
 });
 
 it('forgotten-PIN deletion works before financial data is initialized, removes data before PIN, and restarts onboarding', async () => {

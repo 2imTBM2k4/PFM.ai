@@ -254,7 +254,8 @@ export const en: Record<keyof typeof viMessages, string> = {
   pinUnlock: 'Unlock',
   pinEnabled: 'PIN lock is on',
   pinDisabled: 'PIN lock is off',
-  pinDescription: 'Protect your local data with a PIN.',
+  pinDescription:
+    'A PIN locks the app on reopening and after 60 seconds in the background. Standalone installations encrypt data with a separate device key.',
   pinForgot: 'Forgot PIN',
   pinForgotDescription:
     'If you forget your PIN, your local data may be inaccessible.',
@@ -286,6 +287,15 @@ export const en: Record<keyof typeof viMessages, string> = {
   loading: 'Opening local data…',
   retry: 'Try again',
   databaseError: 'Could not open local data. Try again.',
+  databaseKeyError:
+    'The data protection key is unavailable. Unlock your device and retry. Your data has not been deleted. If the key is lost, only delete data if you accept starting over.',
+  databaseBuildError:
+    'This installation does not support encrypted storage. Install an updated build with encryption to continue. Your data has not been deleted.',
+  databaseRecoveryError:
+    'A previous data upgrade was interrupted. Your data and recovery snapshot have been preserved. Contact support before choosing to delete data.',
+  encryptedStorageTitle: 'Encrypted data on your device',
+  encryptedStorageDescription:
+    'Financial data is encrypted with a key stored separately on this device. You can enable a PIN below to lock the app. Recovery after losing the device or key is not available yet.',
   expoGoOnly: 'This feature is available in Expo Go on a device.',
   screenError: 'Could not display this screen. Try again.',
   previewTitle: 'Expo Go preview',
@@ -310,7 +320,8 @@ export const en: Record<keyof typeof viMessages, string> = {
   timeZone: 'Default time zone',
   timeZoneValue: 'Asia/Ho_Chi_Minh',
   security: 'Security and backup',
-  securityDescription: 'Manage your PIN and local data.',
+  securityDescription:
+    'Standalone installations encrypt on-device data. The Expo Go preview is unencrypted. Google Drive backup and recovery after key loss are not available.',
   chatDisconnected: 'On-device assistant',
   chatExplanation: 'Ask about your spending, saving, purchases, and loans.',
   chatEmpty: 'Start a conversation to get personal finance guidance.',

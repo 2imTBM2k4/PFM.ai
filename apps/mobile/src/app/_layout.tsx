@@ -30,6 +30,7 @@ import { BudgetNotificationWatcher } from '@/features/budgets/notification-watch
 import { RecurringWatcher } from '@/features/recurring/watcher';
 import { AddTransactionModal } from '@/features/transactions/add-transaction-modal';
 import { AIChatModal } from '@/features/chat/ai-chat-modal';
+import { DeleteDataControl } from '@/components/delete-data-control';
 
 /**
  * Global route error boundary fallback screen.
@@ -133,6 +134,7 @@ export default function RootLayout() {
  */
 function ApplicationContent() {
   const status = useApp((state) => state.status);
+  const startupError = useApp((state) => state.startupError);
   const onboarded = useApp((state) => state.onboarded);
   const initialize = useApp((state) => state.initialize);
   useEffect(() => {
@@ -141,9 +143,10 @@ function ApplicationContent() {
   return status === 'error' ? (
     <Screen title={vi.appName}>
       <Text accessibilityRole="alert">
-        {Platform.OS === 'web' ? vi.expoGoOnly : vi.databaseError}
+        {Platform.OS === 'web' ? vi.expoGoOnly : vi[startupError]}
       </Text>
       <Button onPress={initialize}>{vi.retry}</Button>
+      <DeleteDataControl />
     </Screen>
   ) : status !== 'ready' ? (
     <Screen title={vi.appName}>

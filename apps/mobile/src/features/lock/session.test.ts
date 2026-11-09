@@ -17,6 +17,31 @@ function fixture(enabled = true) {
   };
 }
 
+it.each([
+  'DATABASE_KEY_MISSING',
+  'DATABASE_KEY_INVALID',
+  'DATABASE_KEY_UNAVAILABLE',
+])('shows a database key error for %s and allows retry', async (code) => {
+  const { session, port } = fixture(false);
+  port.status.mockRejectedValueOnce(new Error(code));
+  await session.getState().initialize();
+  expect(session.getState()).toMatchObject({
+    status: 'error',
+    storageError: 'databaseKeyError',
+  });
+  await session.getState().initialize();
+  expect(session.getState()).toMatchObject({
+    status: 'unlocked',
+    storageError: 'pinStorageError',
+  });
+  port.status.mockRejectedValueOnce(new Error(code));
+  await expect(session.getState().refresh()).rejects.toThrow(code);
+  expect(session.getState()).toMatchObject({
+    status: 'error',
+    storageError: 'databaseKeyError',
+  });
+});
+
 it('preview deferral skips all PIN reads/verifications, keeps the app accessible and still conceals background content', async () => {
   const port = {
     status: vi.fn(async () => {

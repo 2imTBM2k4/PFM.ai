@@ -3,6 +3,7 @@ import { uuid } from 'expo';
 import { logAppEvent } from '@/services/logger';
 import { withDatabase, deletePreviewData } from '@/data/connection';
 import { pinLock, lockSession } from '@/features/lock/mobile';
+import { resetPreferences } from './preferences';
 import { clearBudgetNotifications } from '@/features/budgets/mobile';
 import {
   runRecurring,
@@ -17,6 +18,11 @@ import {
 
 interface AppState {
   status: 'idle' | 'loading' | 'ready' | 'error';
+  startupError:
+    | 'databaseError'
+    | 'databaseKeyError'
+    | 'databaseBuildError'
+    | 'databaseRecoveryError';
   onboarded: boolean;
   deleteFailed: boolean;
   deleting: boolean;
@@ -32,6 +38,7 @@ interface AppState {
 
 export const useApp = create<AppState>()((set, get) => ({
   status: 'idle',
+  startupError: 'databaseError',
   onboarded: false,
   deleteFailed: false,
   deleting: false,
@@ -54,7 +61,7 @@ export const useApp = create<AppState>()((set, get) => ({
   },
   async initialize() {
     if (get().status === 'loading') return;
-    set({ status: 'loading' });
+    set({ status: 'loading', startupError: 'databaseError' });
     try {
       const { onboarded, wallets } = await withDatabase(async (db) => {
         const onboarded = await readOnboarding(db);
@@ -64,13 +71,25 @@ export const useApp = create<AppState>()((set, get) => ({
         ? (await runRecurring()).wallets
         : wallets;
       set({ onboarded, wallets: latestWallets, status: 'ready' });
-    } catch {
+    } catch (error) {
+      const code = error instanceof Error ? error.message : '';
+      const startupError = [
+        'DATABASE_KEY_MISSING',
+        'DATABASE_KEY_INVALID',
+        'DATABASE_KEY_UNAVAILABLE',
+      ].includes(code)
+        ? 'databaseKeyError'
+        : code === 'DATABASE_CIPHER_UNAVAILABLE'
+          ? 'databaseBuildError'
+          : code === 'DATABASE_RECOVERY_REQUIRED'
+            ? 'databaseRecoveryError'
+            : 'databaseError';
       logAppEvent('error', {
         route: 'startup',
         status: 'failed',
         errorCode: 'DATABASE_OPEN_FAILED',
       });
-      set({ status: 'error' });
+      set({ status: 'error', startupError });
     }
   },
   async completeOnboarding(balance) {
@@ -91,6 +110,7 @@ export const useApp = create<AppState>()((set, get) => ({
       await deletePreviewData();
       await clearBudgetNotifications();
       await pinLock.resetAfterDataDeletion();
+      resetPreferences();
       await lockSession.getState().initialize();
       set({
         wallets: [],

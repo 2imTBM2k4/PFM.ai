@@ -15,6 +15,7 @@ import { useFinancePalette } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { PinSettings } from '@/features/lock/pin-controls';
+import { isRunningInExpoGo } from 'expo';
 
 const PRESET_BALANCES = [0, 1_500_000, 5_000_000, 10_000_000] as const;
 
@@ -158,10 +159,12 @@ export function Onboarding() {
           />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="titleSmall" style={{ fontWeight: '700' }}>
-              {vi.previewTitle}
+              {isRunningInExpoGo() ? vi.previewTitle : vi.encryptedStorageTitle}
             </Text>
             <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {vi.previewDescription}
+              {isRunningInExpoGo()
+                ? vi.previewDescription
+                : vi.encryptedStorageDescription}
             </Text>
           </View>
         </View>

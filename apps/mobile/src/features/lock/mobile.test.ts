@@ -9,6 +9,17 @@ const native = vi.hoisted(() => ({
   remove: vi.fn(),
   random: vi.fn(),
   log: vi.fn(),
+  prepare: vi.fn(),
+}));
+vi.mock('../../data/native-storage', () => ({
+  NATIVE_PIN_KEY: 'pfm.native.pin.v1',
+  NATIVE_PIN_PROBE_KEY: 'pfm.native.pin.probe',
+  nativeStorageOptions: {
+    keychainService: 'pfm.native.storage',
+    keychainAccessible: 13,
+    requireAuthentication: false,
+  },
+  getDatabaseKey: native.prepare,
 }));
 vi.mock('expo', () => ({ isRunningInExpoGo: () => native.expoGo }));
 vi.mock('../../services/logger', () => ({ logAppEvent: native.log }));
@@ -27,17 +38,18 @@ beforeEach(() => {
   native.expoGo = false;
   native.probe = null;
   native.get.mockImplementation(async (key: string) =>
-    key === 'pfm.preview.pin.v1' ? native.value : native.probe,
+    key === 'pfm.native.pin.v1' ? native.value : native.probe,
   );
   native.set.mockImplementation(async (_key, value: string) => {
-    if (_key === 'pfm.preview.pin.v1') native.value = value;
+    if (_key === 'pfm.native.pin.v1') native.value = value;
     else native.probe = value;
   });
   native.remove.mockImplementation(async (key: string) => {
-    if (key === 'pfm.preview.pin.v1') native.value = null;
+    if (key === 'pfm.native.pin.v1') native.value = null;
     else native.probe = null;
   });
   native.random.mockImplementation((bytes: Uint8Array) => bytes.fill(7));
+  native.prepare.mockResolvedValue('07'.repeat(32));
 });
 
 it('uses native secure random salt and device-only unlocked storage with no biometric requirement', async () => {
@@ -47,10 +59,10 @@ it('uses native secure random salt and device-only unlocked storage with no biom
   expect(JSON.parse(native.value!).salt).toBe('07'.repeat(32));
   expect(native.value).not.toContain('001234');
   expect(native.set).toHaveBeenCalledWith(
-    'pfm.preview.pin.v1',
+    'pfm.native.pin.v1',
     expect.any(String),
     {
-      keychainService: 'pfm.preview.lock',
+      keychainService: 'pfm.native.storage',
       keychainAccessible: 13,
       requireAuthentication: false,
     },
@@ -60,8 +72,8 @@ it('uses native secure random salt and device-only unlocked storage with no biom
   expect(await lockSession.getState().unlock('001234')).toBe('unlocked');
   await pinLock.resetAfterDataDeletion();
   expect(native.remove).toHaveBeenCalledWith(
-    'pfm.preview.pin.v1',
-    expect.objectContaining({ keychainService: 'pfm.preview.lock' }),
+    'pfm.native.pin.v1',
+    expect.objectContaining({ keychainService: 'pfm.native.storage' }),
   );
   await lockSession.getState().initialize();
   expect(lockSession.getState().status).toBe('unlocked');
@@ -74,7 +86,7 @@ it('never falls back to insecure random values when native randomness fails', as
   const { pinLock } = await import('./mobile');
   await expect(pinLock.enable('123456')).rejects.toThrow('RANDOM_UNAVAILABLE');
   expect(
-    native.set.mock.calls.some(([key]) => key === 'pfm.preview.pin.v1'),
+    native.set.mock.calls.some(([key]) => key === 'pfm.native.pin.v1'),
   ).toBe(false);
 });
 
@@ -132,4 +144,23 @@ it('Expo Go deferral leaves an existing PIN untouched and opens without secure-s
   expect(native.set).not.toHaveBeenCalled();
   expect(native.remove).not.toHaveBeenCalled();
   expect(native.random).not.toHaveBeenCalled();
+});
+
+it('prepares fresh native storage before reading a surviving Keychain PIN', async () => {
+  native.value = 'STALE_PIN_FROM_UNINSTALL';
+  native.prepare.mockImplementationOnce(async () => {
+    native.value = null;
+  });
+  const { lockSession } = await import('./mobile');
+  await lockSession.getState().initialize();
+  expect(native.prepare).toHaveBeenCalledOnce();
+  expect(lockSession.getState().status).toBe('unlocked');
+});
+
+it('fails closed when native encryption storage cannot be prepared', async () => {
+  native.prepare.mockRejectedValueOnce(new Error('DATABASE_KEY_MISSING'));
+  const { lockSession } = await import('./mobile');
+  await lockSession.getState().initialize();
+  expect(lockSession.getState().status).toBe('error');
+  expect(native.get).not.toHaveBeenCalled();
 });

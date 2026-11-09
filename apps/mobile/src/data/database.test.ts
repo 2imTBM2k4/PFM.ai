@@ -670,14 +670,54 @@ it('books a USD expense in a VND wallet and restores its original amount after u
 it('groups only income and expenses by local transaction day for the selected month', async () => {
   await migrate(db);
   await seed(db, 'old');
-  const base = { walletId: DEFAULT_WALLET_ID, occurredOn: '2026-11-02', occurredAt: '2026-11-02T12:00:00+07:00' };
-  await createTransaction(db, randomUUID(), { ...base, kind: 'income', amount: 50_000 }, 'now');
-  await createTransaction(db, randomUUID(), { ...base, kind: 'expense', amount: 20_000 }, 'now');
-  await createTransaction(db, randomUUID(), { ...base, kind: 'expense', amount: 10_000 }, 'now');
+  const base = {
+    walletId: DEFAULT_WALLET_ID,
+    occurredOn: '2026-11-02',
+    occurredAt: '2026-11-02T12:00:00+07:00',
+  };
+  await createTransaction(
+    db,
+    randomUUID(),
+    { ...base, kind: 'income', amount: 50_000 },
+    'now',
+  );
+  await createTransaction(
+    db,
+    randomUUID(),
+    { ...base, kind: 'expense', amount: 20_000 },
+    'now',
+  );
+  await createTransaction(
+    db,
+    randomUUID(),
+    { ...base, kind: 'expense', amount: 10_000 },
+    'now',
+  );
   const destination = randomUUID();
-  await createWallet(db, destination, { name: 'Second wallet', kind: 'bank' }, 'now');
-  await createTransaction(db, randomUUID(), { ...base, kind: 'transfer', amount: 100_000, toWalletId: destination }, 'now');
-  await createTransaction(db, randomUUID(), { ...base, occurredOn: '2026-10-31', occurredAt: '2026-10-31T12:00:00+07:00', kind: 'expense', amount: 5_000 }, 'now');
+  await createWallet(
+    db,
+    destination,
+    { name: 'Second wallet', kind: 'bank' },
+    'now',
+  );
+  await createTransaction(
+    db,
+    randomUUID(),
+    { ...base, kind: 'transfer', amount: 100_000, toWalletId: destination },
+    'now',
+  );
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      ...base,
+      occurredOn: '2026-10-31',
+      occurredAt: '2026-10-31T12:00:00+07:00',
+      kind: 'expense',
+      amount: 5_000,
+    },
+    'now',
+  );
   expect(await readDailyTotals(db, '2026-11')).toEqual([
     { date: '2026-11-02', income: 50_000, expense: 30_000 },
   ]);
@@ -3862,6 +3902,26 @@ it('refuses newer databases without changing their version', async () => {
   sqlite.exec('PRAGMA user_version = 99');
   await expect(migrate(db)).rejects.toThrow('SCHEMA_NEWER_THAN_APP');
   expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(99);
+});
+
+it('fresh onboarding starts with only default categories and an empty wallet, never sample financial data', async () => {
+  await migrate(db);
+  await seed(db, '2026-11-09T00:00:00Z');
+  expect(await readOnboarding(db)).toBe(false);
+  expect(await listTransactions(db)).toEqual([]);
+  expect(await listGoals(db)).toEqual([]);
+  const wallets = await listWallets(db);
+  expect(wallets).toHaveLength(1);
+  expect(wallets[0]).toMatchObject({
+    id: DEFAULT_WALLET_ID,
+    balance: 0,
+    initial_balance: 0,
+  });
+  expect(
+    sqlite
+      .prepare("SELECT value FROM settings WHERE key = 'pref_seed_enabled'")
+      .get(),
+  ).toBeUndefined();
 });
 
 it('commits first-run balance once and preserves it across repeated onboarding calls', async () => {
