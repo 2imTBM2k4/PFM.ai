@@ -158,7 +158,7 @@ describe('Google Drive Client (B4)', () => {
       isSupportedRuntime: () => true,
       signIn: vi.fn(),
       getAccessToken: vi.fn(async () => ({
-        ok: true,
+        ok: true as const,
         accessToken: 'ya29.valid',
       })),
       signOut: vi.fn(),
@@ -212,7 +212,7 @@ describe('Google Drive Client (B4)', () => {
       isSupportedRuntime: () => true,
       signIn: vi.fn(),
       getAccessToken: vi.fn(async () => ({
-        ok: true,
+        ok: true as const,
         accessToken: 'ya29.valid',
       })),
       signOut: vi.fn(),
@@ -259,7 +259,7 @@ describe('Google Drive Client (B4)', () => {
       isSupportedRuntime: () => true,
       signIn: vi.fn(),
       getAccessToken: vi.fn(async () => ({
-        ok: true,
+        ok: true as const,
         accessToken: 'ya29.valid',
       })),
       signOut: vi.fn(),
@@ -298,7 +298,7 @@ describe('Google Drive Client (B4)', () => {
       isSupportedRuntime: () => true,
       signIn: vi.fn(),
       getAccessToken: vi.fn(async () => ({
-        ok: true,
+        ok: true as const,
         accessToken: 'ya29.valid',
       })),
       signOut: vi.fn(),
@@ -353,7 +353,7 @@ describe('Google Drive Client (B4)', () => {
       isSupportedRuntime: () => true,
       signIn: vi.fn(),
       getAccessToken: vi.fn(async () => ({
-        ok: true,
+        ok: true as const,
         accessToken: 'ya29.SECRET_ACCESS_TOKEN_DO_NOT_LOG',
       })),
       signOut: vi.fn(),

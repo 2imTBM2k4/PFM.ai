@@ -8,6 +8,7 @@
     "@noble/hashes": "^2.4.0",
     "@pfm/contracts": "workspace:*",
     "@pfm/domain": "workspace:*",
+    "@react-native-google-signin/google-signin": "^17.0.0",
     "@shopify/react-native-skia": "2.14.0",
     "expo": "~58.0.19",
     "expo-constants": "~58.0.13",

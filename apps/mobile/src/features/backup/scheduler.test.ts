@@ -54,7 +54,7 @@ function createMockAuthService(): GoogleAuthService {
     isSupportedRuntime: () => true,
     signIn: vi.fn(),
     getAccessToken: vi.fn(async () => ({
-      ok: true,
+      ok: true as const,
       accessToken: 'ya29.token',
     })),
     signOut: vi.fn(),
@@ -234,7 +234,7 @@ describe('Automatic Backup Scheduler (B5)', () => {
         uploadSnapshot: vi.fn(async () => {
           const stateWhileInFlight = await readBackupState(db);
           dirtyDuringUpload = stateWhileInFlight.dirty;
-          return { ok: false, errorCode: 'network_error' };
+          return { ok: false as const, errorCode: 'network_error' as const };
         }),
         fetchRemoteBackupMetadata: vi.fn(),
         downloadRemoteBackup: vi.fn(),

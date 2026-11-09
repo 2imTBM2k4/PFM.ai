@@ -47,6 +47,12 @@
           "cameraPermission": "Cho phép PFM.ai chụp hóa đơn để tạo giao dịch.",
           "microphonePermission": false
         }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.placeholder-replace-with-reversed-ios-client-id"
+        }
       ]
     ],
     "experiments": {
