@@ -32,7 +32,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField } from '@/components/ui';
+import { DateField, MoneyInput } from '@/components/ui';
 import { useFinancePalette } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
@@ -52,11 +52,7 @@ import {
 } from '@/data/transactions';
 import type { Database } from '@/data/migrate';
 import { TransactionForm } from '@/features/transactions/transaction-manager';
-import {
-  formatAmountInput,
-  isFutureDate,
-  parseAmountInput,
-} from '@/features/transactions/form';
+import { isFutureDate, parseAmountInput } from '@/features/transactions/form';
 import {
   requestRecurringNotifications,
   useRecurringStatus,
@@ -184,6 +180,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
       });
       setUndo(focused.current ? (deleted ?? null) : null);
       setEditing(null);
+      useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
       await useApp.getState().refreshRecurring(true);
       await load();
     } catch (failure) {
@@ -858,32 +855,35 @@ function DebtForm({
             control={control}
             name={item.name}
             render={({ field }) =>
-              item.name === 'due' ? (
+              item.name === 'due' || item.name === 'date' ? (
                 <DateField
-                  label={vi.debtDue}
+                  label={item.name === 'due' ? vi.debtDue : item.label}
                   value={field.value}
                   onChange={field.onChange}
                   disabled={disabled}
-                  allowClear
+                  allowClear={item.name === 'due'}
+                />
+              ) : item.name === 'amount' ? (
+                <MoneyInput
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  onChangeText={field.onChange}
                 />
               ) : (
                 <TextInput
                   mode="outlined"
                   label={item.label}
+                  accessibilityLabel={item.label}
                   value={field.value}
                   disabled={disabled}
                   onBlur={field.onBlur}
                   left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType={
-                    item.name === 'amount' ? 'number-pad' : 'default'
-                  }
-                  onChangeText={(value) =>
-                    field.onChange(
-                      item.name === 'amount'
-                        ? formatAmountInput(value, field.value)
-                        : value,
-                    )
-                  }
+                  keyboardType="default"
+                  onChangeText={field.onChange}
                 />
               )
             }

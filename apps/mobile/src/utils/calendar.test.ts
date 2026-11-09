@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   calendarDays,
   calendarMonth,
+  calendarMonthFromKey,
+  formatCalendarMonthKey,
   parseDisplayMonth,
   shiftCalendarMonth,
+  shiftMonthKey,
   vietnamToday,
 } from './calendar';
 
@@ -88,5 +91,17 @@ describe('calendar date picker helpers', () => {
     ]) {
       expect(parseDisplayMonth(value)).toBeNull();
     }
+  });
+
+  it('shifts YYYY-MM month keys across year boundaries and preserves canonical format', () => {
+    expect(shiftMonthKey('2026-12', 1)).toBe('2027-01');
+    expect(shiftMonthKey('2027-01', -1)).toBe('2026-12');
+    expect(shiftMonthKey('0001-01', -1)).toBe('0001-01');
+    expect(shiftMonthKey('9999-12', 1)).toBe('9999-12');
+    expect(calendarMonthFromKey('', '2026-11')).toEqual({
+      year: 2026,
+      month: 10,
+    });
+    expect(formatCalendarMonthKey({ year: 2026, month: 0 })).toBe('2026-01');
   });
 });

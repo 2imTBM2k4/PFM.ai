@@ -31,6 +31,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
+import { MoneyInput, MonthField } from '@/components/ui';
 import { DesignSpacing, useFinancePalette } from '@/constants/theme';
 import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import { withDatabase } from '@/data/connection';
@@ -45,6 +46,7 @@ import {
 import { listCategories, type CategoryRow } from '@/data/categories';
 import { vi } from '@/messages/vi';
 import { displayCategoryName } from '@/messages/seed-labels';
+import { useApp } from '@/state/app';
 import { formatDisplayMonth } from '@/utils/display';
 import {
   formatAmountInput,
@@ -141,6 +143,7 @@ export function BudgetManager({
         setRows(next);
         setMode({ type: 'list' });
         setNotice(vi.budgetSaved);
+        useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
         void checkBudgetAlerts();
       } catch {
         if (committed) setMode({ type: 'list' });
@@ -650,29 +653,39 @@ function BudgetForm({
             key={item.name}
             control={control}
             name={item.name}
-            render={({ field }) => (
-              <TextInput
-                mode="outlined"
-                label={item.label}
-                accessibilityLabel={item.label}
-                value={field.value}
-                onBlur={field.onBlur}
-                disabled={disabled}
-                left={<TextInput.Icon icon={item.icon} />}
-                keyboardType={
-                  item.name === 'amount' || item.name === 'warnPercent'
-                    ? 'number-pad'
-                    : 'numbers-and-punctuation'
-                }
-                onChangeText={(value) =>
-                  field.onChange(
-                    item.name === 'amount'
-                      ? formatAmountInput(value, field.value)
-                      : value,
-                  )
-                }
-              />
-            )}
+            render={({ field }) =>
+              item.name === 'startMonth' || item.name === 'endMonth' ? (
+                <MonthField
+                  label={item.label}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={disabled}
+                  allowClear={item.name === 'endMonth'}
+                />
+              ) : item.name === 'amount' ? (
+                <MoneyInput
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  disabled={disabled}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  onChangeText={field.onChange}
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={item.label}
+                  accessibilityLabel={item.label}
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  disabled={disabled}
+                  left={<TextInput.Icon icon={item.icon} />}
+                  keyboardType="number-pad"
+                  onChangeText={field.onChange}
+                />
+              )
+            }
           />
         ))}
       </View>

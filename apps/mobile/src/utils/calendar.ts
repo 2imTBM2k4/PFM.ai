@@ -75,3 +75,33 @@ export function parseDisplayMonth(value: string): CalendarMonth | null {
     return null;
   }
 }
+
+/**
+ * Formats a CalendarMonth (zero-based month) into a canonical YYYY-MM key.
+ */
+export function formatCalendarMonthKey({ year, month }: CalendarMonth): string {
+  daysInMonth(year, month + 1);
+  return `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Parses a YYYY-MM month key into a CalendarMonth, falling back safely if empty or invalid.
+ */
+export function calendarMonthFromKey(
+  value: string,
+  fallback = vietnamToday().slice(0, 7),
+): CalendarMonth {
+  return calendarMonth(value ? `${value}-01` : '', `${fallback}-01`);
+}
+
+/**
+ * Shifts a YYYY-MM month key by `delta` months across year boundaries and returns YYYY-MM.
+ */
+export function shiftMonthKey(
+  value: string,
+  delta: number,
+  fallback = vietnamToday().slice(0, 7),
+): string {
+  const current = calendarMonthFromKey(value, fallback);
+  return formatCalendarMonthKey(shiftCalendarMonth(current, delta));
+}
