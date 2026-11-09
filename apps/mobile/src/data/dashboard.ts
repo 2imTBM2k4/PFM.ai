@@ -1,6 +1,6 @@
 import { addMonths, daysInMonth, monthKey, ratioBps } from '@pfm/domain';
 import type { Queries } from './migrate';
-import { readBudgetMonth } from './budgets';
+import { readBudgetMonth, readDismissedBudgetBannerKeys } from './budgets';
 import { listGoals } from './goals';
 import { listTransactions } from './transactions';
 import { listWallets } from './repository';
@@ -112,6 +112,7 @@ export async function readDashboard(db: Queries, month: string) {
     budgets: (await readBudgetMonth(db, month)).filter(
       (row) => row.is_active && row.in_period,
     ),
+    dismissedBudgetBannerKeys: await readDismissedBudgetBannerKeys(db, month),
     goals: (await listGoals(db)).filter((row) => row.status !== 'archived'),
     recent: (
       await listTransactions(db, undefined, { from: date, to: last })

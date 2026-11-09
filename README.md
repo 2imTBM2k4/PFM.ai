@@ -73,12 +73,13 @@ keeping original notes; existing snapshot/rollback safeguards remain in use.
 See [search/upgrade device checks](docs/testing/T2.4-search.md).
 
 From `Ngân sách`, set overall/category monthly limits, edit or pause them, and
-switch months. In-app warnings appear only here. Expand `Thông báo ngân sách`
-to request permission or schedule a five-second local test, then return to the
-phone home screen to observe it. Foreground OS banners are suppressed; actual
-notifications can be seen in the system notification list. expo-notifications
-58.1.6 is included; no push server/token is used. See
-[budget/device checks](docs/testing/T2.5-budgets.md).
+switch months. Active current-month budgets that reach their warning threshold or
+limit also surface a dismissible alert banner at the top of `Tổng quan`. Open
+`Cài đặt → Thông báo → Ngân sách` to request permission or schedule a five-second
+local test, then return to the phone home screen to observe it. Foreground OS
+banners are suppressed for budget alerts; actual notifications can be seen in the
+system notification list. expo-notifications 58.1.6 is included; no push
+server/token is used. See [budget/device checks](docs/testing/T2.5-budgets.md).
 
 Open Overview > Mục tiêu tiết kiệm to create/edit/archive/restore savings goals. Track
 progress from a selected wallet's balance or a manually entered amount. A deadline
@@ -98,9 +99,10 @@ Optional due-date reminders target 09:00 Vietnam the preceding day. See
 [debt/device checks](docs/testing/T2.9-debts.md).
 
 Overview includes month income/expense/net, parent-category spending, six-month
-charts, budget amounts, current goals and recent selected-month transactions.
-Charts include exact text equivalents. Budget threshold warnings remain only in
-Budgets. See [dashboard/device checks](docs/testing/T2.8-dashboard.md).
+charts, budget amounts, current goals, recent selected-month transactions, and a
+dismissible banner for active current-month budgets that reach their warning
+threshold or limit. Charts include exact text equivalents. See
+[dashboard/device checks](docs/testing/T2.8-dashboard.md).
 
 Follow [the iPhone check list](docs/testing/phase-1-expo-go.md) to verify persistence,
 dark mode, keyboard behavior and deletion on the device. Owner confirms main-app

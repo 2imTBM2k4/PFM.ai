@@ -1,7 +1,15 @@
 import { BudgetInputSchema, type BudgetInput } from '@pfm/contracts';
-import { budgetThresholds, daysInMonth, monthKey } from '@pfm/domain';
+import {
+  budgetThresholds,
+  daysInMonth,
+  monthKey,
+  type BudgetBannerItem,
+  type BudgetBannerLevel,
+} from '@pfm/domain';
 import { requireActiveCategory } from './categories';
 import type { Database, Queries } from './migrate';
+
+export const BUDGET_BANNER_DISMISSED_SETTING_KEY = 'budget_banner_dismissed_v1';
 
 export interface BudgetRow {
   id: string;
@@ -174,4 +182,103 @@ export function releaseBudgetAlert(
     month,
     threshold,
   );
+}
+
+/**
+ * Formats the composite persistence key for a dismissed budget banner state.
+ */
+export function budgetBannerDismissKey(
+  budgetId: string,
+  month: string,
+  level: BudgetBannerLevel,
+): string {
+  return `${budgetId}|${month}|${level}`;
+}
+
+/**
+ * Parses raw JSON from settings and keeps only valid keys belonging to `currentMonth`.
+ */
+export function parseDismissedBudgetBannerKeys(
+  rawValue: string | null | undefined,
+  currentMonth: string,
+): string[] {
+  if (!rawValue) return [];
+  try {
+    const parsed: unknown = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) return [];
+    const result = new Set<string>();
+    for (const entry of parsed) {
+      if (typeof entry !== 'string') continue;
+      const parts = entry.split('|');
+      if (parts.length !== 3) continue;
+      const [budgetId, month, level] = parts;
+      if (
+        !budgetId ||
+        month !== currentMonth ||
+        (level !== 'warn' && level !== 'over')
+      ) {
+        continue;
+      }
+      result.add(entry);
+    }
+    return [...result];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Filters computed banner items against the dismissed keys for the given month.
+ */
+export function filterVisibleBudgetBannerItems(
+  items: readonly BudgetBannerItem[],
+  month: string,
+  dismissedKeys: Iterable<string>,
+): BudgetBannerItem[] {
+  const dismissed =
+    dismissedKeys instanceof Set ? dismissedKeys : new Set(dismissedKeys);
+  return items.filter(
+    (item) =>
+      !dismissed.has(budgetBannerDismissKey(item.budgetId, month, item.level)),
+  );
+}
+
+/**
+ * Reads dismissed budget banner keys for the current month from the settings table.
+ */
+export async function readDismissedBudgetBannerKeys(
+  db: Queries,
+  currentMonth: string,
+): Promise<string[]> {
+  monthKey(`${currentMonth}-01`);
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM settings WHERE key=?',
+    BUDGET_BANNER_DISMISSED_SETTING_KEY,
+  );
+  return parseDismissedBudgetBannerKeys(row?.value, currentMonth);
+}
+
+/**
+ * Persists dismissed budget banner keys for the current month via settings upsert,
+ * automatically dropping stale keys from previous months.
+ */
+export async function dismissBudgetBannerItems(
+  db: Queries,
+  currentMonth: string,
+  items: readonly { budgetId: string; level: BudgetBannerLevel }[],
+): Promise<string[]> {
+  monthKey(`${currentMonth}-01`);
+  const existing = await readDismissedBudgetBannerKeys(db, currentMonth);
+  const merged = new Set(existing);
+  for (const item of items) {
+    merged.add(budgetBannerDismissKey(item.budgetId, currentMonth, item.level));
+  }
+  const next = [...merged];
+  await db.runAsync(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    BUDGET_BANNER_DISMISSED_SETTING_KEY,
+    JSON.stringify(next),
+  );
+  return next;
 }

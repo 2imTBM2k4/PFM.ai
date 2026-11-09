@@ -8,6 +8,7 @@ import { listCategories, type CategoryRow } from '@/data/categories';
 import { listWallets, type WalletRow } from '@/data/repository';
 import { createTransaction } from '@/data/transactions';
 import type { TransactionInput } from '@pfm/contracts';
+import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
@@ -63,6 +64,7 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
       );
       void useApp.getState().refreshWallets();
       useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
+      void checkBudgetAlerts();
       close();
       onSaved?.();
     } catch {
@@ -97,6 +99,7 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
           onNaturalSaved={async () => {
             void useApp.getState().refreshWallets();
             useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
+            void checkBudgetAlerts();
             close();
             onSaved?.();
           }}

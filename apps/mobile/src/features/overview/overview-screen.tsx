@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { monthKey, today } from '@pfm/domain';
+import { budgetBannerItems, monthKey, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput } from '@pfm/contracts';
 import { useCallback, useRef, useState } from 'react';
@@ -35,12 +35,18 @@ import {
 } from '@/constants/theme';
 import { useResponsiveLayout } from '@/constants/responsive-layout';
 import { withDatabase } from '@/data/connection';
+import {
+  budgetBannerDismissKey,
+  dismissBudgetBannerItems,
+  filterVisibleBudgetBannerItems,
+} from '@/data/budgets';
 import { readDashboard, type Dashboard } from '@/data/dashboard';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
 import { NotificationsView } from '@/features/notifications/notifications-view';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
+import { BudgetBanner } from './budget-banner';
 import { formatRecentTransactionTime } from './transaction-time';
 
 const localToday = () =>
@@ -72,6 +78,7 @@ export function OverviewScreen({
 }) {
   const [date, setDate] = useState(localToday);
   const [data, setData] = useState<Dashboard | null>(null);
+  const [dismissedBannerKeys, setDismissedBannerKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -96,6 +103,7 @@ export function OverviewScreen({
       hasLoadedOnce.current = true;
       setDate(localToday());
       setData(next);
+      setDismissedBannerKeys(next.dismissedBudgetBannerKeys);
       useApp.setState({
         wallets: next.wallets.filter((wallet) => !wallet.is_archived),
       });
@@ -125,6 +133,13 @@ export function OverviewScreen({
 
   const activeWallets =
     data?.wallets.filter((wallet) => !wallet.is_archived) ?? [];
+  const visibleBannerItems = data
+    ? filterVisibleBudgetBannerItems(
+        budgetBannerItems(data.budgets),
+        data.current.month,
+        dismissedBannerKeys,
+      )
+    : [];
 
   if (showNotifications) {
     return <NotificationsView onClose={() => setShowNotifications(false)} />;
@@ -246,6 +261,28 @@ export function OverviewScreen({
 
       {data && (
         <>
+          <BudgetBanner
+            items={visibleBannerItems}
+            onPress={() =>
+              router.navigate({
+                pathname: '/budgets',
+                params: { tab: 'budgets' },
+              })
+            }
+            onDismiss={() => {
+              const currentMonth = data.current.month;
+              const newKeys = visibleBannerItems.map((item) =>
+                budgetBannerDismissKey(item.budgetId, currentMonth, item.level),
+              );
+              setDismissedBannerKeys((prev) => [
+                ...new Set([...prev, ...newKeys]),
+              ]);
+              void withDatabase((db) =>
+                dismissBudgetBannerItems(db, currentMonth, visibleBannerItems),
+              ).catch(() => undefined);
+            }}
+          />
+
           {/* Hero Total Balance Card */}
           <GlassCard variant="elevated" radius="xl" padding={22}>
             <View style={localStyles.heroTopRow}>

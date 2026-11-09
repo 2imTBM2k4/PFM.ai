@@ -12,7 +12,12 @@ export {
   validateDate,
 } from './dates';
 export type { Clock } from './dates';
-export { budgetThresholds } from './budgets';
+export { budgetBannerItems, budgetThresholds } from './budgets';
+export type {
+  BudgetBannerItem,
+  BudgetBannerLevel,
+  BudgetBannerRowInput,
+} from './budgets';
 export { goalProgress } from './goals';
 export { nextOccurrence } from './recurring';
 export type { RecurringSchedule } from './recurring';
