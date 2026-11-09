@@ -67,7 +67,7 @@ export const viMessages = {
   budgetOverall: 'Ngân sách tổng',
   budgetAmount: 'Hạn mức tháng (₫)',
   budgetWarnPercent: 'Ngưỡng cảnh báo (%)',
-  budgetStart: 'Từ tháng (YYYY-MM)',
+  budgetStart: 'Từ tháng',
   budgetEnd: 'Đến tháng (để trống nếu tiếp tục)',
   budgetPause: 'Tạm dừng',
   budgetResume: 'Bật lại',
@@ -88,7 +88,7 @@ export const viMessages = {
   budgetNextMonth: 'Tháng sau',
   budgetNotifications: 'Thông báo ngân sách',
   budgetNotificationDescription:
-    'Thông báo điện thoại nhắc khi chạm ngưỡng hoặc đạt 100%. Cảnh báo trong ứng dụng chỉ hiển thị tại mục Ngân sách.',
+    'Thông báo điện thoại nhắc khi chạm ngưỡng hoặc đạt 100%. Cảnh báo trong ứng dụng hiển thị tại Tổng quan và mục Ngân sách.',
   budgetNotificationEnable: 'Cho phép thông báo',
   budgetNotificationGranted: 'Đã cho phép thông báo điện thoại.',
   budgetNotificationDenied:
@@ -111,8 +111,8 @@ export const viMessages = {
   filterText: 'Tìm trong ghi chú',
   filterTextHint:
     'Có thể gõ không dấu, ví dụ an sang. Tìm kiếm chỉ áp dụng cho ghi chú.',
-  filterFrom: 'Từ ngày (YYYY-MM-DD)',
-  filterTo: 'Đến ngày (YYYY-MM-DD)',
+  filterFrom: 'Từ ngày',
+  filterTo: 'Đến ngày',
   filterMinAmount: 'Số tiền từ (₫)',
   filterMaxAmount: 'Số tiền đến (₫)',
   filterApply: 'Áp dụng bộ lọc',
@@ -240,7 +240,7 @@ export const viMessages = {
   walletOther: 'Khác',
   initialBalance: 'Số dư đầu kỳ (₫)',
   initialBalanceHint:
-    'Nhập số nguyên, không dấu phân cách. Có thể nhập số âm, ví dụ -2000000.',
+    'Nhập số nguyên, tự động phân cách hàng nghìn. Có thể nhập số âm, ví dụ -2.000.000.',
   initialBalanceInvalid:
     'Nhập số nguyên từ -100.000.000.000 đến 100.000.000.000 ₫.',
   walletGoalFunding: 'Dành cho mục tiêu tiết kiệm',
@@ -338,7 +338,7 @@ export const viMessages = {
   welcomeDescription:
     'Ví Tiền mặt và các danh mục thu chi đã sẵn sàng. Bạn có thể nhập số dư ban đầu hoặc bỏ qua.',
   startingBalance: 'Số dư Tiền mặt ban đầu (₫)',
-  balanceHint: 'Nhập số nguyên, không dấu phân cách. Ví dụ: 1500000.',
+  balanceHint: 'Nhập số nguyên, tự động phân cách hàng nghìn. Ví dụ: 1.500.000.',
   invalidAmount: 'Nhập số nguyên từ 0 đến 100.000.000.000 ₫.',
   start: 'Bắt đầu',
   skip: 'Bỏ qua, bắt đầu từ 0 ₫',
@@ -358,14 +358,14 @@ export const viMessages = {
   security: 'Mã hóa và sao lưu',
   securityDescription:
     'Bản cài riêng mã hóa dữ liệu trên thiết bị. Bản xem trước trong Expo Go chưa mã hóa. Chưa hỗ trợ sao lưu Google Drive hoặc khôi phục khi mất khóa.',
-  chatDisconnected: 'Trợ lý chạy trên máy',
+  chatDisconnected: 'Ghi giao dịch trên máy · Tư vấn qua máy chủ AI',
   chatExplanation:
-    'Ghi giao dịch hoặc hỏi tư vấn tại đây. Giao dịch cần xác nhận trước khi lưu; câu trả lời được tạo trên máy và không gửi ra ngoài.',
+    'Ghi giao dịch và tra cứu số liệu thu chi được xử lý ngay trên máy. Khi hỏi tư vấn kế hoạch tài chính, ứng dụng gửi câu hỏi và số liệu tổng hợp (không gửi từng giao dịch hay ghi chú cá nhân) tới máy chủ AI.',
   chatEmpty:
     'Thử “ăn sáng 30k” để ghi giao dịch, hoặc “Tháng này tôi chi bao nhiêu?” để hỏi tư vấn.',
   chatInput: 'Ghi giao dịch hoặc hỏi tư vấn',
   chatInputHint: 'Nhập giao dịch hoặc câu hỏi…',
-  chatRouteAdvice: 'Câu hỏi tư vấn · Gợi ý trên máy',
+  chatRouteAdvice: 'Câu hỏi tư vấn tài chính',
   chatRouteTransaction: 'Gợi ý ghi giao dịch',
   chatRouteMultiple: 'khoản giao dịch cần xác nhận riêng',
   chatRouteAmbiguous: 'Chưa rõ ý; cần chọn ghi giao dịch hay hỏi tư vấn',
@@ -376,7 +376,7 @@ export const viMessages = {
   chatChooseAdvice: 'Hỏi tư vấn',
   chatChangeRoute: 'Chọn cách xử lý khác',
   chatAdviceSaved:
-    'Đã lưu câu hỏi trên máy. Câu trả lời được tạo cục bộ và không gửi dữ liệu ra ngoài.',
+    'Đã lưu câu hỏi trên máy. Câu hỏi số liệu được tính cục bộ; câu hỏi tư vấn gửi câu hỏi và chỉ số tổng hợp tới máy chủ AI.',
   send: 'Gửi',
   chatLimit: 'Tối đa 500 ký tự. Chỉ lưu trên thiết bị này.',
   chatLoadError: 'Không tải được tin nhắn. Hãy thử lại.',
@@ -402,7 +402,7 @@ export const viMessages = {
   debtRepayment: 'Ghi nhận trả nợ',
   debtCounterparty: 'Người cho vay / người vay',
   debtDue: 'Ngày đến hạn',
-  debtDueInput: 'Ngày đến hạn (YYYY-MM-DD, có thể để trống)',
+  debtDueInput: 'Ngày đến hạn (có thể để trống)',
   debtOutstanding: 'Còn nợ',
   debtPrincipal: 'Tổng tiền gốc',
   debtRepaid: 'Đã trả',
@@ -529,11 +529,11 @@ export const viMessages = {
     'Đã lưu thay đổi nhưng chưa tải lại được danh sách. Hãy thử tải lại.',
   aiIntroTitle: 'Trợ lý tài chính của bạn',
   aiIntroSubtitle:
-    'Ghi chép thu chi bằng câu tự nhiên hoặc đặt câu hỏi về ngân sách, mục tiêu và chi tiêu của bạn.',
+    'Ghi thu chi bằng câu tự nhiên và tra cứu số liệu ngay trên máy, hoặc hỏi AI tư vấn ngân sách, mục tiêu và kế hoạch chi tiêu.',
   aiChipBudgetPlanner: 'Lập ngân sách',
   aiChipGoalTracker: 'Mục tiêu',
   aiChipSpendingInsights: 'Phân tích chi tiêu',
-  aiTyping: 'PFM.ai đang chuẩn bị gợi ý trên máy…',
+  aiTyping: 'PFM.ai đang phân tích và chuẩn bị câu trả lời…',
   aiViewIntro: 'Màn giới thiệu trợ lý',
   aiViewChat: 'Lịch sử trò chuyện',
   aiHistory: 'Lịch sử',
@@ -681,6 +681,55 @@ export const viMessages = {
   notificationRecurringLabel: 'Giao dịch định kỳ khi tới ngày',
   notificationRecurringDescription:
     'Nhắc lịch khi có giao dịch định kỳ đến ngày thực hiện.',
+  budgetBannerSingleWarn: '{name}: đã dùng {percent}% hạn mức',
+  budgetBannerSingleReached: '{name}: đã chạm 100% hạn mức',
+  budgetBannerSingleOver: '{name}: vượt hạn mức {amount}',
+  budgetBannerMultiple: '{count} ngân sách cần chú ý',
+  budgetBannerDismiss: 'Tắt cảnh báo ngân sách',
+  aiQuotaRemaining:
+    'Còn {remaining}/{limit} lượt tư vấn AI hôm nay · Ghi giao dịch tự nhiên không tốn lượt',
+  aiQuotaExhaustedBanner:
+    'Còn 0/{limit} lượt tư vấn AI hôm nay (làm mới lúc {resetTime}) · Bạn vẫn ghi giao dịch bình thường',
+  aiQuotaExceededReply:
+    'Bạn đã dùng hết lượt hỏi AI hôm nay (làm mới lúc {resetTime}). Bạn vẫn có thể ghi giao dịch bằng câu tự nhiên và tra cứu số liệu trên máy.',
+  aiQuotaResetTomorrow: '{time} ngày mai',
+  aiQuotaResetOnDate: '{time} ngày {date}',
+  aiRateLimitExceededReply:
+    'Bạn đang gửi câu hỏi quá nhanh. Vui lòng đợi một lát rồi thử lại.',
+  aiServerErrorReply:
+    'Máy chủ tư vấn AI đang bận hoặc gặp sự cố. Vui lòng thử lại sau.',
+  aiOfflineFallbackPrefix:
+    '[Không thể kết nối máy chủ AI — đang hiển thị phân tích dữ liệu trên máy]',
+  aiExchangeRateUnavailable:
+    'Chưa có tỷ giá USD/VND. Hãy tải lại tỷ giá trong Cài đặt rồi thử lại.',
+  aiHistoryAskedRange: 'Khoảng thời gian đã hỏi: {range}.',
+  aiHistoryAnsweredData: 'Số liệu đã trả lời: {reply}',
+  aiOtherCategoryLabel: 'Danh mục khác',
+  aiSampleCategoryHousing: 'Nhà ở & Hóa đơn',
+  aiSampleCategorySavings: 'Tiết kiệm',
+  aiMockSummaryWithData:
+    'Trong tháng này, bạn đã thu {income} và chi {expense}. Số dư ví hiện tại là {balance}. Bạn muốn lên kế hoạch với số tiền hoặc thời hạn nào?',
+  aiMockInsufficientData:
+    'Mình chưa có đủ dữ liệu thu chi. Bạn cho biết thu nhập và chi tiêu trung bình mỗi tháng, cùng số tiền hoặc thời hạn muốn lên kế hoạch nhé.',
+  aiMockNeedIncomeForBudget:
+    'Mình cần biết thu nhập trung bình mỗi tháng để gợi ý mức ngân sách phù hợp.',
+  aiMockBudget503020Reply:
+    'Với thu nhập tham chiếu {income}, bạn có thể phân bổ ngân sách theo quy tắc 50/30/20: {essentials} cho chi phí thiết yếu, {lifestyle} cho nhu cầu cá nhân và dành {savings} tích lũy.',
+  aiMockBudget503020Title: 'Kế hoạch Ngân sách 50 / 30 / 20 (%)',
+  aiMockBudgetNeedsLabel: 'Thiết yếu (50%)',
+  aiMockBudgetWantsLabel: 'Cá nhân (30%)',
+  aiMockBudgetSavingsLabel: 'Tích lũy (20%)',
+  aiMockGoalReply:
+    'Số dư khả dụng hiện tại của bạn là {balance}. Tháng này chênh lệch thu trừ chi đạt {net} (tỷ lệ tích lũy ~{savingsRate}%). Bạn đang theo dõi {goalsCount} mục tiêu tiết kiệm và {budgetsCount} ngân sách.',
+  aiMockGoalSampleChartTitle: 'Cơ cấu chi tiêu mẫu để tối ưu mục tiêu (%)',
+  aiMockGoalActualChartTitle: 'Tỷ trọng chi tiêu hiện tại theo danh mục (%)',
+  aiMockSpendingReplyWithExpense:
+    'Trong tháng này, tổng thu của bạn là {income} và tổng chi là {expense} (còn lại {net}). Dưới đây là biểu đồ phân bổ phần trăm các danh mục chi tiêu lớn nhất:',
+  aiMockSpendingReplyNoExpense:
+    'Số dư hiện tại của bạn là {balance}. Tháng này bạn chưa phát sinh khoản chi nào nên dưới đây là biểu đồ tỷ trọng chi tiêu mẫu để bạn tham khảo:',
+  aiMockSpendingSampleChartTitle:
+    'Phân bổ chi tiêu tham khảo theo danh mục (%)',
+  aiMockSpendingActualChartTitle: 'Phân bổ chi tiêu thực tế theo danh mục (%)',
 } as const;
 
 export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(

@@ -68,6 +68,13 @@ export interface AIService {
 
 export type AdviceHistoryItem = { role: 'user' | 'assistant'; text: string };
 
+export interface AIQuotaStatus {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+  resetAt: string;
+}
+
 export const ADVICE_CLOCK = {
   now: () => new Date(),
   timeZone: 'Asia/Ho_Chi_Minh',
@@ -75,6 +82,165 @@ export const ADVICE_CLOCK = {
 
 function pickStrings(language: 'vi' | 'en') {
   return language === 'en' ? en : vi;
+}
+
+export function isDevRuntime(): boolean {
+  return typeof __DEV__ !== 'undefined' && Boolean(__DEV__);
+}
+
+/**
+ * Parses a raw `/v1/quota` JSON payload into a validated AIQuotaStatus object.
+ * Supports both `{ data: { allowed, remaining, limit, resetAt } }` and flat objects.
+ */
+export function parseAIQuotaResponse(raw: unknown): AIQuotaStatus | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  const candidate =
+    record.data && typeof record.data === 'object'
+      ? (record.data as Record<string, unknown>)
+      : record;
+  const { allowed, remaining, limit, resetAt } = candidate;
+  if (
+    typeof allowed !== 'boolean' ||
+    typeof remaining !== 'number' ||
+    !Number.isFinite(remaining) ||
+    remaining < 0 ||
+    typeof limit !== 'number' ||
+    !Number.isFinite(limit) ||
+    limit <= 0 ||
+    typeof resetAt !== 'string' ||
+    !resetAt.trim()
+  ) {
+    return null;
+  }
+  return {
+    allowed,
+    remaining: Math.trunc(remaining),
+    limit: Math.trunc(limit),
+    resetAt: resetAt.trim(),
+  };
+}
+
+/**
+ * Returns true only when quota has a finite daily limit below Number.MAX_SAFE_INTEGER
+ * (hides the counter when the proxy is running in unlimitedAiTesting mode).
+ */
+export function shouldShowAIQuotaBadge(
+  quota: AIQuotaStatus | null | undefined,
+): quota is AIQuotaStatus {
+  return Boolean(
+    quota &&
+      Number.isFinite(quota.limit) &&
+      quota.limit > 0 &&
+      quota.limit < Number.MAX_SAFE_INTEGER,
+  );
+}
+
+/**
+ * Formats a quota reset ISO timestamp into Asia/Ho_Chi_Minh local time.
+ */
+export function formatQuotaResetTimeVietnam(
+  resetAtInput: string | null | undefined,
+  language: 'vi' | 'en',
+  now: Date = ADVICE_CLOCK.now(),
+): string {
+  const strings = pickStrings(language);
+  const isoMatch = resetAtInput?.match(
+    /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?/,
+  );
+  const parsed = isoMatch ? new Date(isoMatch[0]) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return strings.aiQuotaResetTomorrow.replace('{time}', '00:00');
+  }
+
+  const timeParts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(parsed);
+  const rawHour =
+    timeParts.find((part) => part.type === 'hour')?.value ?? '00';
+  const hour = rawHour === '24' ? '00' : rawHour;
+  const minute =
+    timeParts.find((part) => part.type === 'minute')?.value ?? '00';
+  const timeStr = `${hour}:${minute}`;
+
+  const resetDateKey = today({
+    now: () => parsed,
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+  const currentVnDateKey = today({
+    now: () => now,
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+  const [y, m, d] = currentVnDateKey.split('-').map(Number);
+  const tomorrowKey = new Date(Date.UTC(y, m - 1, d + 1))
+    .toISOString()
+    .slice(0, 10);
+
+  if (resetDateKey === tomorrowKey) {
+    return strings.aiQuotaResetTomorrow.replace('{time}', timeStr);
+  }
+  const [, resetMonth, resetDay] = resetDateKey.split('-');
+  const dateLabel = `${Number(resetDay)}/${Number(resetMonth)}`;
+  return strings.aiQuotaResetOnDate
+    .replace('{time}', timeStr)
+    .replace('{date}', dateLabel);
+}
+
+/**
+ * Formats the quota banner text for the Chat screen when the limit is finite.
+ */
+export function formatAIQuotaBanner(
+  quota: AIQuotaStatus | null | undefined,
+  language: 'vi' | 'en',
+  now: Date = ADVICE_CLOCK.now(),
+): string | null {
+  if (!shouldShowAIQuotaBadge(quota)) return null;
+  const strings = pickStrings(language);
+  if (quota.remaining <= 0 || !quota.allowed) {
+    const resetTime = formatQuotaResetTimeVietnam(quota.resetAt, language, now);
+    return strings.aiQuotaExhaustedBanner
+      .replace(/\{limit\}/g, String(quota.limit))
+      .replace('{resetTime}', resetTime);
+  }
+  return strings.aiQuotaRemaining
+    .replace('{remaining}', String(quota.remaining))
+    .replace('{limit}', String(quota.limit));
+}
+
+/**
+ * Queries `GET /v1/quota` for the current device. Returns null if offline,
+ * non-HTTPS in production, or when the proxy is unreachable.
+ */
+export async function fetchAIQuota(options?: {
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<AIQuotaStatus | null> {
+  const baseUrl = options?.baseUrl ?? getProxyBaseUrl();
+  if (!baseUrl || (!isDevRuntime() && !baseUrl.startsWith('https://'))) {
+    return null;
+  }
+  const fetchFn = options?.fetchImpl ?? fetch;
+  try {
+    const deviceId = await getOrCreateDeviceId();
+    const response = await fetchFn(`${baseUrl}/v1/quota`, {
+      method: 'GET',
+      headers: {
+        'x-device-id': deviceId,
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
+    if (!response.ok) return null;
+    const json = await response.json();
+    return parseAIQuotaResponse(json);
+  } catch (error) {
+    if (isDevRuntime()) {
+      console.warn('Quota request failed at', baseUrl, error);
+    }
+    return null;
+  }
 }
 
 /**
@@ -123,10 +289,7 @@ export async function tryFactualAdvice(input: {
     return {
       id: `ai-${input.userMessageId}`,
       userMessageId: input.userMessageId,
-      replyText:
-        language === 'en'
-          ? 'The USD/VND exchange rate is unavailable. Refresh it in Settings and try again.'
-          : 'Chưa có tỷ giá USD/VND. Hãy tải lại tỷ giá trong Cài đặt rồi thử lại.',
+      replyText: strings.aiExchangeRateUnavailable,
       createdAt: new Date().toISOString(),
     };
   }
@@ -234,10 +397,15 @@ export function buildAdviceHistory(
         (factQuery.range
           ? `${factQuery.range.from}..${factQuery.range.to}`
           : '');
+      const strings = pickStrings(usePreferences.getState().language);
       const context = [
         row.text,
-        rangePhrase ? `Khoảng thời gian đã hỏi: ${rangePhrase}.` : '',
-        replyText ? `Số liệu đã trả lời: ${replyText}` : '',
+        rangePhrase
+          ? strings.aiHistoryAskedRange.replace('{range}', rangePhrase)
+          : '',
+        replyText
+          ? strings.aiHistoryAnsweredData.replace('{reply}', replyText)
+          : '',
       ]
         .filter(Boolean)
         .join(' ');
@@ -300,8 +468,12 @@ export function mapTopicToIntent(
 }
 
 export function getProxyBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_PROXY_URL) {
-    return process.env.EXPO_PUBLIC_PROXY_URL;
+  const configured = process.env.EXPO_PUBLIC_PROXY_URL?.trim();
+  if (!isDevRuntime()) {
+    return configured && configured.startsWith('https://') ? configured : '';
+  }
+  if (configured) {
+    return configured;
   }
   if (typeof window !== 'undefined' && window.location?.hostname) {
     return `http://${window.location.hostname}:3000`;
@@ -336,6 +508,7 @@ export function buildCategoryChartItems(
     return { items, isSample: false };
   }
 
+  const strings = pickStrings(usePreferences.getState().language);
   return {
     isSample: true,
     items: [
@@ -346,10 +519,7 @@ export function buildCategoryChartItems(
         color: CHART_PALETTE[0],
       },
       {
-        category:
-          usePreferences.getState().language === 'en'
-            ? 'Housing and bills'
-            : 'Nhà ở & Hóa đơn',
+        category: strings.aiSampleCategoryHousing,
         percentage: 27,
         amount: 2_700_000,
         color: CHART_PALETTE[1],
@@ -367,8 +537,7 @@ export function buildCategoryChartItems(
         color: CHART_PALETTE[3],
       },
       {
-        category:
-          usePreferences.getState().language === 'en' ? 'Savings' : 'Tiết kiệm',
+        category: strings.aiSampleCategorySavings,
         percentage: 8,
         amount: 800_000,
         color: CHART_PALETTE[4],
@@ -396,6 +565,8 @@ export class MockAIService implements AIService {
       });
     }
 
+    const { language } = usePreferences.getState();
+    const strings = pickStrings(language);
     const normalized = foldSearchText(prompt);
     const { items: chartItems, isSample } = buildCategoryChartItems(
       context.topCategories,
@@ -415,7 +586,7 @@ export class MockAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: vi.aiReplyOutOfScope,
+        replyText: strings.aiReplyOutOfScope,
         createdAt,
       };
     }
@@ -423,7 +594,7 @@ export class MockAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: vi.aiReplyRestricted,
+        replyText: strings.aiReplyRestricted,
         createdAt,
       };
     }
@@ -431,19 +602,22 @@ export class MockAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: vi.aiReplyAmbiguous,
+        replyText: strings.aiReplyAmbiguous,
         createdAt,
       };
     }
 
-    if (usePreferences.getState().language === 'en') {
+    if (language === 'en') {
       const hasData = context.monthlyIncome > 0 || context.monthlyExpense > 0;
       return {
         id,
         userMessageId,
         replyText: hasData
-          ? `This month you received ${formatVnd(context.monthlyIncome)} and spent ${formatVnd(context.monthlyExpense)}. Your current wallet balance is ${formatVnd(context.balance)}. What amount or timeframe would you like to plan around?`
-          : 'I do not have enough transaction data yet. What is your monthly income, typical spending, and the amount or timeframe you want to plan for?',
+          ? strings.aiMockSummaryWithData
+              .replace('{income}', formatVnd(context.monthlyIncome))
+              .replace('{expense}', formatVnd(context.monthlyExpense))
+              .replace('{balance}', formatVnd(context.balance))
+          : strings.aiMockInsufficientData,
         createdAt,
       };
     }
@@ -452,8 +626,7 @@ export class MockAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText:
-          'Mình chưa có đủ dữ liệu thu chi. Bạn cho biết thu nhập và chi tiêu trung bình mỗi tháng, cùng số tiền hoặc thời hạn muốn lên kế hoạch nhé.',
+        replyText: strings.aiMockInsufficientData,
         createdAt,
       };
     }
@@ -467,8 +640,7 @@ export class MockAIService implements AIService {
         return {
           id,
           userMessageId,
-          replyText:
-            'Mình cần biết thu nhập trung bình mỗi tháng để gợi ý mức ngân sách phù hợp.',
+          replyText: strings.aiMockNeedIncomeForBudget,
           createdAt,
         };
       }
@@ -479,19 +651,19 @@ export class MockAIService implements AIService {
 
       const budgetChart: AIChartItem[] = [
         {
-          category: 'Thiết yếu (50%)',
+          category: strings.aiMockBudgetNeedsLabel,
           percentage: 50,
           amount: essentials,
           color: CHART_PALETTE[0],
         },
         {
-          category: 'Cá nhân (30%)',
+          category: strings.aiMockBudgetWantsLabel,
           percentage: 30,
           amount: lifestyle,
           color: CHART_PALETTE[1],
         },
         {
-          category: 'Tích lũy (20%)',
+          category: strings.aiMockBudgetSavingsLabel,
           percentage: 20,
           amount: savings,
           color: CHART_PALETTE[2],
@@ -501,8 +673,12 @@ export class MockAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: `Với thu nhập tham chiếu ${formatVnd(incomeRef)}, bạn có thể phân bổ ngân sách theo quy tắc 50/30/20: ${formatVnd(essentials)} cho chi phí thiết yếu, ${formatVnd(lifestyle)} cho nhu cầu cá nhân và dành ${formatVnd(savings)} tích lũy.`,
-        chartTitle: 'Kế hoạch Ngân sách 50 / 30 / 20 (%)',
+        replyText: strings.aiMockBudget503020Reply
+          .replace('{income}', formatVnd(incomeRef))
+          .replace('{essentials}', formatVnd(essentials))
+          .replace('{lifestyle}', formatVnd(lifestyle))
+          .replace('{savings}', formatVnd(savings)),
+        chartTitle: strings.aiMockBudget503020Title,
         chartItems: budgetChart,
         createdAt,
       };
@@ -527,10 +703,15 @@ export class MockAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: `Số dư khả dụng hiện tại của bạn là ${formatVnd(context.balance)}. Tháng này chênh lệch thu trừ chi đạt ${formatVnd(context.monthlyNet)} (tỷ lệ tích lũy ~${savingsRate}%). Bạn đang theo dõi ${context.goalsCount} mục tiêu tiết kiệm và ${context.budgetsCount} ngân sách.`,
+        replyText: strings.aiMockGoalReply
+          .replace('{balance}', formatVnd(context.balance))
+          .replace('{net}', formatVnd(context.monthlyNet))
+          .replace('{savingsRate}', String(savingsRate))
+          .replace('{goalsCount}', String(context.goalsCount))
+          .replace('{budgetsCount}', String(context.budgetsCount)),
         chartTitle: isSample
-          ? 'Cơ cấu chi tiêu mẫu để tối ưu mục tiêu (%)'
-          : 'Tỷ trọng chi tiêu hiện tại theo danh mục (%)',
+          ? strings.aiMockGoalSampleChartTitle
+          : strings.aiMockGoalActualChartTitle,
         chartItems,
         createdAt,
       };
@@ -538,30 +719,67 @@ export class MockAIService implements AIService {
 
     const summaryPrefix =
       context.monthlyExpense > 0
-        ? `Trong tháng này, tổng thu của bạn là ${formatVnd(context.monthlyIncome)} và tổng chi là ${formatVnd(context.monthlyExpense)} (còn lại ${formatVnd(context.monthlyNet)}). Dưới đây là biểu đồ phân bổ phần trăm các danh mục chi tiêu lớn nhất:`
-        : `Số dư hiện tại của bạn là ${formatVnd(context.balance)}. Tháng này bạn chưa phát sinh khoản chi nào nên dưới đây là biểu đồ tỷ trọng chi tiêu mẫu để bạn tham khảo:`;
+        ? strings.aiMockSpendingReplyWithExpense
+            .replace('{income}', formatVnd(context.monthlyIncome))
+            .replace('{expense}', formatVnd(context.monthlyExpense))
+            .replace('{net}', formatVnd(context.monthlyNet))
+        : strings.aiMockSpendingReplyNoExpense.replace(
+            '{balance}',
+            formatVnd(context.balance),
+          );
 
     return {
       id,
       userMessageId,
       replyText: summaryPrefix,
       chartTitle: isSample
-        ? 'Phân bổ chi tiêu tham khảo theo danh mục (%)'
-        : 'Phân bổ chi tiêu thực tế theo danh mục (%)',
+        ? strings.aiMockSpendingSampleChartTitle
+        : strings.aiMockSpendingActualChartTitle,
       chartItems,
       createdAt,
     };
   }
 }
 
+function formatRemoteErrorReply(
+  data: {
+    code?: string;
+    message?: string;
+    resetAt?: string;
+    fallbackTemplate?: string;
+  },
+  language: 'vi' | 'en',
+): string {
+  const strings = pickStrings(language);
+  if (data.code === 'QUOTA_EXCEEDED_DEVICE') {
+    const resetTime = formatQuotaResetTimeVietnam(
+      data.resetAt ?? data.message,
+      language,
+    );
+    const base = strings.aiQuotaExceededReply.replace('{resetTime}', resetTime);
+    return data.fallbackTemplate ? `${base}\n\n${data.fallbackTemplate}` : base;
+  }
+  if (data.code === 'RATE_LIMIT_EXCEEDED') {
+    return strings.aiRateLimitExceededReply;
+  }
+  if (data.fallbackTemplate) {
+    return `${strings.aiServerErrorReply}\n\n${data.fallbackTemplate}`;
+  }
+  return strings.aiServerErrorReply;
+}
+
 export class RemoteAIService implements AIService {
-  private readonly baseUrl: string;
+  private readonly customBaseUrl?: string;
   private readonly fallbackService: AIService;
 
   constructor(options?: { baseUrl?: string; fallbackService?: AIService }) {
-    this.baseUrl = options?.baseUrl ?? getProxyBaseUrl();
+    this.customBaseUrl = options?.baseUrl;
     this.fallbackService =
       options?.fallbackService ?? new MockAIService({ delayMs: 250 });
+  }
+
+  private resolveBaseUrl(): string {
+    return this.customBaseUrl ?? getProxyBaseUrl();
   }
 
   async sendMessage(
@@ -572,6 +790,8 @@ export class RemoteAIService implements AIService {
   ): Promise<AIResponsePayload> {
     const createdAt = new Date().toISOString();
     const id = `ai-${userMessageId}`;
+    const { language, currency, exchangeRate } = usePreferences.getState();
+    const strings = pickStrings(language);
 
     const currentScope = classifyAdviceScope(prompt);
     const scopeDecision =
@@ -591,7 +811,7 @@ export class RemoteAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: vi.aiReplyOutOfScope,
+        replyText: strings.aiReplyOutOfScope,
         createdAt,
       };
     }
@@ -599,7 +819,7 @@ export class RemoteAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: vi.aiReplyRestricted,
+        replyText: strings.aiReplyRestricted,
         createdAt,
       };
     }
@@ -617,23 +837,23 @@ export class RemoteAIService implements AIService {
       return {
         id,
         userMessageId,
-        replyText: vi.aiReplyAmbiguous,
+        replyText: strings.aiReplyAmbiguous,
         createdAt,
       };
     }
 
+    const baseUrl = this.resolveBaseUrl();
     try {
-      const { language, currency, exchangeRate } = usePreferences.getState();
       if (currency === 'USD' && exchangeRate === null)
         return {
           id,
           userMessageId,
-          replyText:
-            language === 'en'
-              ? 'The USD/VND exchange rate is unavailable. Refresh it in Settings and try again.'
-              : 'Chưa có tỷ giá USD/VND. Hãy tải lại tỷ giá trong Cài đặt rồi thử lại.',
+          replyText: strings.aiExchangeRateUnavailable,
           createdAt,
         };
+      if (!baseUrl || (!isDevRuntime() && !baseUrl.startsWith('https://'))) {
+        throw new Error('HTTPS_REQUIRED');
+      }
       const deviceId = await getOrCreateDeviceId();
       const requestId = Crypto.randomUUID();
       const headers = {
@@ -643,7 +863,7 @@ export class RemoteAIService implements AIService {
       };
       let requestQuestion = prompt;
       let requestHistory = history;
-      let planResponse = await fetch(`${this.baseUrl}/v1/advice/plan`, {
+      let planResponse = await fetch(`${baseUrl}/v1/advice/plan`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -674,7 +894,7 @@ export class RemoteAIService implements AIService {
         if (legacyQuestion.length <= 500) {
           requestQuestion = legacyQuestion;
           requestHistory = [];
-          planResponse = await fetch(`${this.baseUrl}/v1/advice/plan`, {
+          planResponse = await fetch(`${baseUrl}/v1/advice/plan`, {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -691,10 +911,7 @@ export class RemoteAIService implements AIService {
         return {
           id,
           userMessageId,
-          replyText:
-            language === 'en'
-              ? 'Could not prepare advice right now. Please try again.'
-              : (planData.message ?? vi.chatLoadError),
+          replyText: formatRemoteErrorReply(planData, language),
           createdAt,
         };
       const plan = AdvicePlanResponseSchema.parse(planData);
@@ -705,7 +922,7 @@ export class RemoteAIService implements AIService {
       const summary = await withDatabase((db) =>
         readAnalysisSummary(db, currentDate),
       );
-      const response = await fetch(`${this.baseUrl}/v1/advice/complete`, {
+      const response = await fetch(`${baseUrl}/v1/advice/complete`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -719,8 +936,7 @@ export class RemoteAIService implements AIService {
             ? {
                 dataGroups: await withDatabase((db) =>
                   readAdviceGroups(db, plan.selection, {
-                    fallbackCategoryLabel:
-                      language === 'en' ? 'Other category' : 'Danh mục khác',
+                    fallbackCategoryLabel: strings.aiOtherCategoryLabel,
                     riskContext: {
                       monthsWithData: summary.window.monthsWithData,
                       riskFlags: summary.riskFlags,
@@ -745,6 +961,7 @@ export class RemoteAIService implements AIService {
         answer?: string;
         code?: string;
         message?: string;
+        resetAt?: string;
         fallbackTemplate?: string;
       };
 
@@ -760,55 +977,13 @@ export class RemoteAIService implements AIService {
         );
       }
 
-      if (!data.success) {
-        if (data.code === 'QUOTA_EXCEEDED_DEVICE') {
-          const combined =
-            language === 'en'
-              ? 'Daily AI limit reached.'
-              : data.fallbackTemplate
-                ? `${data.message ?? ''}\n\n${data.fallbackTemplate}`
-                : (data.message ?? vi.chatLoadError);
-          return {
-            id,
-            userMessageId,
-            replyText: combined,
-            createdAt,
-          };
-        }
-
-        if (data.code === 'RATE_LIMIT_EXCEEDED') {
-          return {
-            id,
-            userMessageId,
-            replyText:
-              language === 'en'
-                ? 'You are asking too quickly. Wait a moment and try again.'
-                : 'Bạn đang gửi câu hỏi quá nhanh. Vui lòng đợi một lát rồi thử lại.',
-            createdAt,
-          };
-        }
-
-        if (data.fallbackTemplate) {
-          return {
-            id,
-            userMessageId,
-            replyText:
-              language === 'en'
-                ? 'Could not get advice right now. Please try again.'
-                : data.fallbackTemplate,
-            createdAt,
-          };
-        }
-        if (data.message)
-          return {
-            id,
-            userMessageId,
-            replyText:
-              language === 'en'
-                ? 'Could not get advice right now. Please try again.'
-                : data.message,
-            createdAt,
-          };
+      if (!data.success || !response.ok) {
+        return {
+          id,
+          userMessageId,
+          replyText: formatRemoteErrorReply(data, language),
+          createdAt,
+        };
       }
 
       // proxy error handled
@@ -819,8 +994,8 @@ export class RemoteAIService implements AIService {
         history,
       );
     } catch (networkError) {
-      if (typeof __DEV__ !== 'undefined' && __DEV__) {
-        console.warn('Proxy request failed at', this.baseUrl, networkError);
+      if (isDevRuntime()) {
+        console.warn('Proxy request failed at', baseUrl, networkError);
       }
       const fallbackPayload = await this.fallbackService.sendMessage(
         prompt,
@@ -828,10 +1003,11 @@ export class RemoteAIService implements AIService {
         userMessageId,
         history,
       );
+      const activeStrings = pickStrings(usePreferences.getState().language);
       return applyAdviceDisclaimer(
         {
           ...fallbackPayload,
-          replyText: `${usePreferences.getState().language === 'en' ? `[Could not reach the AI server at ${this.baseUrl}; showing on-device guidance]` : `[Không thể kết nối máy chủ AI tại ${this.baseUrl} - đang hiển thị phân tích dữ liệu trên máy]`}\n\n${fallbackPayload.replyText}`,
+          replyText: `${activeStrings.aiOfflineFallbackPrefix}\n\n${fallbackPayload.replyText}`,
         },
         prompt,
       );
@@ -845,6 +1021,9 @@ export async function readAIServiceContext(): Promise<AIServiceContext> {
   const currentMonth = monthKey(
     today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
   );
+  const fallbackName = pickStrings(
+    usePreferences.getState().language,
+  ).recurringUncategorized;
   return withDatabase(async (db) => {
     const dashboard = await readDashboard(db, currentMonth);
     return {
@@ -853,7 +1032,7 @@ export async function readAIServiceContext(): Promise<AIServiceContext> {
       monthlyExpense: dashboard.current.expense,
       monthlyNet: dashboard.current.net,
       topCategories: dashboard.topCategories.map((row) => ({
-        name: row.name ?? 'Chưa phân loại',
+        name: row.name ?? fallbackName,
         amount: row.amount,
       })),
       budgetsCount: dashboard.budgets.length,

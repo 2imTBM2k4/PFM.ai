@@ -62,7 +62,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   budgetOverall: 'Overall budget',
   budgetAmount: 'Monthly limit',
   budgetWarnPercent: 'Alert threshold (%)',
-  budgetStart: 'From month (YYYY-MM)',
+  budgetStart: 'From month',
   budgetEnd: 'Until month (blank if ongoing)',
   budgetPause: 'Pause',
   budgetResume: 'Resume',
@@ -99,8 +99,8 @@ export const en: Record<keyof typeof viMessages, string> = {
   filterAdvanced: 'Advanced filters',
   filterText: 'Search notes',
   filterTextHint: 'Search transaction notes.',
-  filterFrom: 'From date (YYYY-MM-DD)',
-  filterTo: 'To date (YYYY-MM-DD)',
+  filterFrom: 'From date',
+  filterTo: 'To date',
   filterMinAmount: 'Minimum amount',
   filterMaxAmount: 'Maximum amount',
   filterApply: 'Apply filters',
@@ -322,12 +322,13 @@ export const en: Record<keyof typeof viMessages, string> = {
   security: 'Security and backup',
   securityDescription:
     'Standalone installations encrypt on-device data. The Expo Go preview is unencrypted. Google Drive backup and recovery after key loss are not available.',
-  chatDisconnected: 'On-device assistant',
-  chatExplanation: 'Ask about your spending, saving, purchases, and loans.',
+  chatDisconnected: 'On-device logging · AI server advice',
+  chatExplanation:
+    'Transaction logging and spending lookups run on your device. For financial planning advice, the app sends your question and aggregated summary metrics (never individual transactions or personal notes) to the AI server.',
   chatEmpty: 'Start a conversation to get personal finance guidance.',
   chatInput: 'Record a transaction or ask for advice',
   chatInputHint: 'Type a transaction or question…',
-  chatRouteAdvice: 'Advice question · On-device suggestion',
+  chatRouteAdvice: 'Financial advice question',
   chatRouteTransaction: 'Transaction suggestion',
   chatRouteMultiple: 'transactions to confirm separately',
   chatRouteAmbiguous: 'Unclear intent; choose a transaction or advice',
@@ -337,7 +338,8 @@ export const en: Record<keyof typeof viMessages, string> = {
   chatChooseTransaction: 'Record transaction',
   chatChooseAdvice: 'Ask for advice',
   chatChangeRoute: 'Choose another action',
-  chatAdviceSaved: 'Advice question saved.',
+  chatAdviceSaved:
+    'Question saved on device. Numeric lookups are computed locally; advice questions send your prompt and summary metrics to the AI server.',
   send: 'Send',
   chatLimit: 'Up to 500 characters. Stored only on this device.',
   chatLoadError: 'Could not load messages. Try again.',
@@ -361,7 +363,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   debtRepayment: 'Record repayment',
   debtCounterparty: 'Lender / borrower',
   debtDue: 'Due date',
-  debtDueInput: 'Due date (YYYY-MM-DD, optional)',
+  debtDueInput: 'Due date (optional)',
   debtOutstanding: 'Outstanding',
   debtPrincipal: 'Principal',
   debtRepaid: 'Repaid',
@@ -468,11 +470,11 @@ export const en: Record<keyof typeof viMessages, string> = {
   goalRefreshError: 'Goal saved, but the list could not refresh.',
   aiIntroTitle: 'Your finance assistant',
   aiIntroSubtitle:
-    'Ask about your money, budgets, savings, purchases, and loans.',
+    'Log transactions in plain language and look up numbers on your device, or ask AI for advice on budgets, goals, and spending plans.',
   aiChipBudgetPlanner: 'Plan a budget',
   aiChipGoalTracker: 'Savings goals',
   aiChipSpendingInsights: 'Spending insights',
-  aiTyping: 'PFM.ai is preparing a suggestion…',
+  aiTyping: 'PFM.ai is analyzing and preparing a reply…',
   aiViewIntro: 'Assistant introduction',
   aiViewChat: 'Conversation history',
   aiHistory: 'History',
@@ -615,4 +617,54 @@ export const en: Record<keyof typeof viMessages, string> = {
   notificationRecurringLabel: 'Recurring transactions when due',
   notificationRecurringDescription:
     'Reminders when a recurring transaction reaches its scheduled date.',
+  budgetBannerSingleWarn: '{name}: {percent}% of limit used',
+  budgetBannerSingleReached: '{name}: reached 100% of limit',
+  budgetBannerSingleOver: '{name}: over limit by {amount}',
+  budgetBannerMultiple: '{count} budgets need attention',
+  budgetBannerDismiss: 'Dismiss budget alert',
+  aiQuotaRemaining:
+    '{remaining}/{limit} AI advice turns left today · Natural transaction logging is free',
+  aiQuotaExhaustedBanner:
+    '0/{limit} AI advice turns left today (resets at {resetTime}) · Transaction logging still works',
+  aiQuotaExceededReply:
+    'You have used all AI advice turns for today (resets at {resetTime}). You can still log transactions in plain language and look up numbers on your device.',
+  aiQuotaResetTomorrow: '{time} tomorrow',
+  aiQuotaResetOnDate: '{time} on {date}',
+  aiRateLimitExceededReply:
+    'You are sending questions too quickly. Please wait a moment and try again.',
+  aiServerErrorReply:
+    'The AI advice server is temporarily unavailable. Please try again later.',
+  aiOfflineFallbackPrefix:
+    '[Could not connect to the AI server — showing on-device analysis]',
+  aiExchangeRateUnavailable:
+    'The USD/VND exchange rate is unavailable. Refresh it in Settings and try again.',
+  aiHistoryAskedRange: 'Asked period: {range}.',
+  aiHistoryAnsweredData: 'Answered figures: {reply}',
+  aiOtherCategoryLabel: 'Other category',
+  aiSampleCategoryHousing: 'Housing and bills',
+  aiSampleCategorySavings: 'Savings',
+  aiMockSummaryWithData:
+    'This month you received {income} and spent {expense}. Your current wallet balance is {balance}. What amount or timeframe would you like to plan around?',
+  aiMockInsufficientData:
+    'I do not have enough transaction data yet. What is your monthly income, typical spending, and the amount or timeframe you want to plan for?',
+  aiMockNeedIncomeForBudget:
+    'I need to know your average monthly income to suggest a suitable budget.',
+  aiMockBudget503020Reply:
+    'With reference income {income}, you can allocate a 50/30/20 budget: {essentials} for essentials, {lifestyle} for personal needs, and {savings} for savings.',
+  aiMockBudget503020Title: '50 / 30 / 20 Budget Plan (%)',
+  aiMockBudgetNeedsLabel: 'Essentials (50%)',
+  aiMockBudgetWantsLabel: 'Personal (30%)',
+  aiMockBudgetSavingsLabel: 'Savings (20%)',
+  aiMockGoalReply:
+    'Your available balance is {balance}. This month net cash flow is {net} (~{savingsRate}% savings rate). You are tracking {goalsCount} savings goals and {budgetsCount} budgets.',
+  aiMockGoalSampleChartTitle:
+    'Sample spending breakdown to optimize goals (%)',
+  aiMockGoalActualChartTitle: 'Current spending share by category (%)',
+  aiMockSpendingReplyWithExpense:
+    'This month, your total income is {income} and total spending is {expense} (remaining {net}). Here is the percentage breakdown of your top spending categories:',
+  aiMockSpendingReplyNoExpense:
+    'Your current balance is {balance}. You have no recorded expenses this month, so here is a sample spending breakdown for reference:',
+  aiMockSpendingSampleChartTitle:
+    'Reference spending breakdown by category (%)',
+  aiMockSpendingActualChartTitle: 'Actual spending breakdown by category (%)',
 };

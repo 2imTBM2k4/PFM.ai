@@ -34,6 +34,7 @@ import {
 } from '@/data/quick-entry';
 import { saveChatMessage, type ChatRow } from '@/data/repository';
 import { listTransactions } from '@/data/transactions';
+import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { getProxyBaseUrl } from '@/services/ai-service';
 import { getOrCreateDeviceId } from '@/services/device-id';
@@ -344,6 +345,8 @@ export function ChatComposer({
           status: 'ready',
           action: 'save_publication_skipped',
         });
+      useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
+      void checkBudgetAlerts();
       void useApp.getState().refreshRecurring(true);
     } catch (failure) {
       logAppEvent('error', {
@@ -397,6 +400,8 @@ export function ChatComposer({
         },
         load,
       );
+      useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
+      void checkBudgetAlerts();
       void useApp.getState().refreshRecurring(true);
     } catch {
       if (mounted.current)

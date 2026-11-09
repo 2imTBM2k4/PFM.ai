@@ -56,9 +56,12 @@ import {
   ADVICE_CLOCK,
   defaultAIService,
   buildAdviceHistory,
+  fetchAIQuota,
+  formatAIQuotaBanner,
   loadPersistedAIReplyMap,
   readAIServiceContext,
   savePersistedAIReplyIfMessageExists,
+  type AIQuotaStatus,
   type AIResponsePayload,
 } from '@/services/ai-service';
 
@@ -149,6 +152,7 @@ export default function Chat({
   const [deleting, setDeleting] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionRow[]>([]);
   const [typingForId, setTypingForId] = useState<string | null>(null);
+  const [quota, setQuota] = useState<AIQuotaStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -165,13 +169,23 @@ export default function Chat({
   const theme = useDesignTheme();
   const router = useRouter();
   const activeSessionId = useApp((state) => state.chatSessionId);
+  const language = usePreferences((state) => state.language);
+  const quotaBanner = formatAIQuotaBanner(quota, language);
+
+  const refreshQuota = useCallback(async () => {
+    const nextQuota = await fetchAIQuota();
+    if (mounted.current && nextQuota) {
+      setQuota(nextQuota);
+    }
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
+    void refreshQuota();
     return () => {
       mounted.current = false;
     };
-  }, []);
+  }, [refreshQuota]);
 
   useFocusEffect(
     useCallback(() => {
@@ -301,10 +315,11 @@ export default function Chat({
           setTypingForId((current) =>
             current === userMessage.id ? null : current,
           );
+          void refreshQuota();
         }
       }
     },
-    [isModal],
+    [isModal, refreshQuota],
   );
 
   const onMessage = useCallback((message: ChatRow, sessionId: string) => {
@@ -807,12 +822,43 @@ export default function Chat({
                     {vi.chatExplanation}
                   </Text>
                 </View>
+                {!!quotaBanner && (
+                  <Text
+                    variant="labelSmall"
+                    style={{
+                      color:
+                        quota && quota.remaining <= 0
+                          ? palette.warningInk
+                          : theme.brand.primaryText,
+                      marginTop: 8,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {quotaBanner}
+                  </Text>
+                )}
               </GlassCard>
             </ScrollView>
           ) : (
             /* SCREEN 3: CHAT AI (Conversation List + Inline Suggestion Chips) */
             <View style={{ flex: 1, minHeight: 0 }}>
               <View style={localStyles.topChipsBar}>
+                {!!quotaBanner && (
+                  <Text
+                    variant="labelSmall"
+                    style={{
+                      color:
+                        quota && quota.remaining <= 0
+                          ? palette.warningInk
+                          : theme.text.secondary,
+                      fontWeight: '600',
+                      paddingHorizontal: 4,
+                      paddingBottom: 2,
+                    }}
+                  >
+                    {quotaBanner}
+                  </Text>
+                )}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}

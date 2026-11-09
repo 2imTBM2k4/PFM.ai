@@ -7,13 +7,18 @@ import {
   buildCategoryChartItems,
   buildAdviceHistory,
   applyAdviceDisclaimer,
+  fetchAIQuota,
+  formatAIQuotaBanner,
+  formatQuotaResetTimeVietnam,
   getProxyBaseUrl,
   loadPersistedAIReplyMap,
   mapTopicToIntent,
   MockAIService,
+  parseAIQuotaResponse,
   RemoteAIService,
   savePersistedAIReply,
   savePersistedAIReplyIfMessageExists,
+  shouldShowAIQuotaBadge,
   type AIServiceContext,
 } from './ai-service';
 
@@ -587,6 +592,7 @@ describe('RemoteAIService, getProxyBaseUrl & mapTopicToIntent', () => {
 
   beforeEach(() => {
     delete process.env.EXPO_PUBLIC_PROXY_URL;
+    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
   });
 
   afterEach(() => {
@@ -966,7 +972,8 @@ describe('RemoteAIService, getProxyBaseUrl & mapTopicToIntent', () => {
       'msg-quota-exceeded',
     );
 
-    expect(reply.replyText).toContain('Bạn đã dùng hết lượt hỏi AI hôm nay.');
+    expect(reply.replyText).toContain('Bạn đã dùng hết lượt hỏi AI hôm nay');
+    expect(reply.replyText).toContain('Tóm tắt: Thu nhập 15.000.000 ₫');
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -988,5 +995,178 @@ describe('RemoteAIService, getProxyBaseUrl & mapTopicToIntent', () => {
     expect(reply.replyText).toContain('quy tắc 50/30/20');
     expect(reply.replyText).toContain('Không thể kết nối máy chủ AI');
     expect(reply.chartItems?.length).toBe(3);
+  });
+
+  it('parses /v1/quota, hides badge when limit is MAX_SAFE_INTEGER, and formats resetAt in Asia/Ho_Chi_Minh', async () => {
+    const nowRef = new Date('2026-11-09T15:00:00+07:00');
+    const finite = parseAIQuotaResponse({
+      success: true,
+      data: {
+        allowed: true,
+        remaining: 7,
+        limit: 10,
+        resetAt: '2026-11-10T00:00:00+07:00',
+      },
+    });
+    expect(finite).toEqual({
+      allowed: true,
+      remaining: 7,
+      limit: 10,
+      resetAt: '2026-11-10T00:00:00+07:00',
+    });
+    expect(shouldShowAIQuotaBadge(finite)).toBe(true);
+    expect(formatAIQuotaBanner(finite, 'vi', nowRef)).toContain(
+      'Còn 7/10 lượt tư vấn AI hôm nay',
+    );
+    expect(formatAIQuotaBanner(finite, 'en', nowRef)).toContain(
+      '7/10 AI advice turns left today',
+    );
+
+    // Unlimited testing mode (Number.MAX_SAFE_INTEGER) must hide the quota badge
+    const unlimited = parseAIQuotaResponse({
+      success: true,
+      data: {
+        allowed: true,
+        remaining: Number.MAX_SAFE_INTEGER,
+        limit: Number.MAX_SAFE_INTEGER,
+        resetAt: '2026-11-10T00:00:00+07:00',
+      },
+    });
+    expect(shouldShowAIQuotaBadge(unlimited)).toBe(false);
+    expect(formatAIQuotaBanner(unlimited, 'vi', nowRef)).toBeNull();
+    expect(formatAIQuotaBanner(unlimited, 'en', nowRef)).toBeNull();
+
+    // Exhausted quota (remaining = 0) formats reset time in Vietnam timezone
+    const exhausted = parseAIQuotaResponse({
+      allowed: false,
+      remaining: 0,
+      limit: 10,
+      resetAt: '2026-11-10T00:00:00+07:00',
+    });
+    expect(formatAIQuotaBanner(exhausted, 'vi', nowRef)).toContain(
+      '00:00 ngày mai',
+    );
+    expect(formatAIQuotaBanner(exhausted, 'en', nowRef)).toContain(
+      '00:00 tomorrow',
+    );
+
+    // Converts UTC timestamp to Asia/Ho_Chi_Minh (+07:00)
+    expect(
+      formatQuotaResetTimeVietnam('2026-11-15T07:30:00.000Z', 'vi', nowRef),
+    ).toBe('14:30 ngày 15/11');
+    expect(
+      formatQuotaResetTimeVietnam('2026-11-15T07:30:00.000Z', 'en', nowRef),
+    ).toBe('14:30 on 15/11');
+  });
+
+  it('never leaks baseUrl in replyText and differentiates offline, server error, and quota exceeded in both vi and en', async () => {
+    const secretBaseUrl = 'https://secret-proxy-host-9988.internal:8443';
+    const mockFallback = new MockAIService({ delayMs: 0 });
+    const remoteService = new RemoteAIService({
+      baseUrl: secretBaseUrl,
+      fallbackService: mockFallback,
+    });
+    const previousLang = usePreferences.getState().language;
+
+    try {
+      for (const lang of ['vi', 'en'] as const) {
+        usePreferences.setState({ language: lang });
+
+        // 1. Offline / network error
+        global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+        const offlineReply = await remoteService.sendMessage(
+          'Tôi muốn để dành 3 triệu mỗi tháng, khoản nào có thể giảm?',
+          dummyContext,
+          `offline-${lang}`,
+        );
+        expect(offlineReply.replyText).not.toContain(secretBaseUrl);
+        expect(offlineReply.replyText).not.toContain('secret-proxy-host-9988');
+
+        // 2. Server error (HTTP 500)
+        global.fetch = vi.fn().mockResolvedValue({
+          ok: false,
+          status: 500,
+          json: async () => ({
+            success: false,
+            code: 'INTERNAL_SERVER_ERROR',
+            message: `Failed at ${secretBaseUrl}`,
+          }),
+        });
+        const serverErrorReply = await remoteService.sendMessage(
+          'Tôi muốn để dành 3 triệu mỗi tháng, khoản nào có thể giảm?',
+          dummyContext,
+          `server-${lang}`,
+        );
+        expect(serverErrorReply.replyText).not.toContain(secretBaseUrl);
+        expect(serverErrorReply.replyText).not.toContain(
+          'secret-proxy-host-9988',
+        );
+
+        // 3. Quota exceeded (HTTP 429)
+        global.fetch = vi.fn().mockResolvedValue({
+          ok: false,
+          status: 429,
+          json: async () => ({
+            success: false,
+            code: 'QUOTA_EXCEEDED_DEVICE',
+            message:
+              'Bạn đã dùng hết lượt hỏi AI hôm nay. Lượt mới có từ 2026-11-10T00:00:00+07:00.',
+            fallbackTemplate: 'Gợi ý mẫu dự phòng.',
+          }),
+        });
+        const quotaReply = await remoteService.sendMessage(
+          'Tôi muốn để dành 3 triệu mỗi tháng, khoản nào có thể giảm?',
+          dummyContext,
+          `quota-${lang}`,
+        );
+        expect(quotaReply.replyText).not.toContain(secretBaseUrl);
+        expect(quotaReply.replyText).toContain('00:00');
+        expect(quotaReply.replyText).toContain('Gợi ý mẫu dự phòng.');
+
+        // All 3 error states must have distinct messages
+        expect(offlineReply.replyText).not.toBe(serverErrorReply.replyText);
+        expect(serverErrorReply.replyText).not.toBe(quotaReply.replyText);
+        expect(offlineReply.replyText).not.toBe(quotaReply.replyText);
+      }
+    } finally {
+      usePreferences.setState({ language: previousLang });
+    }
+  });
+
+  it('enforces HTTPS and never guesses LAN IP from hostUri outside __DEV__', async () => {
+    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+
+    // Without EXPO_PUBLIC_PROXY_URL, production must not guess http://<hostUri>:3000
+    expect(getProxyBaseUrl()).toBe('');
+
+    // Non-HTTPS EXPO_PUBLIC_PROXY_URL is rejected outside __DEV__
+    process.env.EXPO_PUBLIC_PROXY_URL = 'http://192.168.1.50:3000';
+    expect(getProxyBaseUrl()).toBe('');
+
+    // HTTPS EXPO_PUBLIC_PROXY_URL is accepted outside __DEV__
+    process.env.EXPO_PUBLIC_PROXY_URL = 'https://api.pfm.ai';
+    expect(getProxyBaseUrl()).toBe('https://api.pfm.ai');
+
+    // fetchAIQuota and RemoteAIService block HTTP baseUrl outside __DEV__ without calling fetch
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock;
+    const quota = await fetchAIQuota({
+      baseUrl: 'http://192.168.1.50:3000',
+      fetchImpl: fetchMock,
+    });
+    expect(quota).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const remoteService = new RemoteAIService({
+      baseUrl: 'http://192.168.1.50:3000',
+      fallbackService: new MockAIService({ delayMs: 0 }),
+    });
+    const reply = await remoteService.sendMessage(
+      'Tôi muốn để dành 3 triệu mỗi tháng, khoản nào có thể giảm?',
+      dummyContext,
+      'msg-prod-http-blocked',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(reply.replyText).not.toContain('192.168.1.50');
   });
 });
