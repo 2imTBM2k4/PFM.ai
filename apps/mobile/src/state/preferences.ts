@@ -86,6 +86,14 @@ const PREF_KEYS = {
 } as const;
 
 /**
+ * Returns true only in development builds (__DEV__ === true).
+ * Outside development builds, sample data tools are hidden and seedEnabled is forced to false.
+ */
+export function isDevSeedToolsEnabled(): boolean {
+  return typeof __DEV__ !== 'undefined' && Boolean(__DEV__);
+}
+
+/**
  * Reads a single preference value from the local SQLite settings table.
  */
 async function readSettingValue(
@@ -347,7 +355,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
           themeMode: (themeMode === 'dark' || themeMode === 'light'
             ? themeMode
             : 'light') as ThemeMode,
-          seedEnabled: seedEnabled === 'true',
+          seedEnabled: isDevSeedToolsEnabled() && seedEnabled === 'true',
           notificationsEnabled: notificationsEnabled !== 'false',
           notifyBudgetAlerts: notifyBudgetAlerts !== 'false',
           notifyDailyExpenseReminder: notifyDailyExpenseReminder === 'true',
@@ -405,6 +413,10 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   },
 
   async setSeedEnabled(enabled) {
+    if (!isDevSeedToolsEnabled()) {
+      set({ seedEnabled: false });
+      return;
+    }
     await withDatabase(async (db) => {
       if (enabled) await applyDevSeedData(db);
       else await removeDevSeedData(db);

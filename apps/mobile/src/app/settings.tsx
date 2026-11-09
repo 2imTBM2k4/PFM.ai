@@ -19,7 +19,7 @@ import {
   importLocalTransactionsCsv,
 } from '@/services/csv-transfer';
 import { pickAndReadCsvFile, saveCsvFile } from '@/services/file-transfer';
-import { usePreferences } from '@/state/preferences';
+import { isDevSeedToolsEnabled, usePreferences } from '@/state/preferences';
 
 function InlineTogglePill<T extends string>({
   value,
@@ -398,66 +398,70 @@ export default function Settings() {
         </View>
       </GlassCard>
 
-      {/* 3. Preview / Seed Data */}
-      <View style={{ gap: 2 }}>
-        <Text
-          variant="titleSmall"
-          style={{ fontWeight: '700', color: theme.text.primary }}
-        >
-          {vi.settingsExperiments}
-        </Text>
-        <Text variant="bodySmall" style={{ color: theme.text.muted }}>
-          {vi.settingsExperimentsHint}
-        </Text>
-      </View>
-
-      <GlassCard
-        variant="elevated"
-        radius="xl"
-        padding={DesignSpacing.lg}
-        style={{ gap: 10 }}
-      >
-        <View style={styles.row}>
-          <View style={{ flex: 1, gap: 2 }}>
+      {/* 3. Preview / Seed Data (Development builds only) */}
+      {isDevSeedToolsEnabled() && (
+        <>
+          <View style={{ gap: 2 }}>
             <Text
               variant="titleSmall"
               style={{ fontWeight: '700', color: theme.text.primary }}
             >
-              {vi.settingsSeedLabel}
+              {vi.settingsExperiments}
             </Text>
-            <Text
-              variant="bodySmall"
-              style={{ color: theme.text.secondary, lineHeight: 18 }}
-            >
-              {vi.settingsSeedDescription}
+            <Text variant="bodySmall" style={{ color: theme.text.muted }}>
+              {vi.settingsExperimentsHint}
             </Text>
           </View>
-          <Switch
-            accessibilityLabel={vi.settingsSeedLabel}
-            value={seedEnabled}
-            disabled={seedBusy}
-            color={theme.brand.primary}
-            onValueChange={(value) => void handleToggleSeed(value)}
-          />
-        </View>
-        {!!seedError && (
-          <Text
-            accessibilityRole="alert"
-            variant="bodySmall"
-            style={{ color: palette.danger }}
+
+          <GlassCard
+            variant="elevated"
+            radius="xl"
+            padding={DesignSpacing.lg}
+            style={{ gap: 10 }}
           >
-            {seedError}
-          </Text>
-        )}
-        {!!seedNotice && (
-          <Text
-            variant="bodySmall"
-            style={{ color: theme.finance.incomeText, fontWeight: '700' }}
-          >
-            {seedNotice}
-          </Text>
-        )}
-      </GlassCard>
+            <View style={styles.row}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  variant="titleSmall"
+                  style={{ fontWeight: '700', color: theme.text.primary }}
+                >
+                  {vi.settingsSeedLabel}
+                </Text>
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.text.secondary, lineHeight: 18 }}
+                >
+                  {vi.settingsSeedDescription}
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel={vi.settingsSeedLabel}
+                value={seedEnabled}
+                disabled={seedBusy}
+                color={theme.brand.primary}
+                onValueChange={(value) => void handleToggleSeed(value)}
+              />
+            </View>
+            {!!seedError && (
+              <Text
+                accessibilityRole="alert"
+                variant="bodySmall"
+                style={{ color: palette.danger }}
+              >
+                {seedError}
+              </Text>
+            )}
+            {!!seedNotice && (
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.finance.incomeText, fontWeight: '700' }}
+              >
+                {seedNotice}
+              </Text>
+            )}
+          </GlassCard>
+        </>
+      )}
 
       {/* 4. Local CSV Import / Export Card */}
       <GlassCard

@@ -1,15 +1,16 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { usePreferences } from './preferences';
+import { isDevSeedToolsEnabled, usePreferences } from './preferences';
 import { vi as messages } from '@/messages/vi';
 
 const mocks = vi.hoisted(() => ({
   apply: vi.fn(),
   remove: vi.fn(),
   write: vi.fn(),
+  readFirst: vi.fn(),
 }));
 vi.mock('@/data/connection', () => ({
   withDatabase: async (task: (db: object) => Promise<unknown>) =>
-    task({ runAsync: mocks.write }),
+    task({ runAsync: mocks.write, getFirstAsync: mocks.readFirst }),
 }));
 vi.mock('@/data/seed-data', () => ({
   applyDevSeedData: mocks.apply,
@@ -18,6 +19,7 @@ vi.mock('@/data/seed-data', () => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
   usePreferences.setState({
     seedEnabled: false,
     language: 'vi',
@@ -110,4 +112,31 @@ it('persists notification preferences and reminder time', async () => {
     '21:30',
   );
 });
+
+it('hides dev seed tools and forces seedEnabled to false outside __DEV__ without deleting data', async () => {
+  (globalThis as { __DEV__?: boolean }).__DEV__ = false;
+  expect(isDevSeedToolsEnabled()).toBe(false);
+
+  // Even if pref_seed_enabled is 'true' in the database, hydrating outside __DEV__ must keep seedEnabled false and not remove data.
+  mocks.readFirst.mockImplementation(async (_sql: string, key: string) => {
+    if (key === 'pref_seed_enabled') return { value: 'true' };
+    return null;
+  });
+  await usePreferences.getState().hydratePreferences();
+  expect(usePreferences.getState().seedEnabled).toBe(false);
+  expect(mocks.remove).not.toHaveBeenCalled();
+
+  // Attempting to toggle seedEnabled outside __DEV__ is a no-op and never modifies the database.
+  await usePreferences.getState().setSeedEnabled(true);
+  expect(usePreferences.getState().seedEnabled).toBe(false);
+  expect(mocks.apply).not.toHaveBeenCalled();
+  expect(mocks.remove).not.toHaveBeenCalled();
+
+  // In __DEV__, hydrating reads pref_seed_enabled = 'true' as true.
+  (globalThis as { __DEV__?: boolean }).__DEV__ = true;
+  expect(isDevSeedToolsEnabled()).toBe(true);
+  await usePreferences.getState().hydratePreferences();
+  expect(usePreferences.getState().seedEnabled).toBe(true);
+});
+
 
