@@ -53,7 +53,7 @@ export async function seed(db: Database, timestamp: string) {
           : CATEGORIES.findIndex(([candidate]) => candidate === parentKey);
       await transaction.runAsync(
         `INSERT INTO categories (id, system_key, parent_id, name, kind, is_fixed_cost, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
         categoryId(index),
         key,
         parent === null ? null : categoryId(parent),
