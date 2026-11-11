@@ -4,6 +4,8 @@ import type { CategoryInput } from '@pfm/contracts';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, FlatList, Pressable, View } from 'react-native';
 import {
   ActivityIndicator,
@@ -65,6 +67,20 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
   const { colors } = useTheme();
   const palette = useFinancePalette();
 
+  const leaveFormMode = useCallback(() => {
+    if (working.current) return;
+    if (mode.type === 'form' && mode.defaultParentId) {
+      const parent = rows.find((r) => r.id === mode.defaultParentId);
+      if (parent) {
+        setMode({ type: 'subcategories', parent });
+        setError('');
+        return;
+      }
+    }
+    setMode({ type: 'list' });
+    setError('');
+  }, [mode, rows]);
+
   const back = useCallback(() => {
     if (working.current) return;
     if (mode.type === 'list') {
@@ -73,21 +89,14 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
       setMode({ type: 'list' });
       setError('');
     } else if (mode.type === 'form') {
-      if (mode.defaultParentId) {
-        const parent = rows.find((r) => r.id === mode.defaultParentId);
-        if (parent) {
-          setMode({ type: 'subcategories', parent });
-          setError('');
-          return;
-        }
-      }
-      setMode({ type: 'list' });
-      setError('');
+      requestGuardLeave('category-form', leaveFormMode);
+    } else if (mode.type === 'archive') {
+      requestGuardLeave('category-archive-form', leaveFormMode);
     } else {
       setMode({ type: 'list' });
       setError('');
     }
-  }, [mode, onClose, rows]);
+  }, [leaveFormMode, mode.type, onClose]);
 
   useFocusEffect(
     useCallback(() => {
@@ -322,7 +331,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
         rows={rows}
         busy={busy}
         error={error}
-        onBack={back}
+        onBack={leaveFormMode}
         onSave={(input) =>
           mutate((db) =>
             mode.category
@@ -342,7 +351,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
         rows={rows}
         busy={busy}
         error={error}
-        onBack={back}
+        onBack={leaveFormMode}
         onSave={(replacement) =>
           mutate((db) =>
             archiveCategory(
@@ -752,24 +761,45 @@ function CategoryForm({
     ? rows.find((r) => r.id === defaultParentId)
     : null;
 
+  const [initialValues] = useState<Fields>(() => ({
+    name: category?.name ?? '',
+    kind: category?.kind ?? defaultParent?.kind ?? 'expense',
+    parentId: category?.parent_id ?? defaultParentId ?? '',
+    isFixedCost: !!category?.is_fixed_cost,
+    icon: category?.icon ?? '',
+    color: category?.color ?? '',
+  }));
   const {
     control,
     setValue,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<Fields>({
-    defaultValues: {
-      name: category?.name ?? '',
-      kind: category?.kind ?? defaultParent?.kind ?? 'expense',
-      parentId: category?.parent_id ?? defaultParentId ?? '',
-      isFixedCost: !!category?.is_fixed_cost,
-      icon: category?.icon ?? '',
-      color: category?.color ?? '',
-    },
+    defaultValues: initialValues,
   });
 
-  const kind = useWatch({ control, name: 'kind' });
+  const watched = useWatch({ control });
+  const currentValues: Fields = {
+    name: watched.name ?? initialValues.name,
+    kind: watched.kind ?? initialValues.kind,
+    parentId: watched.parentId ?? initialValues.parentId,
+    isFixedCost: watched.isFixedCost ?? initialValues.isFixedCost,
+    icon: watched.icon ?? initialValues.icon,
+    color: watched.color ?? initialValues.color,
+  };
+  const kind = currentValues.kind;
   const disabled = busy || isSubmitting;
+  const dirty = haveFieldsChanged(initialValues, currentValues);
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'category-form',
+    scope: 'tab',
+    routeKey: 'settings',
+    dirty,
+    saving: disabled,
+    hasError: !!error,
+    changeSignature: JSON.stringify(currentValues),
+    onDiscard: onBack,
+  });
   const { colors } = useTheme();
   const palette = useFinancePalette();
 
@@ -885,7 +915,7 @@ function CategoryForm({
     <Screen
       title={category ? vi.editCategory : vi.addCategory}
       subtitle={vi.categoryStructureHint}
-      onBack={onBack}
+      onBack={requestLeave}
       backDisabled={disabled}
     >
       <View
@@ -1038,12 +1068,14 @@ function CategoryForm({
         loading={disabled}
         onPress={() => {
           void handleSubmit((values) =>
-            onSave({
-              ...values,
-              parentId: values.parentId || null,
-              icon: values.icon || null,
-              color: values.color || null,
-            }),
+            runGuardedSave(() =>
+              onSave({
+                ...values,
+                parentId: values.parentId || null,
+                icon: values.icon || null,
+                color: values.color || null,
+              }),
+            ),
           )();
         }}
       >
@@ -1071,6 +1103,16 @@ function ArchiveForm({
   const [replacement, setReplacement] = useState('');
   const { colors } = useTheme();
   const palette = useFinancePalette();
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'category-archive-form',
+    scope: 'tab',
+    routeKey: 'settings',
+    dirty: replacement !== '',
+    saving: busy,
+    hasError: !!error,
+    changeSignature: replacement,
+    onDiscard: onBack,
+  });
 
   const targets = rows.filter(
     (row) =>
@@ -1107,7 +1149,7 @@ function ArchiveForm({
   );
 
   return (
-    <Screen title={vi.archiveCategory} onBack={onBack} backDisabled={busy}>
+    <Screen title={vi.archiveCategory} onBack={requestLeave} backDisabled={busy}>
       <View
         style={[
           styles.panel,
@@ -1165,7 +1207,7 @@ function ArchiveForm({
         disabled={busy}
         loading={busy}
         onPress={() => {
-          void onSave(replacement || null);
+          void runGuardedSave(() => onSave(replacement || null));
         }}
       >
         {vi.archiveCategory}

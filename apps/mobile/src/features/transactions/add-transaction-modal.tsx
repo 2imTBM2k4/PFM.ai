@@ -12,6 +12,7 @@ import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
+import { requestGuardLeave } from '@/utils/unsaved-changes';
 import { TransactionForm } from './transaction-manager';
 
 export interface AddTransactionModalProps {
@@ -81,10 +82,13 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
-      onRequestClose={close}
+      onRequestClose={() => {
+        if (busy) return;
+        requestGuardLeave('transaction-form', close);
+      }}
     >
       <View style={{ flex: 1, backgroundColor: theme.sky.upperMid }}>
-        {loading ? (
+        {!visible ? null : loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" />
             <Text style={{ marginTop: 8 }}>{vi.loading}</Text>
@@ -98,6 +102,7 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
             error={error}
             onBack={close}
             hideHeader={false}
+            guardScope="modal"
             onNaturalSaved={async () => {
               void useApp.getState().refreshWallets();
               useApp.setState((s) => ({

@@ -4,6 +4,8 @@ import { useFocusEffect } from 'expo-router';
 import { parseEntry, today, validateDate, type ParseResult } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput, TransactionFilters } from '@pfm/contracts';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { TransactionFilterForm } from './transaction-filters';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -40,6 +42,7 @@ import {
   GlassCard,
   MoneyInput,
   Pill,
+  SegmentedOptionPicker,
 } from '@/components/ui';
 import {
   createSoftShadow,
@@ -51,7 +54,7 @@ import {
 } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
-import { listCategories, type CategoryRow } from '@/data/categories';
+import { listCategories, orderCategoriesByParent, type CategoryRow } from '@/data/categories';
 import { readQuickEntryContext, saveParsedEntries } from '@/data/quick-entry';
 import { listWallets, type WalletRow } from '@/data/repository';
 import { foldSearchText } from '@/data/search-text';
@@ -222,12 +225,24 @@ export function TransactionManager({
     return () => cancelAnimationFrame(frame);
   }, [consumeAddTransaction, pendingTransactionEntry]);
 
-  const back = useCallback(() => {
-    if (!working.current) {
-      setMode({ type: 'list' });
-      setError('');
-    }
+  const leaveSubView = useCallback(() => {
+    if (working.current) return;
+    setMode({ type: 'list' });
+    setError('');
   }, []);
+
+  const back = useCallback(() => {
+    if (working.current) return;
+    if (mode.type === 'form') {
+      requestGuardLeave('transaction-form', leaveSubView);
+      return;
+    }
+    if (mode.type === 'filters') {
+      requestGuardLeave('transaction-filter-form', leaveSubView);
+      return;
+    }
+    leaveSubView();
+  }, [mode.type, leaveSubView]);
 
   useFocusEffect(
     useCallback(() => {
@@ -376,7 +391,7 @@ export function TransactionManager({
         wallets={wallets}
         categories={categories}
         busy={busy || loading}
-        onBack={back}
+        onBack={leaveSubView}
         onApply={(next) => {
           filtersRef.current = next;
           setFilters(next);
@@ -514,7 +529,7 @@ export function TransactionManager({
         categories={categories}
         busy={busy || loading}
         error={error}
-        onBack={back}
+        onBack={leaveSubView}
         onNaturalSaved={async () => {
           setMode({ type: 'list' });
           setNotice(vi.quickSaved);
@@ -1090,6 +1105,8 @@ export function TransactionForm({
   onNaturalSaved,
   onSave,
   hideHeader = false,
+  guardScope = 'tab',
+  guardRouteKey = 'transactions',
 }: {
   row: TransactionRow | null;
   wallets: WalletRow[];
@@ -1100,6 +1117,8 @@ export function TransactionForm({
   onNaturalSaved?(): Promise<void>;
   onSave(input: TransactionInput): Promise<void>;
   hideHeader?: boolean;
+  guardScope?: 'tab' | 'modal';
+  guardRouteKey?: string;
 }) {
   const selectedCurrency = usePreferences((state) => state.currency);
   const language = usePreferences((state) => state.language);
@@ -1113,36 +1132,71 @@ export function TransactionForm({
     useState<NaturalConfirmSession | null>(null);
   const [showNatural, setShowNatural] = useState(false);
 
+  const [initialValues] = useState<Fields>(() => ({
+    kind:
+      row?.kind === 'income' || row?.kind === 'transfer'
+        ? row.kind
+        : 'expense',
+    amount: row
+      ? currency === 'USD'
+        ? (originalAmount / 100).toFixed(2)
+        : formatAmountInput(String(originalAmount))
+      : '',
+    walletId: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
+    toWalletId: row?.to_wallet_id ?? '',
+    categoryId: row?.category_id ?? '',
+    date:
+      row?.occurred_on ??
+      today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
+    note: row?.note ?? '',
+  }));
+
   const {
     control,
     setValue,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<Fields>({
-    defaultValues: {
-      kind:
-        row?.kind === 'income' || row?.kind === 'transfer'
-          ? row.kind
-          : 'expense',
-      amount: row
-        ? currency === 'USD'
-          ? (originalAmount / 100).toFixed(2)
-          : formatAmountInput(String(originalAmount))
-        : '',
-      walletId: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
-      toWalletId: row?.to_wallet_id ?? '',
-      categoryId: row?.category_id ?? '',
-      date:
-        row?.occurred_on ??
-        today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
-      note: row?.note ?? '',
-    },
+    defaultValues: initialValues,
   });
 
-  const kind = useWatch({ control, name: 'kind' });
-  const walletId = useWatch({ control, name: 'walletId' });
-  const date = useWatch({ control, name: 'date' });
+  const watched = useWatch({ control });
+  const currentValues: Fields = {
+    kind: watched.kind ?? initialValues.kind,
+    amount: watched.amount ?? initialValues.amount,
+    walletId: watched.walletId ?? initialValues.walletId,
+    toWalletId: watched.toWalletId ?? initialValues.toWalletId,
+    categoryId: watched.categoryId ?? initialValues.categoryId,
+    date: watched.date ?? initialValues.date,
+    note: watched.note ?? initialValues.note,
+  };
+  const kind = currentValues.kind;
+  const walletId = currentValues.walletId;
+  const date = currentValues.date;
   const disabled = busy || isSubmitting || naturalBusy;
+  const relevantKeys: (keyof Fields)[] =
+    kind === 'transfer'
+      ? ['kind', 'amount', 'walletId', 'toWalletId', 'date', 'note']
+      : row?.debt_id
+        ? ['amount', 'walletId', 'date', 'note']
+        : ['kind', 'amount', 'walletId', 'categoryId', 'date', 'note'];
+  const dirty =
+    naturalText.trim().length > 0 ||
+    haveFieldsChanged(initialValues, currentValues, {
+      moneyKeys: ['amount'],
+      currency,
+      keys: relevantKeys,
+    });
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'transaction-form',
+    scope: guardScope,
+    routeKey: guardScope === 'tab' ? guardRouteKey : undefined,
+    dirty,
+    saving: disabled,
+    hasError: !!error || !!naturalError,
+    changeSignature: JSON.stringify({ ...currentValues, naturalText }),
+    onDiscard: onBack,
+  });
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const theme = useDesignTheme();
@@ -1154,37 +1208,30 @@ export function TransactionForm({
     /* Partial dates are validated on save. */
   }
 
-  const availableCategories = categories.filter(
-    (c) =>
-      c.kind === kind &&
-      (!c.is_archived || (c.id === row?.category_id && kind === row.kind)),
+  const availableCategories = orderCategoriesByParent(
+    categories.filter(
+      (c) =>
+        c.kind === kind &&
+        (!c.is_archived || (c.id === row?.category_id && kind === row.kind)),
+    ),
   );
 
   const kindOptions = useMemo(
     () => [
       {
-        value: 'expense',
+        value: 'expense' as const,
         label: language === 'en' ? 'Expense' : vi.transactionExpense,
-        icon: 'arrow-down-circle',
-        iconBg: palette.expenseSoft,
-        iconColor: palette.expenseInk,
       },
       {
-        value: 'income',
+        value: 'income' as const,
         label: vi.transactionIncome,
-        icon: 'arrow-up-circle',
-        iconBg: palette.incomeSoft,
-        iconColor: palette.incomeInk,
       },
       {
-        value: 'transfer',
+        value: 'transfer' as const,
         label: vi.transactionTransfer,
-        icon: 'swap-horizontal-circle',
-        iconBg: palette.purpleSoft,
-        iconColor: palette.purpleInk,
       },
     ],
-    [palette, language],
+    [language],
   );
 
   const walletOptions = useMemo(
@@ -1287,6 +1334,8 @@ export function TransactionForm({
     if (!naturalSession || naturalBusy) return;
     setNaturalBusy(true);
     setNaturalError('');
+    let validated = false;
+    let committed = false;
     try {
       const confirmed = confirmSelectedEntries(
         naturalSession.result,
@@ -1294,6 +1343,7 @@ export function TransactionForm({
         new Date(),
         usePreferences.getState().exchangeRate,
       );
+      validated = true;
       await withDatabase((db) =>
         saveParsedEntries(
           db,
@@ -1303,23 +1353,88 @@ export function TransactionForm({
           uuid.v4(),
         ),
       );
+      committed = true;
       setNaturalSession(null);
       setNaturalText('');
-      await onNaturalSaved?.();
+      await runGuardedSave(async () => {
+        await onNaturalSaved?.();
+      });
     } catch {
-      setNaturalError(vi.quickInvalid);
+      setNaturalError(
+        committed
+          ? vi.quickRefreshError
+          : validated
+            ? vi.saveError
+            : vi.quickInvalid,
+      );
     } finally {
       setNaturalBusy(false);
     }
   };
 
+  const footer = (
+    <>
+      {!!error && (
+        <Text accessibilityRole="alert" style={{ color: colors.error }}>
+          {error}
+        </Text>
+      )}
+      <Button
+        mode="contained"
+        icon="check"
+        buttonColor={theme.brand.primaryStrong}
+        textColor="#FFFFFF"
+        contentStyle={styles.button}
+        disabled={
+          disabled || (currency === 'USD' && !currentRate && !row?.booking_rate)
+        }
+        loading={disabled}
+        onPress={() => {
+          void handleSubmit((values) =>
+            runGuardedSave(() =>
+              onSave({
+              kind: row?.debt_id ? row.kind : values.kind,
+              debtId: row?.debt_id ?? null,
+              amount: parseAmountInput(values.amount, currency),
+              currency,
+              vndPerUsd:
+                currency === 'USD'
+                  ? row?.original_currency === 'USD' &&
+                    parseAmountInput(values.amount, currency) === originalAmount
+                    ? row.booking_rate
+                    : currentRate
+                  : null,
+              walletId: values.walletId,
+              toWalletId: values.kind === 'transfer' ? values.toWalletId : null,
+              categoryId:
+                row?.debt_id || values.kind === 'transfer'
+                  ? null
+                  : values.categoryId || null,
+              occurredOn: values.date,
+              occurredAt:
+                row && values.date === row.occurred_on
+                  ? row.occurred_at
+                  : manualOccurredAt(values.date, new Date()),
+              note: values.note,
+            }),
+            ),
+          )();
+        }}
+      >
+        {vi.saveTransaction}
+      </Button>
+    </>
+  );
+
   return (
     <Screen
       title={row ? vi.editTransaction : vi.addTransaction}
-      onBack={onBack}
+      onBack={requestLeave}
       backDisabled={disabled}
       hideHeader={hideHeader}
       inModal={hideHeader}
+      hasTabBar={guardScope !== 'modal' && !hideHeader}
+      footer={footer}
     >
       {/* Natural Language Quick-Entry toggle */}
       {!row && (
@@ -1487,7 +1602,7 @@ export function TransactionForm({
             control={control}
             name="kind"
             render={({ field }) => (
-              <AppleMenuPicker
+              <SegmentedOptionPicker
                 label={vi.transactionKind}
                 value={field.value}
                 options={kindOptions}
@@ -1686,53 +1801,7 @@ export function TransactionForm({
         />
       </GlassCard>
 
-      {!!error && (
-        <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {error}
-        </Text>
-      )}
-      <Button
-        mode="contained"
-        icon="check"
-        buttonColor={theme.brand.primaryStrong}
-        textColor="#FFFFFF"
-        contentStyle={styles.button}
-        disabled={
-          disabled || (currency === 'USD' && !currentRate && !row?.booking_rate)
-        }
-        loading={disabled}
-        onPress={() => {
-          void handleSubmit((values) =>
-            onSave({
-              kind: row?.debt_id ? row.kind : values.kind,
-              debtId: row?.debt_id ?? null,
-              amount: parseAmountInput(values.amount, currency),
-              currency,
-              vndPerUsd:
-                currency === 'USD'
-                  ? row?.original_currency === 'USD' &&
-                    parseAmountInput(values.amount, currency) === originalAmount
-                    ? row.booking_rate
-                    : currentRate
-                  : null,
-              walletId: values.walletId,
-              toWalletId: values.kind === 'transfer' ? values.toWalletId : null,
-              categoryId:
-                row?.debt_id || values.kind === 'transfer'
-                  ? null
-                  : values.categoryId || null,
-              occurredOn: values.date,
-              occurredAt:
-                row && values.date === row.occurred_on
-                  ? row.occurred_at
-                  : manualOccurredAt(values.date, new Date()),
-              note: values.note,
-            }),
-          )();
-        }}
-      >
-        {vi.saveTransaction}
-      </Button>
+
     </Screen>
   );
 }

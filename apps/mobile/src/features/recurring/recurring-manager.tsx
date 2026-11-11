@@ -1,18 +1,20 @@
+import { FieldFeedback } from '@/components/field-feedback';
+import { amountError, dateError, endDateError } from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import { today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { RecurringInputSchema, type RecurringInput } from '@pfm/contracts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   IconButton,
-  List,
-  RadioButton,
   Text,
   TextInput,
   useTheme,
@@ -24,8 +26,13 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField, MoneyInput } from '@/components/ui';
-import { useFinancePalette } from '@/constants/theme';
+import {
+  AppleMenuPicker,
+  DateField,
+  MoneyInput,
+  SegmentedOptionPicker,
+} from '@/components/ui';
+import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
   listRecurringRules,
@@ -34,7 +41,7 @@ import {
   type RecurringRow,
 } from '@/data/recurring';
 import { listWallets, type WalletRow } from '@/data/repository';
-import { listCategories, type CategoryRow } from '@/data/categories';
+import { listCategories, orderCategoriesByParent, type CategoryRow } from '@/data/categories';
 import type { Database } from '@/data/migrate';
 import {
   formatAmountInput,
@@ -102,12 +109,20 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
       void reload();
     }, [reload]),
   );
-  const back = useCallback(() => {
+  const leaveForm = useCallback(() => {
     if (working.current) return;
     setError('');
-    if (editing !== undefined) setEditing(undefined);
-    else onClose();
-  }, [editing, onClose]);
+    setEditing(undefined);
+  }, []);
+  const back = useCallback(() => {
+    if (working.current) return;
+    if (editing !== undefined) {
+      requestGuardLeave('recurring-form', leaveForm);
+      return;
+    }
+    setError('');
+    onClose();
+  }, [editing, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -149,7 +164,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
         categories={categories}
         busy={busy}
         error={error}
-        onBack={back}
+        onBack={leaveForm}
         onSave={(input) =>
           mutate((db) =>
             saveRecurringRule(
@@ -323,7 +338,9 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
 
           <View style={styles.row}>
             <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {displayWalletName(wallets.find((wallet) => wallet.id === row.wallet_id)?.name)}
+              {displayWalletName(
+                wallets.find((wallet) => wallet.id === row.wallet_id)?.name,
+              )}
               {row.to_wallet_id
                 ? ` → ${wallets.find((wallet) => wallet.id === row.to_wallet_id)?.name ?? ''}`
                 : ''}
@@ -422,75 +439,151 @@ function RecurringForm({
   onBack(): void;
   onSave(input: RecurringInput): Promise<void>;
 }) {
+  const [initialValues] = useState<Fields>(() => ({
+    kind: row?.kind ?? 'expense',
+    amount: row ? formatAmountInput(String(row.amount)) : '',
+    wallet: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
+    destination: row?.to_wallet_id ?? '',
+    category: row?.category_id ?? '',
+    note: row?.note ?? '',
+    start: row?.start_on ?? localDate(),
+    end: row?.end_on ?? '',
+    frequency: row?.frequency ?? 'monthly',
+  }));
   const {
     control,
     handleSubmit,
+    getValues,
     setValue,
     formState: { isSubmitting },
   } = useForm<Fields>({
-    defaultValues: {
-      kind: row?.kind ?? 'expense',
-      amount: row ? formatAmountInput(String(row.amount)) : '',
-      wallet: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
-      destination: row?.to_wallet_id ?? '',
-      category: row?.category_id ?? '',
-      note: row?.note ?? '',
-      start: row?.start_on ?? localDate(),
-      end: row?.end_on ?? '',
-      frequency: row?.frequency ?? 'monthly',
-    },
+    defaultValues: initialValues,
   });
-  const kind = useWatch({ control, name: 'kind' });
-  const [invalid, setInvalid] = useState(false),
-    [expanded, setExpanded] = useState('');
+  const watched = useWatch({ control });
+  const currentValues: Fields = {
+    kind: watched.kind ?? initialValues.kind,
+    amount: watched.amount ?? initialValues.amount,
+    wallet: watched.wallet ?? initialValues.wallet,
+    destination: watched.destination ?? initialValues.destination,
+    category: watched.category ?? initialValues.category,
+    note: watched.note ?? initialValues.note,
+    start: watched.start ?? initialValues.start,
+    end: watched.end ?? initialValues.end,
+    frequency: watched.frequency ?? initialValues.frequency,
+  };
+  const kind = currentValues.kind;
+  const [invalid, setInvalid] = useState(false);
   const disabled = busy || isSubmitting;
+  const relevantKeys: (keyof Fields)[] =
+    kind === 'transfer'
+      ? ['kind', 'amount', 'wallet', 'destination', 'note', 'start', 'end', 'frequency']
+      : ['kind', 'amount', 'wallet', 'category', 'note', 'start', 'end', 'frequency'];
+  const dirty = haveFieldsChanged(initialValues, currentValues, {
+    moneyKeys: ['amount'],
+    keys: relevantKeys,
+  });
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'recurring-form',
+    scope: 'tab',
+    routeKey: 'transactions',
+    dirty,
+    saving: disabled,
+    hasError: invalid || !!error,
+    changeSignature: JSON.stringify(currentValues),
+    onDiscard: onBack,
+  });
   const { colors } = useTheme();
   const palette = useFinancePalette();
-  const choices = [
-    { name: 'kind', label: vi.transactionKind, items: KINDS },
-    {
-      name: 'wallet',
-      label: vi.transactionWallet,
-      items: wallets
+  const walletOptions = useMemo(
+    () =>
+      wallets
         .filter((w) => !w.is_archived || w.id === row?.wallet_id)
-        .map((w) => ({ value: w.id, label: w.name })),
-    },
-    ...(kind === 'transfer'
-      ? [
-          {
-            name: 'destination' as const,
-            label: vi.transactionDestination,
-            items: wallets
-              .filter((w) => !w.is_archived || w.id === row?.to_wallet_id)
-              .map((w) => ({ value: w.id, label: w.name })),
-          },
-        ]
-      : [
-          {
-            name: 'category' as const,
-            label: vi.transactionCategory,
-            items: [
-              { value: '', label: vi.recurringUncategorized },
-              ...categories
-                .filter(
-                  (c) =>
-                    c.kind === kind &&
-                    (!c.is_archived || c.id === row?.category_id),
-                )
-                .map((c) => ({
-                  value: c.id,
-                  label: `${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} / ` : ''}${displayCategoryName(c.name)}`,
-                })),
-            ],
-          },
-        ]),
-    { name: 'frequency', label: vi.recurringFrequency, items: FREQUENCIES },
-  ] as const;
+        .map((w) => {
+          const visual = walletKindVisual(w.kind, palette);
+          return {
+            value: w.id,
+            label: displayWalletName(w.name),
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    [wallets, row?.wallet_id, palette],
+  );
+  const destinationOptions = useMemo(
+    () =>
+      wallets
+        .filter(
+          (w) =>
+            w.id !== currentValues.wallet &&
+            (!w.is_archived || w.id === row?.to_wallet_id),
+        )
+        .map((w) => {
+          const visual = walletKindVisual(w.kind, palette);
+          return {
+            value: w.id,
+            label: displayWalletName(w.name),
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    [wallets, currentValues.wallet, row?.to_wallet_id, palette],
+  );
+  const categoryOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: vi.recurringUncategorized,
+        icon: 'help-circle-outline',
+        iconBg: palette.surfaceMuted,
+        iconColor: palette.textMuted,
+      },
+      ...orderCategoriesByParent(
+        categories.filter(
+          (c) =>
+            c.kind === kind && (!c.is_archived || c.id === row?.category_id),
+        ),
+      ).map((c) => {
+          const isExpense = c.kind === 'expense';
+          const parent = c.parent_id
+            ? categories.find((p) => p.id === c.parent_id)
+            : null;
+          return {
+            value: c.id,
+            label: displayCategoryName(c.name),
+            icon: c.icon || 'tag-outline',
+            iconBg: isExpense ? palette.expenseSoft : palette.incomeSoft,
+            iconColor:
+              c.color || (isExpense ? palette.expenseInk : palette.incomeInk),
+            subtitle: parent ? displayCategoryName(parent.name) : undefined,
+          };
+        }),
+    ],
+    [categories, kind, row?.category_id, palette],
+  );
+  const frequencyOptions = useMemo(
+    () =>
+      FREQUENCIES.map((freq) => ({
+        value: freq.value,
+        label: freq.label,
+        icon: 'repeat',
+        iconBg: palette.primarySoft,
+        iconColor: palette.primaryInk,
+      })),
+    [palette],
+  );
+  const footer = (
+    <>
+
+    </>
+  );
   return (
     <Screen
       title={row ? vi.recurringEdit : vi.recurringAdd}
-      onBack={onBack}
+      onBack={requestLeave}
       backDisabled={disabled}
+      footer={footer}
     >
       <View
         style={[
@@ -498,51 +591,109 @@ function RecurringForm({
           { backgroundColor: palette.surface, borderColor: palette.border },
         ]}
       >
-        {choices.map((choice) => (
-          <Controller
-            key={choice.name}
-            control={control}
-            name={choice.name}
-            render={({ field }) => (
-              <List.Accordion
-                title={choice.label}
-                description={
-                  choice.items.find((item) => item.value === field.value)
-                    ?.label ?? vi.recurringChoose
+        <Controller
+          control={control}
+          name="kind"
+          render={({ field }) => (
+            <SegmentedOptionPicker
+              label={vi.transactionKind}
+              value={field.value}
+              disabled={disabled}
+              options={KINDS}
+              onSelect={(value) => {
+                field.onChange(value);
+                setValue('category', '');
+                setValue('destination', '');
+              }}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="wallet"
+          rules={{
+            validate: (value) => !!value || vi.transactionWalletRequired,
+          }}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <AppleMenuPicker
+                label={
+                  kind === 'transfer'
+                    ? vi.transactionSourceWallet
+                    : vi.transactionWallet
                 }
-                expanded={expanded === choice.name}
-                onPress={() =>
-                  setExpanded(expanded === choice.name ? '' : choice.name)
-                }
-                style={{
-                  backgroundColor: palette.surfaceMuted,
-                  borderRadius: 12,
+                value={field.value}
+                options={walletOptions}
+                disabled={disabled}
+                placeholder={vi.recurringChoose}
+                onSelect={(value) => {
+                  field.onChange(value);
+                  if (getValues('destination') === value) {
+                    setValue('destination', '');
+                  }
                 }}
+              />
+            </FieldFeedback>
+          )}
+        />
+        {kind === 'transfer' ? (
+          <Controller
+            control={control}
+            name="destination"
+            rules={{
+              validate: (value) =>
+                getValues('kind') !== 'transfer' ||
+                (!!value && value !== getValues('wallet')) ||
+                vi.formDestinationInvalid,
+            }}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
               >
-                <RadioButton.Group
+                <AppleMenuPicker
+                  label={vi.transactionDestination}
                   value={field.value}
-                  onValueChange={(value) => {
-                    field.onChange(value);
-                    if (choice.name === 'kind') {
-                      setValue('category', '');
-                      setValue('destination', '');
-                    }
-                    setExpanded('');
-                  }}
-                >
-                  {choice.items.map((item) => (
-                    <RadioButton.Item
-                      key={item.value}
-                      value={item.value}
-                      label={item.label}
-                      disabled={disabled}
-                    />
-                  ))}
-                </RadioButton.Group>
-              </List.Accordion>
+                  options={destinationOptions}
+                  disabled={disabled}
+                  placeholder={vi.recurringChoose}
+                  onSelect={field.onChange}
+                />
+              </FieldFeedback>
             )}
           />
-        ))}
+        ) : (
+          <Controller
+            control={control}
+            name="category"
+            render={({ field }) => (
+              <AppleMenuPicker
+                label={vi.transactionCategory}
+                value={field.value}
+                options={categoryOptions}
+                disabled={disabled}
+                placeholder={vi.recurringChoose}
+                onSelect={field.onChange}
+              />
+            )}
+          />
+        )}
+        <Controller
+          control={control}
+          name="frequency"
+          render={({ field }) => (
+            <AppleMenuPicker
+              label={vi.recurringFrequency}
+              value={field.value}
+              options={frequencyOptions}
+              disabled={disabled}
+              onSelect={field.onChange}
+            />
+          )}
+        />
       </View>
 
       <View
@@ -567,39 +718,57 @@ function RecurringForm({
             key={item.name}
             control={control}
             name={item.name}
-            render={({ field }) =>
-              item.name === 'start' || item.name === 'end' ? (
-                <DateField
-                  label={item.label}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                  allowClear={item.name === 'end'}
-                />
-              ) : item.name === 'amount' ? (
-                <MoneyInput
-                  label={item.label}
-                  accessibilityLabel={item.label}
-                  value={field.value}
-                  onBlur={field.onBlur}
-                  disabled={disabled}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  onChangeText={field.onChange}
-                />
-              ) : (
-                <TextInput
-                  mode="outlined"
-                  label={item.label}
-                  accessibilityLabel={item.label}
-                  value={field.value}
-                  onBlur={field.onBlur}
-                  disabled={disabled}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType="default"
-                  onChangeText={field.onChange}
-                />
-              )
-            }
+            rules={{
+              validate: (value) =>
+                item.name === 'amount'
+                  ? amountError(value)
+                  : item.name === 'start'
+                    ? dateError(value)
+                    : item.name === 'end'
+                      ? endDateError(value, getValues('start'), true)
+                      : true,
+            }}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                {item.name === 'start' || item.name === 'end' ? (
+                  <DateField
+                    error={!!fieldState.error}
+                    label={item.label}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={disabled}
+                    allowClear={item.name === 'end'}
+                  />
+                ) : item.name === 'amount' ? (
+                  <MoneyInput
+                    error={!!fieldState.error}
+                    label={item.label}
+                    accessibilityLabel={item.label}
+                    value={field.value}
+                    onBlur={field.onBlur}
+                    disabled={disabled}
+                    left={<TextInput.Icon icon={item.icon} />}
+                    onChangeText={field.onChange}
+                  />
+                ) : (
+                  <TextInput
+                    error={!!fieldState.error}
+                    mode="outlined"
+                    label={item.label}
+                    accessibilityLabel={item.label}
+                    value={field.value}
+                    onBlur={field.onBlur}
+                    disabled={disabled}
+                    left={<TextInput.Icon icon={item.icon} />}
+                    keyboardType="default"
+                    onChangeText={field.onChange}
+                  />
+                )}
+              </FieldFeedback>
+            )}
           />
         ))}
         <Text variant="bodySmall" style={{ color: palette.textMuted }}>
@@ -647,7 +816,7 @@ function RecurringForm({
               return;
             }
             setInvalid(false);
-            await onSave(input);
+            await runGuardedSave(() => onSave(input));
           })()
         }
       >

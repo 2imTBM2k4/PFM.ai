@@ -1,18 +1,20 @@
+import { FieldFeedback } from '@/components/field-feedback';
+import { amountError, dateError } from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import { goalProgress, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { GoalInputSchema, type GoalInput } from '@pfm/contracts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
-  List,
   ProgressBar,
-  RadioButton,
   SegmentedButtons,
   Text,
   TextInput,
@@ -25,8 +27,8 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField, MoneyInput } from '@/components/ui';
-import { useFinancePalette } from '@/constants/theme';
+import { AppleMenuPicker, DateField, MoneyInput } from '@/components/ui';
+import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
   archiveGoal,
@@ -49,9 +51,11 @@ import { useApp } from '@/state/app';
 export function GoalManager({
   onClose,
   onSwitchTab,
+  guardRouteKey = 'budgets',
 }: {
   onClose?(): void;
   onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
+  guardRouteKey?: string;
 } = {}) {
   const [rows, setRows] = useState<GoalRow[]>([]);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
@@ -95,12 +99,20 @@ export function GoalManager({
       // eslint-disable-next-line react-hooks/exhaustive-deps -- Automatic entries can change the linked wallet balance.
     }, [refresh, recurringVersion]),
   );
-  const back = useCallback(() => {
+  const leaveForm = useCallback(() => {
     if (working.current) return;
     setError('');
-    if (editing !== undefined) setEditing(undefined);
-    else onClose?.();
-  }, [editing, onClose]);
+    setEditing(undefined);
+  }, []);
+  const back = useCallback(() => {
+    if (working.current) return;
+    if (editing !== undefined) {
+      requestGuardLeave('goal-form', leaveForm);
+      return;
+    }
+    setError('');
+    onClose?.();
+  }, [editing, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -144,7 +156,8 @@ export function GoalManager({
         wallets={wallets}
         busy={busy}
         error={error}
-        onBack={back}
+        guardRouteKey={guardRouteKey}
+        onBack={leaveForm}
         onSave={(input) =>
           mutate((db) =>
             saveGoal(
@@ -419,6 +432,7 @@ function GoalForm({
   wallets,
   busy,
   error,
+  guardRouteKey,
   onBack,
   onSave,
 }: {
@@ -426,166 +440,84 @@ function GoalForm({
   wallets: WalletRow[];
   busy: boolean;
   error: string;
+  guardRouteKey: string;
   onBack(): void;
   onSave(input: GoalInput): Promise<void>;
 }) {
+  const [initialValues] = useState<Fields>(() => ({
+    name: row?.name ?? '',
+    target: row ? formatAmountInput(String(row.target_amount)) : '',
+    manual: formatAmountInput(String(row?.manual_saved_amount ?? 0)),
+    deadline: row?.deadline_on ?? '',
+    wallet: row?.funding_wallet_id ?? '',
+  }));
   const {
     control,
     handleSubmit,
+    getValues,
     formState: { isSubmitting },
   } = useForm<Fields>({
-    defaultValues: {
-      name: row?.name ?? '',
-      target: row ? formatAmountInput(String(row.target_amount)) : '',
-      manual: formatAmountInput(String(row?.manual_saved_amount ?? 0)),
-      deadline: row?.deadline_on ?? '',
-      wallet: row?.funding_wallet_id ?? '',
-    },
+    defaultValues: initialValues,
   });
-  const [invalid, setInvalid] = useState(false),
-    [expanded, setExpanded] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   const { colors } = useTheme();
   const palette = useFinancePalette();
-  const walletId = useWatch({ control, name: 'wallet' }),
+  const sourceOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: vi.goalManual,
+        icon: 'piggy-bank-outline',
+        iconBg: palette.primarySoft,
+        iconColor: palette.primaryInk,
+      },
+      ...wallets
+        .filter(
+          (wallet) =>
+            !wallet.is_archived || wallet.id === row?.funding_wallet_id,
+        )
+        .map((wallet) => {
+          const visual = walletKindVisual(wallet.kind, palette);
+          return {
+            value: wallet.id,
+            label: displayWalletName(wallet.name),
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    ],
+    [wallets, row?.funding_wallet_id, palette],
+  );
+  const watched = useWatch({ control });
+  const currentValues: Fields = {
+    name: watched.name ?? initialValues.name,
+    target: watched.target ?? initialValues.target,
+    manual: watched.manual ?? initialValues.manual,
+    deadline: watched.deadline ?? initialValues.deadline,
+    wallet: watched.wallet ?? initialValues.wallet,
+  };
+  const walletId = currentValues.wallet,
     disabled = busy || isSubmitting;
-  return (
-    <Screen
-      title={row ? vi.editGoal : vi.addGoal}
-      onBack={onBack}
-      backDisabled={disabled}
-    >
-      <View
-        style={[
-          styles.panel,
-          { backgroundColor: palette.surface, borderColor: palette.border },
-        ]}
-      >
-        {(
-          [
-            { name: 'name', label: vi.goalName, icon: 'bullseye-arrow' },
-            { name: 'target', label: vi.goalTarget, icon: 'cash' },
-            { name: 'deadline', label: vi.goalDeadline, icon: 'calendar' },
-          ] as const
-        ).map((item) => (
-          <Controller
-            key={item.name}
-            control={control}
-            name={item.name}
-            render={({ field }) =>
-              item.name === 'deadline' ? (
-                <DateField
-                  label={item.label}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                  allowClear
-                />
-              ) : item.name === 'target' ? (
-                <MoneyInput
-                  label={item.label}
-                  accessibilityLabel={item.label}
-                  value={field.value}
-                  disabled={disabled}
-                  onBlur={field.onBlur}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  onChangeText={field.onChange}
-                />
-              ) : (
-                <TextInput
-                  mode="outlined"
-                  label={item.label}
-                  accessibilityLabel={item.label}
-                  value={field.value}
-                  disabled={disabled}
-                  onBlur={field.onBlur}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType="default"
-                  onChangeText={field.onChange}
-                />
-              )
-            }
-          />
-        ))}
-        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-          {vi.goalDeadlineHint}
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.panel,
-          { backgroundColor: palette.surface, borderColor: palette.border },
-        ]}
-      >
-        <Controller
-          control={control}
-          name="wallet"
-          render={({ field }) => (
-            <List.Accordion
-              title={vi.goalSource}
-              description={
-                wallets.find((wallet) => wallet.id === field.value)?.name ??
-                vi.goalManual
-              }
-              expanded={expanded}
-              onPress={() => setExpanded(!expanded)}
-              style={{
-                backgroundColor: palette.surfaceMuted,
-                borderRadius: 12,
-              }}
-            >
-              <RadioButton.Group
-                value={field.value}
-                onValueChange={(val) => {
-                  field.onChange(val);
-                  setExpanded(false);
-                }}
-              >
-                <RadioButton.Item
-                  label={vi.goalManual}
-                  value=""
-                  disabled={disabled}
-                />
-                {wallets
-                  .filter(
-                    (wallet) =>
-                      !wallet.is_archived ||
-                      wallet.id === row?.funding_wallet_id,
-                  )
-                  .map((wallet) => (
-                    <RadioButton.Item
-                      key={wallet.id}
-                      label={displayWalletName(wallet.name)}
-                      value={wallet.id}
-                      disabled={disabled}
-                    />
-                  ))}
-              </RadioButton.Group>
-            </List.Accordion>
-          )}
-        />
-        {!walletId && (
-          <Controller
-            control={control}
-            name="manual"
-            render={({ field }) => (
-              <MoneyInput
-                label={vi.goalManual}
-                accessibilityLabel={vi.goalManual}
-                value={field.value}
-                disabled={disabled}
-                onBlur={field.onBlur}
-                left={<TextInput.Icon icon="piggy-bank-outline" />}
-                onChangeText={field.onChange}
-              />
-            )}
-          />
-        )}
-        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-          {vi.goalSourceHint}
-        </Text>
-      </View>
-
+  const relevantKeys: (keyof Fields)[] = walletId
+    ? ['name', 'target', 'deadline', 'wallet']
+    : ['name', 'target', 'manual', 'deadline', 'wallet'];
+  const dirty = haveFieldsChanged(initialValues, currentValues, {
+    moneyKeys: ['target', 'manual'],
+    keys: relevantKeys,
+  });
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'goal-form',
+    scope: 'tab',
+    routeKey: guardRouteKey,
+    dirty,
+    saving: disabled,
+    hasError: invalid || !!error,
+    changeSignature: JSON.stringify(currentValues),
+    onDiscard: onBack,
+  });
+  const footer = (
+    <>
       {(invalid || error) && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {error || vi.goalInvalid}
@@ -617,12 +549,151 @@ function GoalForm({
               return;
             }
             setInvalid(false);
-            await onSave(input);
+            await runGuardedSave(() => onSave(input));
           })()
         }
       >
         {vi.saveGoal}
       </Button>
+    </>
+  );
+  return (
+    <Screen
+      title={row ? vi.editGoal : vi.addGoal}
+      onBack={requestLeave}
+      backDisabled={disabled}
+      footer={footer}
+    >
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        {(
+          [
+            { name: 'name', label: vi.goalName, icon: 'bullseye-arrow' },
+            { name: 'target', label: vi.goalTarget, icon: 'cash' },
+            { name: 'deadline', label: vi.goalDeadline, icon: 'calendar' },
+          ] as const
+        ).map((item) => (
+          <Controller
+            key={item.name}
+            control={control}
+            name={item.name}
+            rules={{
+              validate: (value) =>
+                item.name === 'name'
+                  ? !!value.trim() || vi.formRequired
+                  : item.name === 'target'
+                    ? amountError(value)
+                    : dateError(value, true),
+            }}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                {item.name === 'deadline' ? (
+                  <DateField
+                    error={!!fieldState.error}
+                    label={item.label}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={disabled}
+                    allowClear
+                  />
+                ) : item.name === 'target' ? (
+                  <MoneyInput
+                    error={!!fieldState.error}
+                    label={item.label}
+                    accessibilityLabel={item.label}
+                    value={field.value}
+                    disabled={disabled}
+                    onBlur={field.onBlur}
+                    left={<TextInput.Icon icon={item.icon} />}
+                    onChangeText={field.onChange}
+                  />
+                ) : (
+                  <TextInput
+                    error={!!fieldState.error}
+                    mode="outlined"
+                    label={item.label}
+                    accessibilityLabel={item.label}
+                    value={field.value}
+                    disabled={disabled}
+                    onBlur={field.onBlur}
+                    left={<TextInput.Icon icon={item.icon} />}
+                    keyboardType="default"
+                    onChangeText={field.onChange}
+                  />
+                )}
+              </FieldFeedback>
+            )}
+          />
+        ))}
+        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+          {vi.goalDeadlineHint}
+        </Text>
+      </View>
+
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        <Controller
+          control={control}
+          name="wallet"
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <AppleMenuPicker
+                label={vi.goalSource}
+                value={field.value}
+                options={sourceOptions}
+                disabled={disabled}
+                onSelect={field.onChange}
+              />
+            </FieldFeedback>
+          )}
+        />
+        {!walletId && (
+          <Controller
+            control={control}
+            name="manual"
+            rules={{
+              validate: (value) =>
+                !!getValues('wallet') || amountError(value, { zero: true }),
+            }}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                <MoneyInput
+                    error={!!fieldState.error}
+                    label={vi.goalManual}
+                    accessibilityLabel={vi.goalManual}
+                    value={field.value}
+                    disabled={disabled}
+                    onBlur={field.onBlur}
+                    left={<TextInput.Icon icon="piggy-bank-outline" />}
+                    onChangeText={field.onChange}
+                  />
+              </FieldFeedback>
+            )}
+          />
+        )}
+        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+          {vi.goalSourceHint}
+        </Text>
+      </View>
+
+
     </Screen>
   );
 }

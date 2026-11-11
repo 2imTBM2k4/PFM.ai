@@ -22,7 +22,7 @@ import {
   DesignSpacing,
   useDesignTheme,
 } from '@/constants/theme';
-import { activeLanguage } from '@/messages/language';
+import { vi } from '@/messages/vi';
 
 export interface AppleMenuOption<T> {
   value: T;
@@ -56,7 +56,7 @@ function AppleMenuPickerInner<T extends string | number>({
   options,
   onSelect,
   disabled = false,
-  placeholder = activeLanguage === 'en' ? 'Choose...' : 'Chọn...',
+  placeholder = vi.pickerChoose,
   accessibilityLabel,
   helperText,
 }: AppleMenuPickerProps<T>) {
@@ -131,7 +131,7 @@ function AppleMenuPickerInner<T extends string | number>({
         style={styles.rowWrapper}
       >
         <Text
-          numberOfLines={1}
+          numberOfLines={2}
           style={[styles.rowLabel, { color: theme.text.primary }]}
         >
           {label}
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
   rowLabel: {
     fontSize: 15,
     fontWeight: '600',
-    flexShrink: 0,
+    flexShrink: 1,
   },
   triggerPill: {
     flexDirection: 'row',

@@ -1,3 +1,11 @@
+import { FieldFeedback } from '@/components/field-feedback';
+import {
+  amountError,
+  dateError,
+  endDateError,
+  monthError,
+  percentError,
+} from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -10,7 +18,9 @@ import {
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { BudgetInputSchema, type BudgetInput } from '@pfm/contracts';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, FlatList, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
@@ -30,7 +40,13 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { AppleMenuPicker, DateField, MoneyInput, MonthField } from '@/components/ui';
+import {
+  AppleMenuPicker,
+  DateField,
+  MoneyInput,
+  MonthField,
+  SegmentedOptionPicker,
+} from '@/components/ui';
 import { DesignSpacing, useFinancePalette } from '@/constants/theme';
 import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import { withDatabase } from '@/data/connection';
@@ -42,10 +58,11 @@ import {
   readBudgetMonth,
   type BudgetRow,
 } from '@/data/budgets';
-import { listCategories, type CategoryRow } from '@/data/categories';
+import { listCategories, orderCategoriesByParent, type CategoryRow } from '@/data/categories';
 import { vi } from '@/messages/vi';
 import { displayCategoryName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
+import { usePreferences } from '@/state/preferences';
 import { formatDisplayDate, formatDisplayMonth } from '@/utils/display';
 import {
   formatAmountInput,
@@ -109,12 +126,19 @@ export function BudgetManager({
       return () => cancelAnimationFrame(frame);
     }, [load]),
   );
-  const back = useCallback(() => {
-    if (!working.current) {
-      setMode({ type: 'list' });
-      setError('');
-    }
+  const leaveForm = useCallback(() => {
+    if (working.current) return;
+    setMode({ type: 'list' });
+    setError('');
   }, []);
+  const back = useCallback(() => {
+    if (working.current) return;
+    if (mode.type === 'form') {
+      requestGuardLeave('budget-form', leaveForm);
+      return;
+    }
+    leaveForm();
+  }, [mode.type, leaveForm]);
   useFocusEffect(
     useCallback(() => {
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -187,7 +211,7 @@ export function BudgetManager({
         categories={categories}
         busy={busy || loading}
         error={error}
-        onBack={back}
+        onBack={leaveForm}
         onSave={(input) =>
           mutate((db) =>
             mode.row
@@ -360,7 +384,8 @@ const BudgetItem = memo(function BudgetItem({
       : [];
   const pct = row.amount > 0 ? Math.round((row.spent / row.amount) * 100) : 0;
   const category = categories.find((c) => c.id === row.category_id);
-  const icon = category?.icon || (row.category_id ? 'tag-outline' : 'chart-donut');
+  const icon =
+    category?.icon || (row.category_id ? 'tag-outline' : 'chart-donut');
   const catColor = category?.color;
 
   const badgeBg = thresholds.includes(100)
@@ -391,14 +416,12 @@ const BudgetItem = memo(function BudgetItem({
     >
       <View style={styles.row}>
         <View style={[styles.inlineRow, { flex: 1 }]}>
-          <IconBadge
-            icon={icon}
-            bg={badgeBg}
-            fg={badgeFg}
-          />
+          <IconBadge icon={icon} bg={badgeBg} fg={badgeFg} />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
-              {row.category_name ? displayCategoryName(row.category_name) : vi.budgetOverall}
+              {row.category_name
+                ? displayCategoryName(row.category_name)
+                : vi.budgetOverall}
               {row.category_archived
                 ? ` · ${vi.transactionArchivedReference}`
                 : ''}
@@ -572,31 +595,65 @@ function BudgetForm({
   onBack(): void;
   onSave(input: BudgetInput): Promise<void>;
 }) {
-  const todayStr = today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
+  const todayStr = today({
+    now: () => new Date(),
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+  const [initialValues] = useState<BudgetFields>(() => ({
+    amount: row ? formatAmountInput(String(row.amount)) : '',
+    warnPercent: String(row?.warn_percent ?? 80),
+    periodType: row?.period_type ?? 'monthly',
+    startMonth: row?.start_month ?? month,
+    endMonth: row?.end_month ?? '',
+    startDate: row?.start_date ?? todayStr,
+    endDate: row?.end_date ?? todayStr,
+    categoryId: row?.category_id ?? '',
+  }));
   const {
     control,
     handleSubmit,
+    getValues,
     setValue,
-    watch,
     formState: { isSubmitting },
   } = useForm<BudgetFields>({
-    defaultValues: {
-      amount: row ? formatAmountInput(String(row.amount)) : '',
-      warnPercent: String(row?.warn_percent ?? 80),
-      periodType: row?.period_type ?? 'monthly',
-      startMonth: row?.start_month ?? month,
-      endMonth: row?.end_month ?? '',
-      startDate: row?.start_date ?? todayStr,
-      endDate: row?.end_date ?? todayStr,
-      categoryId: row?.category_id ?? '',
-    },
+    defaultValues: initialValues,
   });
-  const periodType = watch('periodType');
+  const watched = useWatch({ control });
+  const currentValues: BudgetFields = {
+    amount: watched.amount ?? initialValues.amount,
+    warnPercent: watched.warnPercent ?? initialValues.warnPercent,
+    periodType: watched.periodType ?? initialValues.periodType,
+    startMonth: watched.startMonth ?? initialValues.startMonth,
+    endMonth: watched.endMonth ?? initialValues.endMonth,
+    startDate: watched.startDate ?? initialValues.startDate,
+    endDate: watched.endDate ?? initialValues.endDate,
+    categoryId: watched.categoryId ?? initialValues.categoryId,
+  };
+  const periodType = currentValues.periodType;
   const [formError, setFormError] = useState('');
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const disabled = busy || isSubmitting;
+  const relevantKeys: (keyof BudgetFields)[] =
+    periodType === 'custom'
+      ? ['amount', 'warnPercent', 'periodType', 'startDate', 'endDate', 'categoryId']
+      : ['amount', 'warnPercent', 'periodType', 'startMonth', 'endMonth', 'categoryId'];
+  const dirty = haveFieldsChanged(initialValues, currentValues, {
+    moneyKeys: ['amount'],
+    keys: relevantKeys,
+  });
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'budget-form',
+    scope: 'tab',
+    routeKey: 'budgets',
+    dirty,
+    saving: disabled,
+    hasError: !!formError || !!error,
+    changeSignature: JSON.stringify(currentValues),
+    onDiscard: onBack,
+  });
 
+  const language = usePreferences((state) => state.language);
   const categoryOptions = useMemo(
     () => [
       {
@@ -606,187 +663,33 @@ function BudgetForm({
         iconBg: palette.primarySoft,
         iconColor: palette.primaryInk,
       },
-      ...categories
-        .filter(
+      ...orderCategoriesByParent(
+        categories.filter(
           (c) =>
             c.kind === 'expense' &&
             (!c.is_archived || c.id === row?.category_id),
-        )
-        .map((c) => {
-          const parent = c.parent_id
-            ? categories.find((p) => p.id === c.parent_id)
-            : null;
-          return {
-            value: c.id,
-            label: displayCategoryName(c.name),
-            icon: c.icon || 'tag-outline',
-            iconBg: palette.expenseSoft,
-            iconColor: c.color || palette.expenseInk,
-            subtitle: parent
-              ? `Thuộc: ${displayCategoryName(parent.name)}`
-              : undefined,
-          };
-        }),
+        ),
+      ).map((c) => {
+        const parent = c.parent_id
+          ? categories.find((p) => p.id === c.parent_id)
+          : null;
+        return {
+          value: c.id,
+          label: displayCategoryName(c.name),
+          icon: c.icon || 'tag-outline',
+          iconBg: palette.expenseSoft,
+          iconColor: c.color || palette.expenseInk,
+          subtitle: parent
+            ? `${language === 'en' ? 'Under' : 'Thu\u1ed9c'}: ${displayCategoryName(parent.name)}`
+            : undefined,
+        };
+      }),
     ],
-    [categories, row?.category_id, palette],
+    [categories, row?.category_id, palette, language],
   );
 
-  return (
-    <Screen
-      title={row ? vi.editBudget : vi.addBudget}
-      onBack={onBack}
-      backDisabled={disabled}
-    >
-      <View
-        style={[
-          styles.panel,
-          { backgroundColor: palette.surface, borderColor: palette.border, gap: 14 },
-        ]}
-      >
-        <Controller
-          control={control}
-          name="categoryId"
-          render={({ field }) => (
-            <AppleMenuPicker
-              label={vi.transactionCategory}
-              value={field.value}
-              options={categoryOptions}
-              disabled={disabled}
-              onSelect={field.onChange}
-            />
-          )}
-        />
-
-        <View style={{ gap: 6 }}>
-          <Text
-            variant="labelMedium"
-            style={{ color: palette.textMuted, fontWeight: '600' }}
-          >
-            {vi.budgetPeriodType}
-          </Text>
-          <SegmentedButtons
-            value={periodType}
-            density="small"
-            onValueChange={(val) =>
-              setValue('periodType', val as 'monthly' | 'custom')
-            }
-            buttons={[
-              {
-                value: 'monthly',
-                label: vi.budgetPeriodMonthly,
-                showSelectedCheck: false,
-                labelStyle: localStyles.segmentLabel,
-              },
-              {
-                value: 'custom',
-                label: vi.budgetPeriodCustom,
-                showSelectedCheck: false,
-                labelStyle: localStyles.segmentLabel,
-              },
-            ]}
-          />
-        </View>
-
-        {periodType === 'custom' ? (
-          <>
-            <Controller
-              control={control}
-              name="startDate"
-              render={({ field }) => (
-                <DateField
-                  label={vi.budgetStartDate}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="endDate"
-              render={({ field }) => (
-                <DateField
-                  label={vi.budgetEndDate}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                />
-              )}
-            />
-            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {vi.budgetCustomHint}
-            </Text>
-          </>
-        ) : (
-          <>
-            <Controller
-              control={control}
-              name="startMonth"
-              render={({ field }) => (
-                <MonthField
-                  label={vi.budgetStart}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="endMonth"
-              render={({ field }) => (
-                <MonthField
-                  label={vi.budgetEnd}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                  allowClear
-                />
-              )}
-            />
-            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {vi.budgetMonthlyHint}
-            </Text>
-          </>
-        )}
-
-        <Divider style={{ backgroundColor: palette.borderSubtle }} />
-
-        <Controller
-          control={control}
-          name="amount"
-          render={({ field }) => (
-            <MoneyInput
-              label={vi.budgetAmount}
-              accessibilityLabel={vi.budgetAmount}
-              value={field.value}
-              onBlur={field.onBlur}
-              disabled={disabled}
-              left={<TextInput.Icon icon="cash" />}
-              onChangeText={field.onChange}
-            />
-          )}
-        />
-
-        <Controller
-          control={control}
-          name="warnPercent"
-          render={({ field }) => (
-            <TextInput
-              mode="outlined"
-              label={vi.budgetWarnPercent}
-              accessibilityLabel={vi.budgetWarnPercent}
-              value={field.value}
-              onBlur={field.onBlur}
-              disabled={disabled}
-              left={<TextInput.Icon icon="percent-outline" />}
-              keyboardType="number-pad"
-              onChangeText={field.onChange}
-            />
-          )}
-        />
-      </View>
-
+  const footer = (
+    <>
       {(!!formError || !!error) && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {formError || error}
@@ -849,12 +752,223 @@ function BudgetForm({
               return;
             }
             setFormError('');
-            await onSave(input);
+            await runGuardedSave(() => onSave(input));
           })();
         }}
       >
         {vi.saveBudget}
       </Button>
+    </>
+  );
+
+  return (
+    <Screen
+      title={row ? vi.editBudget : vi.addBudget}
+      onBack={requestLeave}
+      backDisabled={disabled}
+      footer={footer}
+    >
+      <View
+        style={[
+          styles.panel,
+          {
+            backgroundColor: palette.surface,
+            borderColor: palette.border,
+            gap: 14,
+          },
+        ]}
+      >
+        <Controller
+          control={control}
+          name="categoryId"
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <AppleMenuPicker
+                  label={vi.transactionCategory}
+                  value={field.value}
+                  options={categoryOptions}
+                  disabled={disabled}
+                  onSelect={field.onChange}
+                />
+            </FieldFeedback>
+          )}
+        />
+
+        <SegmentedOptionPicker
+          label={vi.budgetPeriodType}
+          value={periodType}
+          disabled={disabled}
+          onSelect={(val) => setValue('periodType', val)}
+          options={[
+            { value: 'monthly', label: vi.budgetPeriodMonthly },
+            { value: 'custom', label: vi.budgetPeriodCustom },
+          ]}
+        />
+
+        {periodType === 'custom' ? (
+          <>
+            <Controller
+              control={control}
+              name="startDate"
+              rules={{
+                validate: (value) =>
+                  getValues('periodType') !== 'custom' || dateError(value),
+              }}
+              render={({ field, fieldState }) => (
+                <FieldFeedback
+                  fieldRef={field.ref}
+                  message={fieldState.error?.message}
+                >
+                  <DateField
+                      error={!!fieldState.error}
+                      label={vi.budgetStartDate}
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={disabled}
+                    />
+                </FieldFeedback>
+              )}
+            />
+            <Controller
+              control={control}
+              name="endDate"
+              rules={{
+                validate: (value) =>
+                  getValues('periodType') !== 'custom' ||
+                  endDateError(value, getValues('startDate')),
+              }}
+              render={({ field, fieldState }) => (
+                <FieldFeedback
+                  fieldRef={field.ref}
+                  message={fieldState.error?.message}
+                >
+                  <DateField
+                      error={!!fieldState.error}
+                      label={vi.budgetEndDate}
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={disabled}
+                    />
+                </FieldFeedback>
+              )}
+            />
+            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+              {vi.budgetCustomHint}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Controller
+              control={control}
+              name="startMonth"
+              rules={{
+                validate: (value) =>
+                  getValues('periodType') !== 'monthly' || monthError(value),
+              }}
+              render={({ field, fieldState }) => (
+                <FieldFeedback
+                  fieldRef={field.ref}
+                  message={fieldState.error?.message}
+                >
+                  <MonthField
+                      error={!!fieldState.error}
+                      label={vi.budgetStart}
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={disabled}
+                    />
+                </FieldFeedback>
+              )}
+            />
+            <Controller
+              control={control}
+              name="endMonth"
+              rules={{
+                validate: (value) =>
+                  getValues('periodType') !== 'monthly' ||
+                  (monthError(value, true) !== true
+                    ? monthError(value, true)
+                    : !value ||
+                      value >= getValues('startMonth') ||
+                      vi.formEndMonthBeforeStart),
+              }}
+              render={({ field, fieldState }) => (
+                <FieldFeedback
+                  fieldRef={field.ref}
+                  message={fieldState.error?.message}
+                >
+                  <MonthField
+                      error={!!fieldState.error}
+                      label={vi.budgetEnd}
+                      value={field.value}
+                      onChange={field.onChange}
+                      disabled={disabled}
+                      allowClear
+                    />
+                </FieldFeedback>
+              )}
+            />
+            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+              {vi.budgetMonthlyHint}
+            </Text>
+          </>
+        )}
+
+        <Divider style={{ backgroundColor: palette.borderSubtle }} />
+
+        <Controller
+          control={control}
+          name="amount"
+          rules={{ validate: (value) => amountError(value) }}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <MoneyInput
+                  error={!!fieldState.error}
+                  label={vi.budgetAmount}
+                  accessibilityLabel={vi.budgetAmount}
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  disabled={disabled}
+                  left={<TextInput.Icon icon="cash" />}
+                  onChangeText={field.onChange}
+                />
+            </FieldFeedback>
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="warnPercent"
+          rules={{ validate: percentError }}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <TextInput
+                  error={!!fieldState.error}
+                  mode="outlined"
+                  label={vi.budgetWarnPercent}
+                  accessibilityLabel={vi.budgetWarnPercent}
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  disabled={disabled}
+                  left={<TextInput.Icon icon="percent-outline" />}
+                  keyboardType="number-pad"
+                  onChangeText={field.onChange}
+                />
+            </FieldFeedback>
+          )}
+        />
+      </View>
+
+
     </Screen>
   );
 }

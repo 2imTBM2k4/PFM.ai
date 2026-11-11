@@ -29,6 +29,42 @@ export interface CategoryRow {
   sort_order: number;
 }
 
+/**
+ * Orders categories so each parent is immediately followed by its child categories,
+ * preserving relative sort_order and appending any orphan children safely at the end.
+ */
+export function orderCategoriesByParent(
+  categories: readonly CategoryRow[],
+): CategoryRow[] {
+  const byId = new Set(categories.map((category) => category.id));
+  const childrenByParent = new Map<string, CategoryRow[]>();
+  const topLevel: CategoryRow[] = [];
+  const orphans: CategoryRow[] = [];
+
+  for (const category of categories) {
+    if (!category.parent_id) {
+      topLevel.push(category);
+    } else if (byId.has(category.parent_id)) {
+      const group = childrenByParent.get(category.parent_id) ?? [];
+      group.push(category);
+      childrenByParent.set(category.parent_id, group);
+    } else {
+      orphans.push(category);
+    }
+  }
+
+  const ordered: CategoryRow[] = [];
+  for (const parent of topLevel) {
+    ordered.push(parent);
+    const children = childrenByParent.get(parent.id);
+    if (children) {
+      ordered.push(...children);
+    }
+  }
+  ordered.push(...orphans);
+  return ordered;
+}
+
 export function listCategories(db: Queries, includeArchived = false) {
   return db.getAllAsync<CategoryRow>(
     'SELECT * FROM categories WHERE (? = 1 OR is_archived = 0) ORDER BY sort_order, id',

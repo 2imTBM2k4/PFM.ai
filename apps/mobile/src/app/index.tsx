@@ -7,7 +7,7 @@ export default function Overview() {
   const [managing, setManaging] = useState(false);
   const [goals, setGoals] = useState(false);
   if (managing) return <WalletManager onClose={() => setManaging(false)} />;
-  if (goals) return <GoalManager onClose={() => setGoals(false)} />;
+  if (goals) return <GoalManager guardRouteKey="index" onClose={() => setGoals(false)} />;
   return (
     <OverviewScreen
       onWallets={() => setManaging(true)}

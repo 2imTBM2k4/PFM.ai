@@ -1,6 +1,23 @@
 import type { viMessages } from './vi';
 
 export const en: Record<keyof typeof viMessages, string> = {
+  formRequired: 'Please fill in this field.',
+  formDestinationInvalid: 'Choose a destination wallet different from the source.',
+  formRepaymentTooLarge: 'The repayment must not exceed the outstanding debt.',
+  formNonnegativeAmount: 'Enter a whole VND amount between 0 and 100 billion.',
+  formEndBeforeStart: 'The end date must be on or after the start date.',
+  formMonthInvalid: 'Please select a valid month.',
+  formEndMonthBeforeStart: 'The end month must be on or after the start month.',
+  formPercentInvalid: 'Enter a whole percentage between 1 and 100.',
+  formAmountRangeInvalid: 'The maximum amount must be at least the minimum amount.',
+  moneyInputFormatVnd:
+    'Enter a whole VND amount, such as 30000 or 30,000. Do not include letters, currency symbols, or shorthand such as 30k/1tr.',
+  moneyInputFormatUsd:
+    'Enter USD with up to 2 decimal places using a dot, such as 10.25 or 1,000.25. Do not include currency symbols.',
+  moneyInputNegative:
+    'Negative amounts are not allowed in this field. Please check the amount.',
+  moneyInputLimit:
+    'The amount must not exceed {limit} {currency}. Your input has been kept so you can correct it.',
   quickTitle: 'Quick transaction entry',
   quickInput: 'What did you earn or spend?',
   quickExample: 'Example: spent $10 on breakfast yesterday',
@@ -293,8 +310,17 @@ export const en: Record<keyof typeof viMessages, string> = {
   cancel: 'Cancel',
   close: 'Close',
   clear: 'Clear',
+  done: 'Done',
+  pickerChoose: 'Choose...',
   datePickerChoose: 'Choose date',
   datePickerToday: 'Today',
+  monthPickerThisMonth: 'This month',
+  monthPickerMonth: 'Month',
+  monthPickerYear: 'Year',
+  timePickerChoose: 'Choose time',
+  timePickerHour: 'Hour',
+  timePickerMinute: 'Minute',
+  timePickerInvalid: 'Enter a valid time from 00:00 to 23:59.',
   appName: 'PFM.ai',
   overview: 'Overview',
   transactions: 'Transactions',
@@ -755,4 +781,9 @@ export const en: Record<keyof typeof viMessages, string> = {
     'Could not complete the Google Drive operation. Please try again.',
   onboardingRestoreFromDriveBtn: 'Restore from Google Drive',
   onboardingRestoreConfirmBtn: 'Restore this backup',
+  unsavedChangesTitle: 'Discard changes?',
+  unsavedChangesMessage:
+    'You have unsaved changes. If you leave now, your edits will be lost.',
+  unsavedStay: 'Keep editing',
+  unsavedDiscard: 'Discard',
 };

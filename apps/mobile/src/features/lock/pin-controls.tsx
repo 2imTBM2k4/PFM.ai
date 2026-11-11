@@ -7,6 +7,7 @@ import {
   TextInput,
   useTheme,
 } from 'react-native-paper';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { vi } from '@/messages/vi';
 import { styles } from '@/components/screen';
 import {
@@ -169,6 +170,17 @@ function PinForm({
   const [storageResult, setStorageResult] = useState('');
   const working = useRef(false);
   const { colors } = useTheme();
+  const hasPinInput =
+    current.length > 0 || next.length > 0 || confirmation.length > 0;
+  const { requestLeave } = useUnsavedChangesGuard({
+    id: 'pin-form',
+    scope: 'tab',
+    routeKey: 'settings',
+    dirty: hasPinInput,
+    saving: busy,
+    hasError: !!error,
+    onDiscard: onCancel,
+  });
   async function diagnoseStorage() {
     if (working.current) return;
     working.current = true;
@@ -293,7 +305,7 @@ function PinForm({
       >
         {mode === 'disable' ? vi.pinDisable : vi.pinSave}
       </Button>
-      <Button contentStyle={styles.button} disabled={busy} onPress={onCancel}>
+      <Button contentStyle={styles.button} disabled={busy} onPress={requestLeave}>
         {vi.cancel}
       </Button>
     </View>

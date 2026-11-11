@@ -17,6 +17,12 @@ export {
 export { DateField, type DateFieldProps } from './date-field';
 export { MonthField, type MonthFieldProps } from './month-field';
 export {
+  SegmentedOptionPicker,
+  type SegmentedOption,
+  type SegmentedOptionPickerProps,
+} from './segmented-option-picker';
+export { TimeField, type TimeFieldProps } from './time-field';
+export {
   MoneyInput,
   computeMoneyCaretOffset,
   countSignificantMoneyChars,
