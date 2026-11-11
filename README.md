@@ -1,126 +1,100 @@
 # PFM.ai
 
-Vietnamese personal-finance app. Current target: Expo Go preview through Phases
-1–3. The application is under construction, not ready for real financial data.
+Vietnamese-first personal finance mobile application built with Expo SDK 58, React Native, TypeScript, local SQLite/SQLCipher persistence, and an AI assistant proxy.
+
+> **Status**: Active personal/portfolio project. Expo Go runs an unencrypted preview database; standalone/development native builds enable SQLCipher encryption and Google Drive backup.
+
+## Tech Stack
+
+- **Mobile (`@pfm/mobile`)**: Expo SDK 58, React Native 0.88, Expo Router, React Native Paper, Zustand, React Hook Form, Expo SQLite (`useSQLCipher`), `@expo/ui/swift-ui`, `expo-glass-effect`, `expo-symbols`, `expo-notifications`, `expo-image-picker`.
+- **Shared Packages**: Pure TypeScript business rules (`@pfm/domain`) and shared Zod/contract types (`@pfm/contracts`).
+- **AI Proxy (`@pfm/proxy`)**: Node.js 24, Fastify, Zod.
 
 ## Structure
 
-- `apps/mobile/src`: main Expo SDK 58 application source.
-- `packages/domain/src`: pure TypeScript business rules.
-- `packages/contracts/src`: shared validation/types.
-- `spikes/expo-go`: preserved technical prototype; not part of the workspace.
+- `apps/mobile/src`: main Expo application source (screens, feature modules, native iOS/Android/web UI controls, SQLite queries/migrations, state, i18n messages).
+- `packages/domain/src`: pure TypeScript domain calculations and validation rules.
+- `packages/contracts/src`: shared request/response schemas and types.
+- `services/proxy`: Fastify proxy service for AI chat, receipt extraction, and AI budget setup.
+- `spikes/expo-go`: preserved early technical prototype (outside the pnpm workspace).
 - `plan.md`: product requirements and owner-approved exceptions.
-- `docs/progress.md`: completed checks and outstanding work.
+- `docs/`: progress notes, design specs, and manual device test checklists.
 
-## Install from the project root
+## Prerequisites & Install
 
-Node.js 24 and pnpm 10.33.4. If pnpm is not installed, use its pinned version
-through npm without changing global tools:
+Requires **Node.js 24** and **pnpm 10.33.4**. From the project root:
 
 ```powershell
 Set-Location -LiteralPath 'C:\Users\Silentboiz\Desktop\Working\PFM.ai'
 npx.cmd --yes pnpm@10.33.4 install
 ```
 
-This creates the workspace links and `pnpm-lock.yaml`. Do not run `npm install`
-inside individual workspace packages: their `workspace:*` dependencies require
-workspace-aware installation. Review and preserve the generated lockfile.
+Do not run `npm install` inside individual workspace packages because `workspace:*` links require pnpm workspace resolution.
 
-The owner selected React Native Paper, Zustand and React Hook Form for the
-application, together with direct Expo SQLite. Install these SDK-compatible
-app dependencies through Expo from the root after the workspace install:
+## Running the App
 
-```powershell
-npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile exec expo install expo-sqlite react-native-paper zustand react-hook-form @expo/vector-icons --pnpm
-```
-
-`@expo/vector-icons` supplies icons for Paper. No provider keys are required.
-
-## Main application
-
-After installation, run from the root:
+### 1. Expo Go Preview
 
 ```powershell
 npx.cmd --yes pnpm@10.33.4 start
 ```
 
-This launches `apps/mobile` in Expo Go mode. Sign in to the same Expo account on
-the CLI and iPhone when prompted. Keep devices on the same reachable network.
-The main app now has Vietnamese navigation, optional initial cash balance,
-SQLite persistence, wallet/category management, manual income/expense/transfer
-create/edit/delete with undo, local disconnected chat, and typed confirmation
-before deleting preview data. Monthly budgets and local alert integration are
-implemented; goals, recurring entries, debt and remaining Phase 2 features are pending.
+Sign in to the same Expo account on the CLI and device (or ensure devices are on the same reachable network). Note that Expo Go uses a separate unencrypted preview database and disables Google Drive sign-in and native SQLCipher encryption.
 
-From the overview, choose `Quản lý ví` to manage wallets. Archived wallets remain
-available under `Đã lưu trữ`; the overview total explicitly covers active wallets.
+### 2. Native Development Client (SQLCipher + Google Drive Backup)
 
-From `Cài đặt`, choose `Quản lý danh mục` for the two-level category tree. Create,
-rename, choose an icon/color, or archive a category. Archiving a parent includes
-its children; transaction reassignment requires explicit selection. Category
-statistics will show parent totals only when the statistics feature is built.
+```powershell
+# Android
+npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile android
 
-From `Giao dịch`, add income/expense/transfers, edit, or confirm deletion. Undo
-restores the most recent deletion until another successful write, tab change or
-reload. Future dates show a warning from tomorrow but can still be saved. Dates
-currently use YYYY-MM-DD text entry; manual transactions use Asia/Ho_Chi_Minh.
-See [transaction device checks](docs/testing/T2.3-transactions.md).
+# iOS
+npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile ios
+```
 
-Choose `Giao dịch → Tìm kiếm và lọc` to search notes without Vietnamese accents
-and combine date, kind, wallet, category (including children) and amount filters.
-Apply/reset is explicit. Schema version 2 adds/backfills derived note_search while
-keeping original notes; existing snapshot/rollback safeguards remain in use.
-See [search/upgrade device checks](docs/testing/T2.4-search.md).
+### 3. AI Proxy Service (Optional, for AI Chat / Receipt Scan / AI Budget Setup)
 
-From `Ngân sách`, set overall/category monthly limits, edit or pause them, and
-switch months. Active current-month budgets that reach their warning threshold or
-limit also surface a dismissible alert banner at the top of `Tổng quan`. Open
-`Cài đặt → Thông báo → Ngân sách` to request permission or schedule a five-second
-local test, then return to the phone home screen to observe it. Foreground OS
-banners are suppressed for budget alerts; actual notifications can be seen in the
-system notification list. expo-notifications 58.1.6 is included; no push
-server/token is used. See [budget/device checks](docs/testing/T2.5-budgets.md).
+```powershell
+npx.cmd --yes pnpm@10.33.4 --filter @pfm/proxy start
+```
 
-Open Overview > Mục tiêu tiết kiệm to create/edit/archive/restore savings goals. Track
-progress from a selected wallet's balance or a manually entered amount. A deadline
-adds a rounded-up monthly saving amount; tracking does not move or reserve money.
-See [goal/device checks](docs/testing/T2.6-goals.md).
+Reads optional environment configuration from `.env.9router.local` at the repository root.
 
-Open Transactions > Giao dịch định kỳ to create/edit/pause/resume recurring rules.
-Generation catches up on open/resume, up to 366 occurrence dates per run. Archived
-references block until restored; explicit resume skips the paused period. Local
-reminders target 09:00 Vietnam one day before due, replenished on app open/resume
-in a finite window. See [recurring/device checks](docs/testing/T2.7-recurring.md).
+## Implemented Features
 
-Open Transactions > Vay và cho vay to record borrowed/lent principal and repayments.
-Debt cash flows change wallet balances, not income/expense totals. Overpayments
-are rejected, and deleting/undoing a payment recalculates outstanding/status.
-Optional due-date reminders target 09:00 Vietnam the preceding day. See
-[debt/device checks](docs/testing/T2.9-debts.md).
-
-Overview includes month income/expense/net, parent-category spending, six-month
-charts, budget amounts, current goals, recent selected-month transactions, and a
-dismissible banner for active current-month budgets that reach their warning
-threshold or limit. Charts include exact text equivalents. See
-[dashboard/device checks](docs/testing/T2.8-dashboard.md).
-
-Follow [the iPhone check list](docs/testing/phase-1-expo-go.md) to verify persistence,
-dark mode, keyboard behavior and deletion on the device. Owner confirms main-app
-wallet add/edit/save on iPhone SE 3; remaining device acceptance is pending.
-
-The previous spike is still runnable independently from `spikes/expo-go` with
-`npx.cmd expo start --go`. Stop one development server before starting the other
-if both try to use the same port. Database files are not copied between them.
+- **Overview & Statistics (`Tổng quan`, `Ngân sách → Thống kê`)**: Monthly income/expense/net summary, active wallet totals, parent-category spending breakdown, six-month trend charts with accessible text equivalents, and dismissible current-month budget alert banners.
+- **Wallets & Categories (`Quản lý ví`, `Quản lý danh mục`)**: Active and archived wallets, two-level category tree ordered by parent with icons (`MaterialCommunityIcons` + iOS `SF Symbols`) and color swatches, plus safe category archival/reassignment.
+- **Transactions & Search (`Giao dịch`)**: Income/expense/transfer CRUD with undo support, accent-insensitive Vietnamese search (`note_search`), multi-criteria filters (date range, kind, wallet, parent/child category, amount), and explicit apply/reset.
+- **Budgets, Goals, Recurring & Debts (`Ngân sách`, `Mục tiêu tiết kiệm`, `Giao dịch định kỳ`, `Vay và cho vay`)**:
+  - Monthly and custom-period budgets with warning/limit alerts and local notifications.
+  - Savings goals tracked via a linked wallet balance or manual amount, with optional deadline monthly targets.
+  - Recurring transaction rules with pause/resume and catch-up generation on open/resume (up to 366 occurrences per run).
+  - Borrowed/lent debt principal and repayment tracking with overpayment checks, undo recalculation, and due-date reminders.
+- **AI Assistant & Quick Entry (`Trợ lý AI`, `+` quick action menu)**: Natural-language Vietnamese transaction parsing, camera/library receipt scanning with confirmation review, AI-assisted budget setup, and local finance Q&A/advice.
+- **Native iOS & Cross-Platform Input UX**:
+  - Native SwiftUI `Menu` + inline `Picker` (`AppleMenuPicker`), graphical `DatePicker` sheet (`DateField`), dual-wheel `MonthField`, `hourAndMinute` `TimeField`, and segmented `Picker` on iOS, with tailored React Native Paper / Modal controls on Android and web.
+  - Custom `FloatingTabBar` with iOS 26+ Liquid Glass (`expo-glass-effect`) and translucent fallback elsewhere.
+  - Sticky bottom save bars on long forms (auto-hiding the tab bar while mounted), inline field validation feedback, and unsaved-changes confirmation guards on back/tab/close actions.
+- **Settings, Localization & Security (`Cài đặt`)**: Vietnamese/English UI toggle, VND/USD display conversion, daily/budget/debt/recurring notification schedules with custom `HH:MM` time selection, optional PIN lock, SQLCipher encryption on native builds, and Google Drive JSON backup/restore.
 
 ## Checks
 
 ```powershell
+# Lint, workspace typecheck, and Vitest unit tests
 npx.cmd --yes pnpm@10.33.4 check
+
+# Formatting check
+npx.cmd --yes pnpm@10.33.4 format:check
 ```
 
-Runs lint, strict type checking and Vitest. `format:check` checks formatting.
-These require installed workspace dependencies. A command being configured does
-not mean its checks have run; actual results are in `docs/progress.md`.
+Individual workspace checks:
+
+```powershell
+npx.cmd --yes pnpm@10.33.4 lint
+npx.cmd --yes pnpm@10.33.4 -r typecheck
+npx.cmd --yes pnpm@10.33.4 test
+```
+
+Device testing checklists live under `docs/testing/` (including `docs/testing/phase-1-expo-go.md`, `docs/testing/native-encryption.md`, and feature-specific `T2.*`, `T3.*`, `T4`, `T5` guides).
 
 ## Google Drive Backup Setup (Development & Standalone Builds)
 
@@ -154,15 +128,10 @@ Google Sign-In and Google Drive backup (`drive.file` scope) require a native dev
 - [ ] Uninstalling and reinstalling the app, then choosing `Khôi phục từ Google Drive` on the Onboarding screen restores all wallets, transactions, debts, budgets, goals, and recurring rules without asking for a starting balance.
 - [ ] Restoring from one device to another (including Android ↔ iOS) preserves all balances and accent-insensitive note search.
 
-## Preview limitations
+## Preview Limitations
 
-Expo Go keeps its separate, unencrypted preview database, deferred PIN controls, and disabled Google Drive sign-in (`Chỉ có ở bản cài đặt riêng`).
-Standalone installations now require SQLCipher and use a fresh encrypted database
-with a random 256-bit key in device-only secure storage. They do not import or
-delete preview data. First launch presents onboarding (with optional restore from Google Drive) without sample transactions;
-subsequent updates retain data. PIN is optional and independent of encryption.
-
-Rebuild the native app to include SQLCipher and `@react-native-google-signin/google-signin`; a JavaScript-only update is insufficient.
-Native encryption and PIN performance still require iPhone acceptance.
-In standalone/development builds, optional **Google Drive Backup** saves a logical JSON snapshot (`PFM.ai/pfm-backup-v1.json`) to the user's own Google Drive. **Note on privacy**: while on-device SQLite storage is encrypted with SQLCipher, the backup file stored on the user's Google Drive is **unencrypted JSON** (and includes transaction notes and borrower/lender names).
-Face ID and encryption-key recovery without a backup remain unimplemented: **losing the device or encryption key without an up-to-date Google Drive backup makes on-device data unrecoverable**. See `docs/testing/native-encryption.md` for checks.
+- Expo Go keeps its separate, unencrypted preview database, deferred PIN controls, and disabled Google Drive sign-in (`Chỉ có ở bản cài đặt riêng`).
+- Standalone installations require SQLCipher and use a fresh encrypted database with a random 256-bit key in device-only secure storage. They do not import or delete preview data. First launch presents onboarding (with optional restore from Google Drive) without sample transactions; subsequent updates retain data. PIN is optional and independent of encryption.
+- Rebuild the native app when native modules change (e.g., SQLCipher or `@react-native-google-signin/google-signin`); a JavaScript-only update is insufficient.
+- In standalone/development builds, optional **Google Drive Backup** saves a logical JSON snapshot (`PFM.ai/pfm-backup-v1.json`) to the user's own Google Drive. **Privacy note**: while on-device SQLite storage is encrypted with SQLCipher, the backup file stored on Google Drive is **unencrypted JSON** (and includes transaction notes and borrower/lender names).
+- Face ID and encryption-key recovery without a backup remain unimplemented: **losing the device or encryption key without an up-to-date Google Drive backup makes on-device data unrecoverable**. See `docs/testing/native-encryption.md` for checks.

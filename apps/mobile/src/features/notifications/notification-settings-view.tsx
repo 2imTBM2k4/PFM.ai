@@ -6,12 +6,11 @@ import {
   Button,
   Divider,
   Icon,
-  IconButton,
   Switch,
   Text,
 } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
-import { GlassCard } from '@/components/ui';
+import { GlassCard, TimeField } from '@/components/ui';
 import {
   DesignRadius,
   DesignSpacing,
@@ -25,7 +24,6 @@ import {
   useBudgetNotifications,
 } from '@/features/budgets/mobile';
 import {
-  parseReminderTime,
   syncDailyExpenseReminder,
   toggleMasterNotifications,
 } from '@/features/notifications/notification-settings-service';
@@ -34,10 +32,6 @@ import { vi } from '@/messages/vi';
 import { usePreferences } from '@/state/preferences';
 
 const PRESET_TIMES = ['12:00', '18:00', '20:00', '21:00', '22:00'] as const;
-
-function formatTwoDigits(value: number) {
-  return String(value).padStart(2, '0');
-}
 
 export function NotificationSettingsView({ onClose }: { onClose(): void }) {
   const [subView, setSubView] = useState<'main' | 'budget'>('main');
@@ -122,16 +116,6 @@ export function NotificationSettingsView({ onClose }: { onClose(): void }) {
       );
     }
   };
-
-  const handleTimeChange = async (nextHour: number, nextMinute: number) => {
-    const normalizedHour = ((nextHour % 24) + 24) % 24;
-    const normalizedMinute = ((nextMinute % 60) + 60) % 60;
-    const formatted = `${formatTwoDigits(normalizedHour)}:${formatTwoDigits(normalizedMinute)}`;
-    await setDailyExpenseReminderTime(formatted);
-    await syncDailyExpenseReminder();
-  };
-
-  const { hour, minute } = parseReminderTime(dailyExpenseReminderTime);
 
   if (subView === 'budget') {
     const isGranted = permissionStatus === vi.budgetNotificationGranted;
@@ -352,91 +336,27 @@ export function NotificationSettingsView({ onClose }: { onClose(): void }) {
         <View style={localStyles.timeRow}>
           <Text
             variant="bodyMedium"
-            style={{ fontWeight: '600', color: theme.text.primary }}
+            style={{
+              flex: 1,
+              flexShrink: 1,
+              fontWeight: '600',
+              color: theme.text.primary,
+            }}
           >
             {vi.notificationDailyExpenseTimeLabel}
           </Text>
 
-          <View style={localStyles.timeStepperGroup}>
-            <View
-              style={[
-                localStyles.stepperBox,
-                {
-                  backgroundColor: theme.card.surfaceSubtle,
-                  borderColor: theme.card.border,
-                },
-              ]}
-            >
-              <IconButton
-                icon="minus"
-                size={16}
-                disabled={!notificationsEnabled}
-                onPress={() => void handleTimeChange(hour - 1, minute)}
-                style={localStyles.stepperBtn}
-              />
-              <Text
-                variant="titleMedium"
-                style={{
-                  fontWeight: '800',
-                  color: theme.text.primary,
-                  minWidth: 28,
-                  textAlign: 'center',
-                }}
-              >
-                {formatTwoDigits(hour)}
-              </Text>
-              <IconButton
-                icon="plus"
-                size={16}
-                disabled={!notificationsEnabled}
-                onPress={() => void handleTimeChange(hour + 1, minute)}
-                style={localStyles.stepperBtn}
-              />
-            </View>
-
-            <Text
-              variant="titleMedium"
-              style={{ fontWeight: '800', color: theme.text.primary }}
-            >
-              :
-            </Text>
-
-            <View
-              style={[
-                localStyles.stepperBox,
-                {
-                  backgroundColor: theme.card.surfaceSubtle,
-                  borderColor: theme.card.border,
-                },
-              ]}
-            >
-              <IconButton
-                icon="minus"
-                size={16}
-                disabled={!notificationsEnabled}
-                onPress={() => void handleTimeChange(hour, minute - 15)}
-                style={localStyles.stepperBtn}
-              />
-              <Text
-                variant="titleMedium"
-                style={{
-                  fontWeight: '800',
-                  color: theme.text.primary,
-                  minWidth: 28,
-                  textAlign: 'center',
-                }}
-              >
-                {formatTwoDigits(minute)}
-              </Text>
-              <IconButton
-                icon="plus"
-                size={16}
-                disabled={!notificationsEnabled}
-                onPress={() => void handleTimeChange(hour, minute + 15)}
-                style={localStyles.stepperBtn}
-              />
-            </View>
-          </View>
+          <TimeField
+            label={vi.notificationDailyExpenseTimeLabel}
+            accessibilityLabel={vi.notificationDailyExpenseTimeLabel}
+            value={dailyExpenseReminderTime}
+            disabled={!notificationsEnabled}
+            onChange={(nextTime) => {
+              void setDailyExpenseReminderTime(nextTime).then(() =>
+                syncDailyExpenseReminder(),
+              );
+            }}
+          />
         </View>
 
         <View style={localStyles.presetsRow}>
@@ -623,23 +543,6 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  timeStepperGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  stepperBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: DesignRadius.md,
-    borderWidth: 1,
-    paddingHorizontal: 2,
-  },
-  stepperBtn: {
-    margin: 0,
-    width: 28,
-    height: 28,
   },
   presetsRow: {
     flexDirection: 'row',

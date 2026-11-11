@@ -14,6 +14,7 @@ import { isPinDeferred, useLockSession } from '@/features/lock/mobile';
 import { PinSettings } from '@/features/lock/pin-controls';
 import { withdrawReceiptConsent } from '@/features/quick-entry/receipt-consent';
 import { vi } from '@/messages/vi';
+import { requestGuardLeave } from '@/utils/unsaved-changes';
 
 export function SecuritySettingsView({ onClose }: { onClose(): void }) {
   const [subView, setSubView] = useState<'menu' | 'pin' | 'data'>('menu');
@@ -26,6 +27,10 @@ export function SecuritySettingsView({ onClose }: { onClose(): void }) {
     const subscription = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
+        if (subView === 'pin') {
+          requestGuardLeave('pin-form', () => setSubView('menu'));
+          return true;
+        }
         if (subView !== 'menu') {
           setSubView('menu');
           return true;
@@ -41,7 +46,7 @@ export function SecuritySettingsView({ onClose }: { onClose(): void }) {
     return (
       <Screen
         title={vi.securityPinMenuTitle}
-        onBack={() => setSubView('menu')}
+        onBack={() => requestGuardLeave('pin-form', () => setSubView('menu'))}
       >
         <GlassCard
           variant="elevated"

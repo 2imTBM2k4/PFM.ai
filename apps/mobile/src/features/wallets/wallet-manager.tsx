@@ -3,16 +3,16 @@ import { useFocusEffect } from 'expo-router';
 import { MAX_AMOUNT_VND } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { WalletInput } from '@pfm/contracts';
-import { memo, useCallback, useRef, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, FlatList, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   HelperText,
-  IconButton,
-  RadioButton,
   SegmentedButtons,
   Switch,
   Text,
@@ -26,7 +26,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { MoneyInput } from '@/components/ui';
+import { AppleMenuPicker, MoneyInput } from '@/components/ui';
 import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
@@ -88,13 +88,17 @@ export function WalletManager({ onClose }: { onClose(): void }) {
       // eslint-disable-next-line react-hooks/exhaustive-deps -- Catch-up on resume changes balances in this focused list.
     }, [showRows, recurringVersion]),
   );
+  const leaveForm = useCallback(() => {
+    if (working.current) return;
+    setEditing(undefined);
+    setError('');
+  }, []);
   const back = useCallback(() => {
     if (working.current) return;
     if (editing !== undefined) {
-      setEditing(undefined);
-      setError('');
+      requestGuardLeave('wallet-form', leaveForm);
     } else onClose();
-  }, [editing, onClose]);
+  }, [editing, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener(
@@ -180,7 +184,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         wallet={editing}
         busy={busy}
         error={error}
-        onBack={back}
+        onBack={leaveForm}
         onSave={async (input) => {
           const id = editing?.id ?? newId.current;
           if (!id) return;
@@ -433,25 +437,60 @@ function WalletForm({
   onSave(input: WalletInput): Promise<void>;
   onBack(): void;
 }) {
+  const [initialValues] = useState<WalletFields>(() => ({
+    name: wallet?.name ?? '',
+    kind: wallet?.kind ?? 'cash',
+    balance: String(wallet?.initial_balance ?? 0),
+    isGoalFunding: !!wallet?.is_goal_funding,
+  }));
   const {
     control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<WalletFields>({
-    defaultValues: {
-      name: wallet?.name ?? '',
-      kind: wallet?.kind ?? 'cash',
-      balance: String(wallet?.initial_balance ?? 0),
-      isGoalFunding: !!wallet?.is_goal_funding,
-    },
+    defaultValues: initialValues,
   });
+  const watched = useWatch({ control });
+  const currentValues: WalletFields = {
+    name: watched.name ?? initialValues.name,
+    kind: watched.kind ?? initialValues.kind,
+    balance: watched.balance ?? initialValues.balance,
+    isGoalFunding: watched.isGoalFunding ?? initialValues.isGoalFunding,
+  };
   const { colors } = useTheme();
   const palette = useFinancePalette();
+  const kindOptions = useMemo(
+    () =>
+      KINDS.map((kind) => {
+        const visual = walletKindVisual(kind.value, palette);
+        return {
+          value: kind.value,
+          label: kind.label,
+          icon: visual.icon,
+          iconBg: visual.bg,
+          iconColor: visual.fg,
+        };
+      }),
+    [palette],
+  );
   const disabled = busy || isSubmitting;
+  const dirty = haveFieldsChanged(initialValues, currentValues, {
+    moneyKeys: ['balance'],
+  });
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'wallet-form',
+    scope: 'tab',
+    routeKey: 'index',
+    dirty,
+    saving: disabled,
+    hasError: !!error,
+    changeSignature: JSON.stringify(currentValues),
+    onDiscard: onBack,
+  });
   return (
     <Screen
       title={wallet ? vi.editWallet : vi.addWallet}
-      onBack={onBack}
+      onBack={requestLeave}
       backDisabled={disabled}
     >
       <View
@@ -523,32 +562,17 @@ function WalletForm({
           { backgroundColor: palette.surface, borderColor: palette.border },
         ]}
       >
-        <Text
-          accessibilityRole="header"
-          variant="titleSmall"
-          style={{ fontWeight: '700' }}
-        >
-          {vi.walletKind}
-        </Text>
         <Controller
           control={control}
           name="kind"
           render={({ field }) => (
-            <RadioButton.Group
+            <AppleMenuPicker
+              label={vi.walletKind}
               value={field.value}
-              onValueChange={field.onChange}
-            >
-              {KINDS.map((kind) => (
-                <RadioButton.Item
-                  key={kind.value}
-                  value={kind.value}
-                  label={kind.label}
-                  accessibilityLabel={kind.label}
-                  disabled={disabled}
-                  style={{ minHeight: 48 }}
-                />
-              ))}
-            </RadioButton.Group>
+              options={kindOptions}
+              disabled={disabled}
+              onSelect={field.onChange}
+            />
           )}
         />
         <Divider style={{ backgroundColor: palette.borderSubtle }} />
@@ -584,12 +608,14 @@ function WalletForm({
         loading={disabled}
         onPress={() => {
           void handleSubmit((values) =>
-            onSave({
-              name: values.name,
-              kind: values.kind,
-              initialBalance: Number(values.balance || '0'),
-              isGoalFunding: values.isGoalFunding,
-            }),
+            runGuardedSave(() =>
+              onSave({
+                name: values.name,
+                kind: values.kind,
+                initialBalance: Number(values.balance || '0'),
+                isGoalFunding: values.isGoalFunding,
+              }),
+            ),
           )();
         }}
       >

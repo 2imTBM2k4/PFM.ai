@@ -1,3 +1,5 @@
+import { FieldFeedback } from '@/components/field-feedback';
+import { dateError, repaymentError } from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import { today } from '@pfm/domain';
@@ -10,16 +12,16 @@ import {
   type DebtInput,
   type DebtRepayment,
 } from '@pfm/contracts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { Alert, BackHandler, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   IconButton,
-  List,
-  RadioButton,
   SegmentedButtons,
   Text,
   TextInput,
@@ -32,8 +34,13 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { DateField, MoneyInput } from '@/components/ui';
-import { useFinancePalette } from '@/constants/theme';
+import {
+  AppleMenuPicker,
+  DateField,
+  MoneyInput,
+  SegmentedOptionPicker,
+} from '@/components/ui';
+import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
   createDebt,
@@ -147,14 +154,27 @@ export function DebtManager({ onClose }: { onClose(): void }) {
       };
     }, [load]),
   );
-  const back = useCallback(() => {
+  const leaveEditForm = useCallback(() => {
     if (working.current) return;
     setError('');
     setUndo(null);
-    if (editing) setEditing(null);
-    else if (selected) setSelected(null);
+    setEditing(null);
+  }, []);
+  const back = useCallback(() => {
+    if (working.current) return;
+    if (editing && typeof editing === 'object') {
+      requestGuardLeave('transaction-form', leaveEditForm);
+      return;
+    }
+    if (typeof editing === 'string') {
+      requestGuardLeave('debt-form', leaveEditForm);
+      return;
+    }
+    setError('');
+    setUndo(null);
+    if (selected) setSelected(null);
     else onClose();
-  }, [editing, selected, onClose]);
+  }, [editing, leaveEditForm, selected, onClose]);
   useFocusEffect(
     useCallback(() => {
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -207,7 +227,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
         categories={[]}
         busy={busy}
         error={error}
-        onBack={back}
+        onBack={leaveEditForm}
         onSave={(input) =>
           mutate((db) =>
             updateTransaction(
@@ -230,7 +250,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
         wallets={wallets}
         busy={busy}
         error={error}
-        onBack={back}
+        onBack={leaveEditForm}
         onSave={(submission) =>
           mutate((db) => {
             const timestamp = new Date().toISOString();
@@ -700,27 +720,73 @@ function DebtForm({
   onBack(): void;
   onSave(submission: Submission): Promise<void>;
 }) {
+  const [initialValues] = useState<Fields>(() => ({
+    name: debt?.counterparty_label ?? '',
+    direction: debt?.direction ?? 'borrowed',
+    amount: '',
+    wallet: wallets.find((wallet) => !wallet.is_archived)?.id ?? '',
+    date: today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
+    due: debt?.due_on ?? '',
+    note: mode === 'metadata' ? (debt?.note ?? '') : '',
+  }));
   const {
     control,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<Fields>({
-    defaultValues: {
-      name: debt?.counterparty_label ?? '',
-      direction: debt?.direction ?? 'borrowed',
-      amount: '',
-      wallet: wallets.find((wallet) => !wallet.is_archived)?.id ?? '',
-      date: today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
-      due: debt?.due_on ?? '',
-      note: mode === 'metadata' ? (debt?.note ?? '') : '',
-    },
+    defaultValues: initialValues,
   });
-  const [invalid, setInvalid] = useState(false),
-    [expanded, setExpanded] = useState(false);
-  const date = useWatch({ control, name: 'date' });
+  const [invalid, setInvalid] = useState(false);
+  const watched = useWatch({ control });
+  const currentValues: Fields = {
+    name: watched.name ?? initialValues.name,
+    direction: watched.direction ?? initialValues.direction,
+    amount: watched.amount ?? initialValues.amount,
+    wallet: watched.wallet ?? initialValues.wallet,
+    date: watched.date ?? initialValues.date,
+    due: watched.due ?? initialValues.due,
+    note: watched.note ?? initialValues.note,
+  };
+  const date = currentValues.date;
   const disabled = busy || isSubmitting,
     { colors } = useTheme(),
     palette = useFinancePalette();
+  const walletOptions = useMemo(
+    () =>
+      wallets
+        .filter((wallet) => !wallet.is_archived)
+        .map((wallet) => {
+          const visual = walletKindVisual(wallet.kind, palette);
+          return {
+            value: wallet.id,
+            label: displayWalletName(wallet.name),
+            icon: visual.icon,
+            iconBg: visual.bg,
+            iconColor: visual.fg,
+          };
+        }),
+    [wallets, palette],
+  );
+  const relevantKeys: (keyof Fields)[] =
+    mode === 'metadata'
+      ? ['name', 'due', 'note']
+      : mode === 'repay'
+        ? ['amount', 'wallet', 'date', 'note']
+        : ['name', 'direction', 'amount', 'wallet', 'date', 'due', 'note'];
+  const dirty = haveFieldsChanged(initialValues, currentValues, {
+    moneyKeys: ['amount'],
+    keys: relevantKeys,
+  });
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'debt-form',
+    scope: 'tab',
+    routeKey: 'transactions',
+    dirty,
+    saving: disabled,
+    hasError: invalid || !!error,
+    changeSignature: JSON.stringify(currentValues),
+    onDiscard: onBack,
+  });
   let future = false;
   try {
     future = isFutureDate(date, new Date());
@@ -762,150 +828,9 @@ function DebtForm({
       icon: 'note-text-outline',
     },
   ];
-  return (
-    <Screen
-      title={
-        mode === 'create'
-          ? vi.debtAdd
-          : mode === 'metadata'
-            ? vi.debtEdit
-            : vi.debtRepayment
-      }
-      onBack={onBack}
-      backDisabled={disabled}
-    >
-      {debt && (
-        <View
-          style={[
-            styles.subtlePanel,
-            { backgroundColor: palette.surface, borderColor: palette.border },
-          ]}
-        >
-          <Text variant="titleMedium" style={{ fontWeight: '700' }}>
-            {debt.counterparty_label} · {vi.debtOutstanding}:{' '}
-            {formatVnd(debt.outstanding)}
-          </Text>
-        </View>
-      )}
-      <View
-        style={[
-          styles.panel,
-          { backgroundColor: palette.surface, borderColor: palette.border },
-        ]}
-      >
-        {mode === 'create' && (
-          <Controller
-            control={control}
-            name="direction"
-            render={({ field }) => (
-              <SegmentedButtons
-                value={field.value}
-                onValueChange={field.onChange}
-                buttons={[
-                  { value: 'borrowed', label: vi.debtBorrowed, disabled },
-                  { value: 'lent', label: vi.debtLent, disabled },
-                ]}
-              />
-            )}
-          />
-        )}
-        {mode !== 'metadata' && (
-          <Controller
-            control={control}
-            name="wallet"
-            render={({ field }) => (
-              <List.Accordion
-                title={vi.transactionWallet}
-                description={
-                  wallets.find((wallet) => wallet.id === field.value)?.name ??
-                  vi.noWallet
-                }
-                expanded={expanded}
-                onPress={() => setExpanded(!expanded)}
-                style={{
-                  backgroundColor: palette.surfaceMuted,
-                  borderRadius: 12,
-                }}
-              >
-                <RadioButton.Group
-                  value={field.value}
-                  onValueChange={(value) => {
-                    field.onChange(value);
-                    setExpanded(false);
-                  }}
-                >
-                  {wallets
-                    .filter((wallet) => !wallet.is_archived)
-                    .map((wallet) => (
-                      <RadioButton.Item
-                        key={wallet.id}
-                        value={wallet.id}
-                        label={displayWalletName(wallet.name)}
-                        disabled={disabled}
-                      />
-                    ))}
-                </RadioButton.Group>
-              </List.Accordion>
-            )}
-          />
-        )}
-        {fields.map((item) => (
-          <Controller
-            key={item.name}
-            control={control}
-            name={item.name}
-            render={({ field }) =>
-              item.name === 'due' || item.name === 'date' ? (
-                <DateField
-                  label={item.name === 'due' ? vi.debtDue : item.label}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={disabled}
-                  allowClear={item.name === 'due'}
-                />
-              ) : item.name === 'amount' ? (
-                <MoneyInput
-                  label={item.label}
-                  accessibilityLabel={item.label}
-                  value={field.value}
-                  disabled={disabled}
-                  onBlur={field.onBlur}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  onChangeText={field.onChange}
-                />
-              ) : (
-                <TextInput
-                  mode="outlined"
-                  label={item.label}
-                  accessibilityLabel={item.label}
-                  value={field.value}
-                  disabled={disabled}
-                  onBlur={field.onBlur}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType="default"
-                  onChangeText={field.onChange}
-                />
-              )
-            }
-          />
-        ))}
-      </View>
-
-      {future && mode !== 'metadata' && (
-        <View
-          style={[
-            styles.subtlePanel,
-            {
-              backgroundColor: palette.warningSoft,
-              borderColor: palette.warning,
-            },
-          ]}
-        >
-          <Text accessibilityRole="alert" style={{ color: palette.warningInk }}>
-            {vi.transactionFutureWarning}
-          </Text>
-        </View>
-      )}
+  const isLongForm = mode !== 'metadata';
+  const saveSection = (
+    <>
       {(invalid || error) && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
           {error || vi.debtFormInvalid}
@@ -958,12 +883,174 @@ function DebtForm({
               return;
             }
             setInvalid(false);
-            await onSave(submission);
+            await runGuardedSave(() => onSave(submission));
           })()
         }
       >
         {vi.debtSave}
       </Button>
+    </>
+  );
+  return (
+    <Screen
+      title={
+        mode === 'create'
+          ? vi.debtAdd
+          : mode === 'metadata'
+            ? vi.debtEdit
+            : vi.debtRepayment
+      }
+      onBack={requestLeave}
+      backDisabled={disabled}
+      footer={isLongForm ? saveSection : undefined}
+    >
+      {debt && (
+        <View
+          style={[
+            styles.subtlePanel,
+            { backgroundColor: palette.surface, borderColor: palette.border },
+          ]}
+        >
+          <Text variant="titleMedium" style={{ fontWeight: '700' }}>
+            {debt.counterparty_label} · {vi.debtOutstanding}:{' '}
+            {formatVnd(debt.outstanding)}
+          </Text>
+        </View>
+      )}
+      <View
+        style={[
+          styles.panel,
+          { backgroundColor: palette.surface, borderColor: palette.border },
+        ]}
+      >
+        {mode === 'create' && (
+          <Controller
+            control={control}
+            name="direction"
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                <SegmentedOptionPicker
+                  value={field.value}
+                  disabled={disabled}
+                  accessibilityLabel={vi.transactionKind}
+                  onSelect={field.onChange}
+                  options={[
+                    { value: 'borrowed', label: vi.debtBorrowed },
+                    { value: 'lent', label: vi.debtLent },
+                  ]}
+                />
+              </FieldFeedback>
+            )}
+          />
+        )}
+        {mode !== 'metadata' && (
+          <Controller
+            control={control}
+            name="wallet"
+            rules={{
+              validate: (value) => !!value || vi.transactionWalletRequired,
+            }}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                <AppleMenuPicker
+                  label={vi.transactionWallet}
+                  value={field.value}
+                  options={walletOptions}
+                  disabled={disabled}
+                  placeholder={vi.noWallet}
+                  onSelect={field.onChange}
+                />
+              </FieldFeedback>
+            )}
+          />
+        )}
+        {fields.map((item) => (
+          <Controller
+            key={item.name}
+            control={control}
+            name={item.name}
+            rules={{
+              validate: (value) =>
+                item.name === 'name'
+                  ? !!value.trim() || vi.formRequired
+                  : item.name === 'due'
+                    ? dateError(value, true)
+                    : item.name === 'date'
+                      ? dateError(value)
+                      : item.name === 'amount'
+                        ? repaymentError(
+                            value,
+                            mode === 'repay' ? debt?.outstanding : undefined,
+                          )
+                        : true,
+            }}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                {item.name === 'due' || item.name === 'date' ? (
+                  <DateField
+                    error={!!fieldState.error}
+                    label={item.name === 'due' ? vi.debtDue : item.label}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={disabled}
+                    allowClear={item.name === 'due'}
+                  />
+                ) : item.name === 'amount' ? (
+                  <MoneyInput
+                    error={!!fieldState.error}
+                    label={item.label}
+                    accessibilityLabel={item.label}
+                    value={field.value}
+                    disabled={disabled}
+                    onBlur={field.onBlur}
+                    left={<TextInput.Icon icon={item.icon} />}
+                    onChangeText={field.onChange}
+                  />
+                ) : (
+                  <TextInput
+                    error={!!fieldState.error}
+                    mode="outlined"
+                    label={item.label}
+                    accessibilityLabel={item.label}
+                    value={field.value}
+                    disabled={disabled}
+                    onBlur={field.onBlur}
+                    left={<TextInput.Icon icon={item.icon} />}
+                    keyboardType="default"
+                    onChangeText={field.onChange}
+                  />
+                )}
+              </FieldFeedback>
+            )}
+          />
+        ))}
+      </View>
+
+      {future && mode !== 'metadata' && (
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.warningSoft,
+              borderColor: palette.warning,
+            },
+          ]}
+        >
+          <Text accessibilityRole="alert" style={{ color: palette.warningInk }}>
+            {vi.transactionFutureWarning}
+          </Text>
+        </View>
+      )}
+      {!isLongForm && saveSection}
     </Screen>
   );
 }

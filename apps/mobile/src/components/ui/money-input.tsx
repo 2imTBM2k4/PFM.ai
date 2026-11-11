@@ -1,6 +1,8 @@
 import { MAX_AMOUNT_VND } from '@pfm/domain';
 import { useRef, useState } from 'react';
-import { TextInput, type TextInputProps } from 'react-native-paper';
+import { HelperText, TextInput, type TextInputProps } from 'react-native-paper';
+import { View } from 'react-native';
+import { vi } from '@/messages/vi';
 import { usePreferences } from '@/state/preferences';
 
 export interface MoneyFormatOptions {
@@ -9,140 +11,135 @@ export interface MoneyFormatOptions {
   allowNegative?: boolean;
   maxAmount?: number;
   previousDisplay?: string;
+  previousSelection?: { start: number; end: number };
 }
 
 function isDigit(char: string): boolean {
   return char >= '0' && char <= '9';
 }
 
-/**
- * Normalizes arbitrary user input or pasted text into a canonical numeric string
- * suitable for form state (`"1500000"`, `"-2000000"`, or `"1500.25"` for USD).
- */
+/** Accept complete grouping, except while editing an already formatted number. */
+function canonicalMoneyValue(
+  input: string,
+  options: MoneyFormatOptions,
+): string | null {
+  const { currency = 'VND', previousDisplay = '' } = options;
+  let working = input.trim();
+  if (!working || working === '-') return working;
+  const previous = previousDisplay.trim();
+  const previousCanonical =
+    previous && canonicalMoneyValue(previous, { currency });
+  const selection = options.previousSelection;
+  let replacedSelection = false;
+  if (previousCanonical && selection && selection.end > selection.start) {
+    const prefix = previous.slice(0, selection.start);
+    const suffix = previous.slice(selection.end);
+    const insertedEnd = working.length - suffix.length;
+    if (
+      insertedEnd >= prefix.length &&
+      working.startsWith(prefix) &&
+      working.endsWith(suffix) &&
+      /^[0-9]*$/.test(working.slice(prefix.length, insertedEnd))
+    ) {
+      working =
+        currency === 'USD'
+          ? working.replace(/,/g, '')
+          : working.replace(/[., ]/g, '');
+      replacedSelection = true;
+    }
+  }
+  if (
+    !replacedSelection &&
+    previousCanonical &&
+    /[., ]/.test(previous) &&
+    Math.abs(working.length - previous.length) === 1
+  ) {
+    const inserting = working.length > previous.length;
+    const longer = inserting ? working : previous;
+    const shorter = inserting ? previous : working;
+    const index = [...longer].findIndex(
+      (char, i) =>
+        (inserting
+          ? isDigit(char)
+          : isDigit(char) ||
+            (currency === 'USD' ? char === ',' : /[., ]/.test(char))) &&
+        longer.slice(0, i) + longer.slice(i + 1) === shorter,
+    );
+    if (index >= 0) {
+      // Backspacing a grouping separator removes the preceding digit, as before.
+      if (!inserting && !isDigit(longer[index]) && index > 0) {
+        working = working.slice(0, index - 1) + working.slice(index);
+      }
+      working =
+        currency === 'USD'
+          ? working.replace(/,/g, '')
+          : working.replace(/[., ]/g, '');
+    }
+  }
+  const negative = working.startsWith('-');
+  const unsigned = negative ? working.slice(1) : working;
+  const pattern =
+    currency === 'USD'
+      ? /^(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)?(?:\.[0-9]{0,2})?$/
+      : /^(?:[0-9]+|[0-9]{1,3}([., ])[0-9]{3}(?:\1[0-9]{3})*)$/;
+  if (!pattern.test(unsigned) || !/[0-9]/.test(unsigned)) return null;
+  const ungrouped =
+    currency === 'USD'
+      ? unsigned.replace(/,/g, '')
+      : unsigned.replace(/[., ]/g, '');
+  const normalized = ungrouped.replace(/^0+(?=\d)/, '');
+  return (
+    (negative ? '-' : '') + (normalized.startsWith('.') ? '0' : '') + normalized
+  );
+}
+
+/** Normalize valid input; retain invalid text and oversized values for correction. */
 export function sanitizeMoneyValue(
   input: string,
   options: MoneyFormatOptions = {},
 ): string {
-  const {
-    currency = 'VND',
-    allowNegative = false,
-    maxAmount = MAX_AMOUNT_VND,
-    previousDisplay = '',
-  } = options;
-
-  if (!input) return '';
-
-  let working = input;
-
-  // If the user pressed Backspace on a thousands separator, remove the digit before it.
-  if (
-    previousDisplay &&
-    input.length === previousDisplay.length - 1 &&
-    currency === 'VND'
-  ) {
-    let diffIndex = -1;
-    for (let i = 0; i < previousDisplay.length; i++) {
-      if (
-        previousDisplay.slice(0, i) + previousDisplay.slice(i + 1) ===
-        input
-      ) {
-        diffIndex = i;
-        break;
-      }
-    }
-    const removedChar = diffIndex >= 0 ? previousDisplay[diffIndex] : '';
-    if ((removedChar === '.' || removedChar === ',') && diffIndex > 0) {
-      working = input.slice(0, diffIndex - 1) + input.slice(diffIndex);
-    }
-  }
-
-  const trimmed = working.trim();
-  const isNegative = allowNegative && trimmed.startsWith('-');
-
-  if (currency === 'USD') {
-    // Strip thousands commas and non-numeric characters while keeping at most one decimal dot.
-    const cleaned = trimmed.replace(/,/g, '').replace(/[^0-9.]/g, '');
-    if (!cleaned) return isNegative ? '-' : '';
-
-    const dotIndex = cleaned.indexOf('.');
-    const hasDot = dotIndex !== -1;
-    const rawInt = (hasDot ? cleaned.slice(0, dotIndex) : cleaned).replace(
-      /^0+(?=\d)/,
-      '',
-    );
-    const intPart = rawInt === '' ? (hasDot ? '0' : '') : rawInt;
-    const decPart = hasDot
-      ? cleaned
-          .slice(dotIndex + 1)
-          .replace(/\./g, '')
-          .slice(0, 2)
-      : '';
-
-    if (!intPart && !hasDot) return isNegative ? '-' : '';
-
-    const candidate = hasDot ? `${intPart}.${decPart}` : intPart;
-    const minor = Math.round(Number(candidate) * 100);
-    if (Number.isFinite(minor) && minor > maxAmount) {
-      const maxDollars = Math.floor(maxAmount / 100);
-      return `${isNegative ? '-' : ''}${maxDollars}`;
-    }
-    return `${isNegative ? '-' : ''}${candidate}`;
-  }
-
-  const digits = trimmed.replace(/[^0-9]/g, '');
-  if (!digits) {
-    return isNegative ? '-' : '';
-  }
-
-  const normalizedDigits = digits.replace(/^0+(?=\d)/, '');
-  const numeric = BigInt(normalizedDigits);
-  const clamped =
-    numeric > BigInt(maxAmount) ? String(maxAmount) : normalizedDigits;
-
-  if (clamped === '0' && isNegative) {
-    return '-0';
-  }
-  return `${isNegative ? '-' : ''}${clamped}`;
+  return canonicalMoneyValue(input, options) ?? input;
 }
 
-/**
- * Formats a canonical or raw money string with thousands separators for display.
- * VND uses `.` in Vietnamese and `,` in English; USD uses `,` for the integer part
- * and preserves `.` for cents.
- */
+/** Report syntax and magnitude errors without silently changing the user's amount. */
+export function moneyInputError(
+  value: string,
+  options: MoneyFormatOptions = {},
+): 'format' | 'negative' | 'limit' | null {
+  const canonical = canonicalMoneyValue(value, { currency: options.currency });
+  if (canonical === '') return null;
+  if (canonical === null || canonical === '-') return 'format';
+  if (canonical.startsWith('-') && !options.allowNegative) return 'negative';
+  const unsigned = canonical.replace(/^-/, '');
+  const [integer, fraction = ''] = unsigned.split('.');
+  const magnitude =
+    options.currency === 'USD'
+      ? BigInt(integer) * 100n + BigInt(fraction.padEnd(2, '0'))
+      : BigInt(integer);
+  return magnitude > BigInt(options.maxAmount ?? MAX_AMOUNT_VND)
+    ? 'limit'
+    : null;
+}
+
+/** Format valid numbers while keeping invalid text visible and unchanged. */
 export function formatMoneyDisplay(
   value: string,
   options: MoneyFormatOptions = {},
 ): string {
-  const {
-    currency = 'VND',
-    language = 'vi',
-    allowNegative = false,
-    maxAmount = MAX_AMOUNT_VND,
-  } = options;
-
-  const canonical = sanitizeMoneyValue(value, {
-    currency,
-    allowNegative,
-    maxAmount,
-  });
+  const { currency = 'VND', language = 'vi' } = options;
+  const canonical = canonicalMoneyValue(value, { currency });
+  if (canonical === null) return value;
   if (!canonical || canonical === '-') return canonical;
-
-  const isNegative = canonical.startsWith('-');
-  const unsigned = isNegative ? canonical.slice(1) : canonical;
-
-  if (currency === 'USD') {
-    const dotIndex = unsigned.indexOf('.');
-    const hasDot = dotIndex !== -1;
-    const intPart = hasDot ? unsigned.slice(0, dotIndex) : unsigned;
-    const decPart = hasDot ? unsigned.slice(dotIndex + 1) : '';
-    const groupedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    return `${isNegative ? '-' : ''}${hasDot ? `${groupedInt}.${decPart}` : groupedInt}`;
-  }
-
-  const separator = language === 'en' ? ',' : '.';
-  const grouped = unsigned.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
-  return `${isNegative ? '-' : ''}${grouped}`;
+  const negative = canonical.startsWith('-');
+  const unsigned = negative ? canonical.slice(1) : canonical;
+  const [integer, fraction] = unsigned.split('.');
+  const separator = currency === 'USD' || language === 'en' ? ',' : '.';
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, separator);
+  return (
+    (negative ? '-' : '') +
+    grouped +
+    (fraction === undefined ? '' : '.' + fraction)
+  );
 }
 
 /**
@@ -206,11 +203,10 @@ export function computeMoneyCaretOffset(
   return formattedDisplay.length;
 }
 
-export interface MoneyInputProps
-  extends Omit<
-    TextInputProps,
-    'value' | 'onChangeText' | 'keyboardType' | 'selection'
-  > {
+export interface MoneyInputProps extends Omit<
+  TextInputProps,
+  'value' | 'onChangeText' | 'keyboardType' | 'selection'
+> {
   value: string;
   onChangeText(nextCanonicalValue: string): void;
   currency?: 'VND' | 'USD';
@@ -220,7 +216,7 @@ export interface MoneyInputProps
 
 /**
  * Shared money input component that displays locale-aware thousands separators
- * while keeping the form state as a clean canonical numeric string.
+ * while retaining invalid input in form state so saving cannot use an older amount.
  */
 export function MoneyInput({
   value,
@@ -231,6 +227,11 @@ export function MoneyInput({
   ...rest
 }: MoneyInputProps) {
   const language = usePreferences((state) => state.language);
+  const inputError = moneyInputError(value, {
+    currency,
+    allowNegative,
+    maxAmount,
+  });
   const displayValue = formatMoneyDisplay(value, {
     currency,
     language,
@@ -253,6 +254,7 @@ export function MoneyInput({
       allowNegative,
       maxAmount,
       previousDisplay: displayValue,
+      previousSelection: rawSelectionRef.current,
     });
     const nextDisplay = formatMoneyDisplay(nextCanonical, {
       currency,
@@ -268,12 +270,15 @@ export function MoneyInput({
     );
     const sigCount = countSignificantMoneyChars(rawText, estimatedRawCursor, {
       currency,
-      allowNegative,
+      allowNegative: true,
     });
-    const nextCaret = computeMoneyCaretOffset(nextDisplay, sigCount, {
-      currency,
-      allowNegative,
-    });
+    const nextCaret =
+      canonicalMoneyValue(nextCanonical, { currency }) === null
+        ? estimatedRawCursor
+        : computeMoneyCaretOffset(nextDisplay, sigCount, {
+            currency,
+            allowNegative: true,
+          });
 
     pendingCaretRef.current = nextCaret;
     setSelection({ start: nextCaret, end: nextCaret });
@@ -305,14 +310,38 @@ export function MoneyInput({
       : 'number-pad';
 
   return (
-    <TextInput
-      mode="outlined"
-      {...rest}
-      value={displayValue}
-      selection={selection}
-      onChangeText={handleChangeText}
-      onSelectionChange={handleSelectionChange}
-      keyboardType={keyboardType}
-    />
+    <View>
+      <TextInput
+        mode="outlined"
+        {...rest}
+        error={!!inputError || rest.error}
+        value={displayValue}
+        selection={selection}
+        onChangeText={handleChangeText}
+        onSelectionChange={handleSelectionChange}
+        keyboardType={keyboardType}
+      />
+      {!!inputError && (
+        <HelperText type="error" accessibilityRole="alert">
+          {inputError === 'negative'
+            ? vi.moneyInputNegative
+            : inputError === 'limit'
+              ? vi.moneyInputLimit
+                  .replace(
+                    '{limit}',
+                    formatMoneyDisplay(
+                      currency === 'USD'
+                        ? (maxAmount / 100).toFixed(2)
+                        : String(maxAmount),
+                      { currency, language },
+                    ),
+                  )
+                  .replace('{currency}', currency)
+              : currency === 'USD'
+                ? vi.moneyInputFormatUsd
+                : vi.moneyInputFormatVnd}
+        </HelperText>
+      )}
+    </View>
   );
 }

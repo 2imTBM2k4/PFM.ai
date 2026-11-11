@@ -2,6 +2,22 @@ import { en } from './en';
 import { activeLanguage } from './language';
 
 export const viMessages = {
+  formRequired: 'Vui lòng nhập thông tin này.',
+  formDestinationInvalid: 'Chọn ví nhận khác ví chuyển đi.',
+  formRepaymentTooLarge: 'Số tiền trả không được vượt quá số còn nợ.',
+  formNonnegativeAmount: 'Nhập số tiền nguyên đồng từ 0 đến 100 tỷ đồng.',
+  formEndBeforeStart: 'Ngày kết thúc phải từ ngày bắt đầu trở đi.',
+  formMonthInvalid: 'Vui lòng chọn tháng hợp lệ.',
+  formEndMonthBeforeStart: 'Tháng kết thúc phải từ tháng bắt đầu trở đi.',
+  formPercentInvalid: 'Nhập phần trăm nguyên từ 1 đến 100.',
+  formAmountRangeInvalid: 'Số tiền tối đa phải lớn hơn hoặc bằng số tiền tối thiểu.',
+  moneyInputFormatVnd:
+    'Nhập số tiền nguyên đồng, ví dụ 30000 hoặc 30.000. Không dùng chữ, đơn vị hoặc cách viết 30k/1tr.',
+  moneyInputFormatUsd:
+    'Nhập USD với tối đa 2 chữ số sau dấu chấm, ví dụ 10.25 hoặc 1,000.25. Không thêm ký hiệu tiền.',
+  moneyInputNegative: 'Trường này không nhận số âm. Hãy kiểm tra lại số tiền.',
+  moneyInputLimit:
+    'Số tiền không được vượt quá {limit} {currency}. Giá trị đã nhập được giữ lại để bạn sửa.',
   quickTitle: 'Nhập nhanh giao dịch',
   quickInput: 'Bạn vừa thu hoặc chi gì?',
   quickExample: 'Ví dụ: ăn sáng 30k hôm qua',
@@ -325,8 +341,17 @@ export const viMessages = {
   cancel: 'Hủy',
   close: 'Đóng',
   clear: 'Xóa',
+  done: 'Xong',
+  pickerChoose: 'Chọn...',
   datePickerChoose: 'Chọn ngày',
   datePickerToday: 'Hôm nay',
+  monthPickerThisMonth: 'Tháng này',
+  monthPickerMonth: 'Tháng',
+  monthPickerYear: 'Năm',
+  timePickerChoose: 'Chọn giờ',
+  timePickerHour: 'Giờ',
+  timePickerMinute: 'Phút',
+  timePickerInvalid: 'Nhập giờ hợp lệ từ 00:00 đến 23:59.',
   appName: 'PFM.ai',
   overview: 'Tổng quan',
   transactions: 'Giao dịch',
@@ -817,6 +842,11 @@ export const viMessages = {
     'Không thể thực hiện thao tác với Google Drive. Vui lòng thử lại.',
   onboardingRestoreFromDriveBtn: 'Khôi phục từ Google Drive',
   onboardingRestoreConfirmBtn: 'Khôi phục bản sao lưu này',
+  unsavedChangesTitle: 'Bỏ thay đổi?',
+  unsavedChangesMessage:
+    'Bạn có thay đổi chưa lưu. Nếu rời đi bây giờ, nội dung vừa nhập sẽ bị mất.',
+  unsavedStay: 'Ở lại',
+  unsavedDiscard: 'Bỏ thay đổi',
 } as const;
 
 export const vi: { [K in keyof typeof viMessages]: string } = new Proxy(
