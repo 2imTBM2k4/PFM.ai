@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { budgetBannerItems, monthKey, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput } from '@pfm/contracts';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   AppState,
   Pressable,
@@ -46,6 +46,7 @@ import { NotificationsView } from '@/features/notifications/notifications-view';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
+import { usePreferences } from '@/state/preferences';
 import { BudgetBanner } from './budget-banner';
 import { formatRecentTransactionTime } from './transaction-time';
 
@@ -131,8 +132,17 @@ export function OverviewScreen({
     }, [load, recurringVersion]),
   );
 
+  const hideBalance = usePreferences((state) => state.hideBalance);
+  const toggleHideBalance = usePreferences((state) => state.toggleHideBalance);
+
   const activeWallets =
     data?.wallets.filter((wallet) => !wallet.is_archived) ?? [];
+  const topGoal = useMemo(() => {
+    if (!data?.goals?.length) return null;
+    const candidates = data.goals.filter((g) => g.status !== 'archived');
+    if (!candidates.length) return null;
+    return [...candidates].sort((a, b) => b.progress - a.progress)[0];
+  }, [data?.goals]);
   const visibleBannerItems = data
     ? filterVisibleBudgetBannerItems(
         budgetBannerItems(data.budgets),
@@ -286,16 +296,35 @@ export function OverviewScreen({
           {/* Hero Total Balance Card */}
           <GlassCard variant="elevated" radius="xl" padding={22}>
             <View style={localStyles.heroTopRow}>
-              <View style={{ flex: 1, gap: 6 }}>
-                <Text
-                  variant="labelLarge"
-                  style={{
-                    color: designTheme.text.secondary,
-                    fontWeight: '600',
-                  }}
-                >
-                  {vi.overviewLiveBalance}
-                </Text>
+              <View style={{ flex: 1, gap: 4 }}>
+                <View style={localStyles.balanceTitleRow}>
+                  <Text
+                    variant="labelLarge"
+                    style={{
+                      color: designTheme.text.secondary,
+                      fontWeight: '600',
+                    }}
+                  >
+                    {vi.overviewLiveBalance}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      hideBalance
+                        ? vi.overviewShowBalance
+                        : vi.overviewHideBalance
+                    }
+                    onPress={() => void toggleHideBalance()}
+                    style={localStyles.eyeIconButton}
+                    hitSlop={8}
+                  >
+                    <MaterialCommunityIcons
+                      name={hideBalance ? 'eye-off-outline' : 'eye-outline'}
+                      size={18}
+                      color={designTheme.text.secondary}
+                    />
+                  </Pressable>
+                </View>
                 <Text
                   numberOfLines={1}
                   adjustsFontSizeToFit
@@ -306,8 +335,73 @@ export function OverviewScreen({
                     { color: designTheme.text.primary },
                   ]}
                 >
-                  {formatVnd(data.balance)}
+                  {hideBalance ? '••••••••' : formatVnd(data.balance)}
                 </Text>
+              </View>
+
+              {/* Income & Expense in top-right corner of hero card */}
+              <View style={localStyles.heroIncomeExpenseBlock}>
+                <View
+                  style={[
+                    localStyles.heroStatPill,
+                    {
+                      backgroundColor: designTheme.finance.incomeSoft,
+                      borderColor:
+                        designTheme.mode === 'light'
+                          ? 'rgba(46, 125, 50, 0.35)'
+                          : designTheme.finance.income,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="arrow-bottom-left"
+                    size={14}
+                    color={designTheme.finance.incomeText}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.number,
+                      localStyles.heroStatNumber,
+                      { color: designTheme.finance.incomeText },
+                    ]}
+                  >
+                    {hideBalance
+                      ? '••••••'
+                      : `+${formatVnd(data.current.income)}`}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    localStyles.heroStatPill,
+                    {
+                      backgroundColor: designTheme.finance.expenseSoft,
+                      borderColor:
+                        designTheme.mode === 'light'
+                          ? 'rgba(211, 47, 47, 0.35)'
+                          : designTheme.finance.expense,
+                    },
+                  ]}
+                >
+                  <MaterialCommunityIcons
+                    name="arrow-top-right"
+                    size={14}
+                    color={designTheme.finance.expenseText}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.number,
+                      localStyles.heroStatNumber,
+                      { color: designTheme.finance.expenseText },
+                    ]}
+                  >
+                    {hideBalance
+                      ? '••••••'
+                      : `-${formatVnd(data.current.expense)}`}
+                  </Text>
+                </View>
               </View>
             </View>
 
@@ -336,9 +430,14 @@ export function OverviewScreen({
                       onPress={onWallets}
                       style={({ pressed }) => [
                         localStyles.walletMiniCard,
+                        createSoftShadow(designTheme.mode, 'sm'),
                         {
                           backgroundColor: designTheme.card.surfaceSubtle,
-                          borderColor: designTheme.card.border,
+                          borderColor:
+                            designTheme.mode === 'light'
+                              ? 'rgba(0, 0, 0, 0.16)'
+                              : designTheme.card.border,
+                          borderWidth: designTheme.mode === 'light' ? 1.5 : 1,
                           opacity: pressed ? 0.78 : 1,
                         },
                       ]}
@@ -375,7 +474,7 @@ export function OverviewScreen({
                             },
                           ]}
                         >
-                          {formatVnd(wallet.balance)}
+                          {hideBalance ? '••••••' : formatVnd(wallet.balance)}
                         </Text>
                       </View>
                     </Pressable>
@@ -385,140 +484,103 @@ export function OverviewScreen({
             )}
           </GlassCard>
 
-          {/* Income / expense cards use two columns so exact VND amounts fit on 375pt. */}
-          <View style={localStyles.summaryGrid}>
+          {/* Top Savings Goal Card */}
+          {topGoal && (
             <GlassCard
-              radius="lg"
-              padding={14}
-              style={localStyles.summaryCardItem}
-            >
-              <View style={localStyles.summaryIconRow}>
-                <IconBadge
-                  icon="arrow-bottom-left"
-                  bg={designTheme.finance.incomeSoft}
-                  fg={designTheme.finance.incomeText}
-                  size={34}
-                  iconSize={18}
-                />
-                <Pill
-                  label={changeLabel(data.incomeChangeBps)}
-                  tone="income"
-                  size="sm"
-                />
-              </View>
-              <Text
-                variant="labelMedium"
-                numberOfLines={1}
-                style={{ color: designTheme.text.secondary, marginTop: 8 }}
-              >
-                {vi.transactionIncome}
-              </Text>
-              <Text
-                variant="titleSmall"
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                style={[
-                  styles.number,
-                  {
-                    color: designTheme.finance.income,
-                    fontWeight: '800',
-                    marginTop: 2,
-                  },
-                ]}
-              >
-                +{formatVnd(data.current.income)}
-              </Text>
-            </GlassCard>
-
-            <GlassCard
-              radius="lg"
-              padding={14}
-              style={localStyles.summaryCardItem}
-            >
-              <View style={localStyles.summaryIconRow}>
-                <IconBadge
-                  icon="arrow-top-right"
-                  bg={designTheme.finance.expenseSoft}
-                  fg={designTheme.finance.expenseText}
-                  size={34}
-                  iconSize={18}
-                />
-                <Pill
-                  label={changeLabel(data.expenseChangeBps)}
-                  tone="expense"
-                  size="sm"
-                />
-              </View>
-              <Text
-                variant="labelMedium"
-                numberOfLines={1}
-                style={{ color: designTheme.text.secondary, marginTop: 8 }}
-              >
-                {vi.transactionExpense}
-              </Text>
-              <Text
-                variant="titleSmall"
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                style={[
-                  styles.number,
-                  {
-                    color: designTheme.finance.expense,
-                    fontWeight: '800',
-                    marginTop: 2,
-                  },
-                ]}
-              >
-                {formatVnd(data.current.expense)}
-              </Text>
-            </GlassCard>
-
-            {/* Net is a full-width, low-height row so it cannot squeeze the two values above. */}
-            <GlassCard
-              radius="lg"
-              padding={14}
-              style={[localStyles.summaryCardItem, localStyles.summaryCardWide]}
+              variant="elevated"
+              radius="xl"
+              padding={18}
+              onPress={() =>
+                router.navigate({
+                  pathname: '/budgets',
+                  params: { tab: 'goals' },
+                })
+              }
+              accessibilityLabel={vi.overviewTopGoal}
             >
               <View style={styles.row}>
-                <View style={styles.inlineRow}>
+                <View style={[styles.inlineRow, { flex: 1 }]}>
                   <IconBadge
-                    icon="piggy-bank-outline"
+                    icon="bullseye-arrow"
                     bg={designTheme.finance.savingsSoft}
                     fg={designTheme.finance.savingsText}
-                    size={34}
-                    iconSize={18}
+                    size={40}
+                    iconSize={20}
                   />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text
+                      variant="labelSmall"
+                      style={{
+                        color: designTheme.text.secondary,
+                        fontWeight: '600',
+                      }}
+                    >
+                      {vi.overviewTopGoal}
+                    </Text>
+                    <Text
+                      variant="titleMedium"
+                      numberOfLines={1}
+                      style={{
+                        fontWeight: '800',
+                        color: designTheme.text.primary,
+                      }}
+                    >
+                      {topGoal.name}
+                    </Text>
+                  </View>
+                </View>
+                <Pill
+                  label={
+                    topGoal.status === 'achieved'
+                      ? vi.overviewTopGoalAchieved
+                      : `${Math.min(100, Math.round((topGoal.progress / topGoal.target_amount) * 100))}%`
+                  }
+                  tone={topGoal.status === 'achieved' ? 'income' : 'primary'}
+                  size="sm"
+                />
+              </View>
+
+              <View style={{ marginTop: 12, gap: 6 }}>
+                <View style={styles.row}>
                   <Text
-                    variant="labelLarge"
+                    variant="bodySmall"
                     style={{ color: designTheme.text.secondary }}
                   >
-                    {vi.overviewNet}
+                    {vi.overviewTopGoalProgress}:{' '}
+                    <Text
+                      style={[
+                        styles.number,
+                        {
+                          fontWeight: '700',
+                          color: designTheme.text.primary,
+                        },
+                      ]}
+                    >
+                      {hideBalance ? '••••••' : formatVnd(topGoal.progress)}
+                    </Text>
+                  </Text>
+                  <Text
+                    variant="bodySmall"
+                    style={[styles.number, { color: designTheme.text.muted }]}
+                  >
+                    / {formatVnd(topGoal.target_amount)}
                   </Text>
                 </View>
-                <Text
-                  variant="titleMedium"
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.8}
-                  style={[
-                    styles.number,
-                    {
-                      color:
-                        data.current.net >= 0
-                          ? designTheme.brand.primaryText
-                          : designTheme.finance.expense,
-                      fontWeight: '800',
-                    },
-                  ]}
-                >
-                  {data.current.net > 0 ? '+' : ''}
-                  {formatVnd(data.current.net)}
-                </Text>
+                <ProgressBar
+                  progress={Math.min(
+                    1,
+                    topGoal.progress / topGoal.target_amount,
+                  )}
+                  color={
+                    topGoal.status === 'achieved'
+                      ? designTheme.finance.income
+                      : designTheme.brand.primary
+                  }
+                  style={localStyles.categoryProgressBar}
+                />
               </View>
             </GlassCard>
-          </View>
+          )}
 
           {/* Phân tích chi tiêu: positioned right below Thu trừ chi */}
           <GlassCard
@@ -836,6 +898,33 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  balanceTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  eyeIconButton: {
+    padding: 2,
+    borderRadius: DesignRadius.pill,
+  },
+  heroIncomeExpenseBlock: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  heroStatPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: DesignRadius.pill,
+    borderWidth: 1,
+  },
+  heroStatNumber: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '800',
   },
   heroBalanceText: {
     fontSize: 34,

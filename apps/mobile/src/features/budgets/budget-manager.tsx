@@ -5,10 +5,11 @@ import {
   budgetThresholds,
   monthKey,
   today,
+  validateDate,
 } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { BudgetInputSchema, type BudgetInput } from '@pfm/contracts';
-import { memo, useCallback, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { BackHandler, FlatList, StyleSheet, View } from 'react-native';
 import {
@@ -16,9 +17,7 @@ import {
   Button,
   Divider,
   IconButton,
-  List,
   ProgressBar,
-  RadioButton,
   SegmentedButtons,
   Text,
   TextInput,
@@ -31,7 +30,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { MoneyInput, MonthField } from '@/components/ui';
+import { AppleMenuPicker, DateField, MoneyInput, MonthField } from '@/components/ui';
 import { DesignSpacing, useFinancePalette } from '@/constants/theme';
 import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import { withDatabase } from '@/data/connection';
@@ -47,7 +46,7 @@ import { listCategories, type CategoryRow } from '@/data/categories';
 import { vi } from '@/messages/vi';
 import { displayCategoryName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
-import { formatDisplayMonth } from '@/utils/display';
+import { formatDisplayDate, formatDisplayMonth } from '@/utils/display';
 import {
   formatAmountInput,
   parseAmountInput,
@@ -172,12 +171,13 @@ export function BudgetManager({
     ({ item }: { item: BudgetRow }) => (
       <BudgetItem
         row={item}
+        categories={categories}
         busy={busy || loading}
         onEdit={edit}
         onToggle={toggle}
       />
     ),
-    [busy, loading, edit, toggle],
+    [busy, loading, edit, toggle, categories],
   );
   if (mode.type === 'form')
     return (
@@ -341,11 +341,13 @@ export function BudgetManager({
 
 const BudgetItem = memo(function BudgetItem({
   row,
+  categories,
   busy,
   onEdit,
   onToggle,
 }: {
   row: BudgetRow;
+  categories: CategoryRow[];
   busy: boolean;
   onEdit(row: BudgetRow): void;
   onToggle(row: BudgetRow): void;
@@ -357,6 +359,29 @@ const BudgetItem = memo(function BudgetItem({
       ? budgetThresholds(row.spent, row.amount, row.warn_percent)
       : [];
   const pct = row.amount > 0 ? Math.round((row.spent / row.amount) * 100) : 0;
+  const category = categories.find((c) => c.id === row.category_id);
+  const icon = category?.icon || (row.category_id ? 'tag-outline' : 'chart-donut');
+  const catColor = category?.color;
+
+  const badgeBg = thresholds.includes(100)
+    ? palette.dangerSoft
+    : thresholds.length
+      ? palette.warningSoft
+      : catColor
+        ? `${catColor}20`
+        : palette.primarySoft;
+
+  const badgeFg = thresholds.includes(100)
+    ? palette.dangerInk
+    : thresholds.length
+      ? palette.warningInk
+      : catColor || palette.primaryInk;
+
+  const periodSubtitle =
+    row.period_type === 'custom' && row.start_date && row.end_date
+      ? `Từ ${formatDisplayDate(row.start_date)} đến ${formatDisplayDate(row.end_date)}`
+      : `${formatDisplayMonth(row.start_month)}${row.end_month ? ` → ${formatDisplayMonth(row.end_month)}` : ' (Tự động reset)'}`;
+
   return (
     <View
       style={[
@@ -367,21 +392,9 @@ const BudgetItem = memo(function BudgetItem({
       <View style={styles.row}>
         <View style={[styles.inlineRow, { flex: 1 }]}>
           <IconBadge
-            icon={row.category_id ? 'tag-outline' : 'chart-donut'}
-            bg={
-              thresholds.includes(100)
-                ? palette.dangerSoft
-                : thresholds.length
-                  ? palette.warningSoft
-                  : palette.primarySoft
-            }
-            fg={
-              thresholds.includes(100)
-                ? palette.dangerInk
-                : thresholds.length
-                  ? palette.warningInk
-                  : palette.primaryInk
-            }
+            icon={icon}
+            bg={badgeBg}
+            fg={badgeFg}
           />
           <View style={{ flex: 1, gap: 2 }}>
             <Text variant="titleMedium" style={{ fontWeight: '700' }}>
@@ -391,8 +404,7 @@ const BudgetItem = memo(function BudgetItem({
                 : ''}
             </Text>
             <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {formatDisplayMonth(row.start_month)}
-              {row.end_month ? ` → ${formatDisplayMonth(row.end_month)}` : ''}
+              {periodSubtitle}
             </Text>
           </View>
         </View>
@@ -535,10 +547,14 @@ const BudgetItem = memo(function BudgetItem({
 interface BudgetFields {
   amount: string;
   warnPercent: string;
+  periodType: 'monthly' | 'custom';
   startMonth: string;
   endMonth: string;
+  startDate: string;
+  endDate: string;
   categoryId: string;
 }
+
 function BudgetForm({
   row,
   month,
@@ -556,34 +572,65 @@ function BudgetForm({
   onBack(): void;
   onSave(input: BudgetInput): Promise<void>;
 }) {
+  const todayStr = today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
   const {
     control,
     handleSubmit,
+    setValue,
+    watch,
     formState: { isSubmitting },
   } = useForm<BudgetFields>({
     defaultValues: {
       amount: row ? formatAmountInput(String(row.amount)) : '',
       warnPercent: String(row?.warn_percent ?? 80),
+      periodType: row?.period_type ?? 'monthly',
       startMonth: row?.start_month ?? month,
       endMonth: row?.end_month ?? '',
+      startDate: row?.start_date ?? todayStr,
+      endDate: row?.end_date ?? todayStr,
       categoryId: row?.category_id ?? '',
     },
   });
-  const [invalid, setInvalid] = useState(false),
-    [expanded, setExpanded] = useState(false);
+  const periodType = watch('periodType');
+  const [formError, setFormError] = useState('');
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const disabled = busy || isSubmitting;
-  const fields = [
-    { name: 'amount', label: vi.budgetAmount, icon: 'cash' },
-    {
-      name: 'warnPercent',
-      label: vi.budgetWarnPercent,
-      icon: 'percent-outline',
-    },
-    { name: 'startMonth', label: vi.budgetStart, icon: 'calendar-start' },
-    { name: 'endMonth', label: vi.budgetEnd, icon: 'calendar-end' },
-  ] as const;
+
+  const categoryOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: vi.budgetOverall,
+        icon: 'chart-donut',
+        iconBg: palette.primarySoft,
+        iconColor: palette.primaryInk,
+      },
+      ...categories
+        .filter(
+          (c) =>
+            c.kind === 'expense' &&
+            (!c.is_archived || c.id === row?.category_id),
+        )
+        .map((c) => {
+          const parent = c.parent_id
+            ? categories.find((p) => p.id === c.parent_id)
+            : null;
+          return {
+            value: c.id,
+            label: displayCategoryName(c.name),
+            icon: c.icon || 'tag-outline',
+            iconBg: palette.expenseSoft,
+            iconColor: c.color || palette.expenseInk,
+            subtitle: parent
+              ? `Thuộc: ${displayCategoryName(parent.name)}`
+              : undefined,
+          };
+        }),
+    ],
+    [categories, row?.category_id, palette],
+  );
+
   return (
     <Screen
       title={row ? vi.editBudget : vi.addBudget}
@@ -593,108 +640,159 @@ function BudgetForm({
       <View
         style={[
           styles.panel,
-          { backgroundColor: palette.surface, borderColor: palette.border },
+          { backgroundColor: palette.surface, borderColor: palette.border, gap: 14 },
         ]}
       >
         <Controller
           control={control}
           name="categoryId"
           render={({ field }) => (
-            <List.Accordion
-              title={vi.transactionCategory}
-              description={
-                categories.find((c) => c.id === field.value)?.name ??
-                vi.budgetOverall
-              }
-              descriptionNumberOfLines={0}
-              expanded={expanded}
-              onPress={() => {
-                if (!disabled) setExpanded((current) => !current);
-              }}
-              style={{
-                backgroundColor: palette.surfaceMuted,
-                borderRadius: 12,
-              }}
-            >
-              <RadioButton.Group
-                value={field.value}
-                onValueChange={(value) => {
-                  field.onChange(value);
-                  setExpanded(false);
-                }}
-              >
-                <RadioButton.Item
-                  value=""
-                  label={vi.budgetOverall}
-                  disabled={disabled}
-                  style={{ minHeight: 48 }}
-                />
-                {categories
-                  .filter(
-                    (c) =>
-                      c.kind === 'expense' &&
-                      (!c.is_archived || c.id === row?.category_id),
-                  )
-                  .map((c) => (
-                    <RadioButton.Item
-                      key={c.id}
-                      value={c.id}
-                      disabled={disabled}
-                      style={{ minHeight: 48 }}
-                      label={`${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} › ` : ''}${displayCategoryName(c.name)}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`}
-                    />
-                  ))}
-              </RadioButton.Group>
-            </List.Accordion>
+            <AppleMenuPicker
+              label={vi.transactionCategory}
+              value={field.value}
+              options={categoryOptions}
+              disabled={disabled}
+              onSelect={field.onChange}
+            />
           )}
         />
-        {fields.map((item) => (
-          <Controller
-            key={item.name}
-            control={control}
-            name={item.name}
-            render={({ field }) =>
-              item.name === 'startMonth' || item.name === 'endMonth' ? (
-                <MonthField
-                  label={item.label}
+
+        <View style={{ gap: 6 }}>
+          <Text
+            variant="labelMedium"
+            style={{ color: palette.textMuted, fontWeight: '600' }}
+          >
+            {vi.budgetPeriodType}
+          </Text>
+          <SegmentedButtons
+            value={periodType}
+            density="small"
+            onValueChange={(val) =>
+              setValue('periodType', val as 'monthly' | 'custom')
+            }
+            buttons={[
+              {
+                value: 'monthly',
+                label: vi.budgetPeriodMonthly,
+                showSelectedCheck: false,
+                labelStyle: localStyles.segmentLabel,
+              },
+              {
+                value: 'custom',
+                label: vi.budgetPeriodCustom,
+                showSelectedCheck: false,
+                labelStyle: localStyles.segmentLabel,
+              },
+            ]}
+          />
+        </View>
+
+        {periodType === 'custom' ? (
+          <>
+            <Controller
+              control={control}
+              name="startDate"
+              render={({ field }) => (
+                <DateField
+                  label={vi.budgetStartDate}
                   value={field.value}
                   onChange={field.onChange}
                   disabled={disabled}
-                  allowClear={item.name === 'endMonth'}
                 />
-              ) : item.name === 'amount' ? (
-                <MoneyInput
-                  label={item.label}
-                  accessibilityLabel={item.label}
+              )}
+            />
+            <Controller
+              control={control}
+              name="endDate"
+              render={({ field }) => (
+                <DateField
+                  label={vi.budgetEndDate}
                   value={field.value}
-                  onBlur={field.onBlur}
+                  onChange={field.onChange}
                   disabled={disabled}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  onChangeText={field.onChange}
                 />
-              ) : (
-                <TextInput
-                  mode="outlined"
-                  label={item.label}
-                  accessibilityLabel={item.label}
+              )}
+            />
+            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+              {vi.budgetCustomHint}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Controller
+              control={control}
+              name="startMonth"
+              render={({ field }) => (
+                <MonthField
+                  label={vi.budgetStart}
                   value={field.value}
-                  onBlur={field.onBlur}
+                  onChange={field.onChange}
                   disabled={disabled}
-                  left={<TextInput.Icon icon={item.icon} />}
-                  keyboardType="number-pad"
-                  onChangeText={field.onChange}
                 />
-              )
-            }
-          />
-        ))}
+              )}
+            />
+            <Controller
+              control={control}
+              name="endMonth"
+              render={({ field }) => (
+                <MonthField
+                  label={vi.budgetEnd}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={disabled}
+                  allowClear
+                />
+              )}
+            />
+            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+              {vi.budgetMonthlyHint}
+            </Text>
+          </>
+        )}
+
+        <Divider style={{ backgroundColor: palette.borderSubtle }} />
+
+        <Controller
+          control={control}
+          name="amount"
+          render={({ field }) => (
+            <MoneyInput
+              label={vi.budgetAmount}
+              accessibilityLabel={vi.budgetAmount}
+              value={field.value}
+              onBlur={field.onBlur}
+              disabled={disabled}
+              left={<TextInput.Icon icon="cash" />}
+              onChangeText={field.onChange}
+            />
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="warnPercent"
+          render={({ field }) => (
+            <TextInput
+              mode="outlined"
+              label={vi.budgetWarnPercent}
+              accessibilityLabel={vi.budgetWarnPercent}
+              value={field.value}
+              onBlur={field.onBlur}
+              disabled={disabled}
+              left={<TextInput.Icon icon="percent-outline" />}
+              keyboardType="number-pad"
+              onChangeText={field.onChange}
+            />
+          )}
+        />
       </View>
 
-      {(invalid || !!error) && (
+      {(!!formError || !!error) && (
         <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {invalid ? vi.budgetInvalid : error}
+          {formError || error}
         </Text>
       )}
+
       <Button
         mode="contained"
         icon="check"
@@ -705,20 +803,52 @@ function BudgetForm({
           void handleSubmit(async (values) => {
             let input: BudgetInput;
             try {
-              if (!/^\d+$/.test(values.warnPercent))
-                throw new Error('INVALID_PERCENT');
+              if (!/^\d+$/.test(values.warnPercent)) {
+                setFormError(vi.budgetInvalid);
+                return;
+              }
+              const warnNum = Number(values.warnPercent);
+              if (warnNum < 1 || warnNum > 100) {
+                setFormError(vi.budgetInvalid);
+                return;
+              }
+
+              if (values.periodType === 'custom') {
+                try {
+                  validateDate(values.startDate);
+                  validateDate(values.endDate);
+                } catch {
+                  setFormError(vi.budgetDateRangeInvalid);
+                  return;
+                }
+                if (values.endDate < values.startDate) {
+                  setFormError(vi.budgetDateRangeInvalid);
+                  return;
+                }
+              }
+
               input = BudgetInputSchema.parse({
                 amount: parseAmountInput(values.amount),
-                warnPercent: Number(values.warnPercent),
-                startMonth: values.startMonth,
-                endMonth: values.endMonth || null,
+                warnPercent: warnNum,
+                periodType: values.periodType,
+                startDate:
+                  values.periodType === 'custom' ? values.startDate : null,
+                endDate: values.periodType === 'custom' ? values.endDate : null,
+                startMonth:
+                  values.periodType === 'custom'
+                    ? values.startDate.slice(0, 7)
+                    : values.startMonth,
+                endMonth:
+                  values.periodType === 'custom'
+                    ? values.endDate.slice(0, 7)
+                    : values.endMonth || null,
                 categoryId: values.categoryId || null,
               });
             } catch {
-              setInvalid(true);
+              setFormError(vi.budgetInvalid);
               return;
             }
-            setInvalid(false);
+            setFormError('');
             await onSave(input);
           })();
         }}

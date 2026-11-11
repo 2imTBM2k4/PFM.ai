@@ -42,7 +42,10 @@ interface PreferencesState extends UserPreferences {
   isAddTransactionOpen: boolean;
   isChatOpen: boolean;
   isTabBarVisible: boolean;
+  hideBalance: boolean;
   setTabBarVisible(visible: boolean): void;
+  setHideBalance(hide: boolean): Promise<void>;
+  toggleHideBalance(): Promise<void>;
   openAddTransaction(mode?: 'manual' | 'natural'): void;
   closeAddTransaction(): void;
   openChat(action?: ChatActionType): void;
@@ -83,6 +86,7 @@ const PREF_KEYS = {
   notifyAIReply: 'pref_notify_ai_reply',
   notifyDebts: 'pref_notify_debts',
   notifyRecurring: 'pref_notify_recurring',
+  hideBalance: 'pref_hide_balance',
 } as const;
 
 /**
@@ -229,11 +233,27 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   isAddTransactionOpen: false,
   isChatOpen: false,
   isTabBarVisible: true,
+  hideBalance: false,
 
   setTabBarVisible(visible: boolean) {
     if (get().isTabBarVisible !== visible) {
       set({ isTabBarVisible: visible });
     }
+  },
+
+  async setHideBalance(hide: boolean) {
+    set({ hideBalance: hide });
+    try {
+      await withDatabase((db) =>
+        writeSettingValue(db, PREF_KEYS.hideBalance, String(hide)),
+      );
+    } catch {
+      // Ignore write errors
+    }
+  },
+
+  async toggleHideBalance() {
+    await get().setHideBalance(!get().hideBalance);
   },
 
   openAddTransaction(mode = 'manual') {
@@ -345,6 +365,10 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
           db,
           PREF_KEYS.notifyRecurring,
         );
+        const hideBalance = await readSettingValue(
+          db,
+          PREF_KEYS.hideBalance,
+        );
         return {
           language: (language === 'en' || language === 'vi'
             ? language
@@ -367,6 +391,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
           notifyAIReply: notifyAIReply !== 'false',
           notifyDebts: notifyDebts !== 'false',
           notifyRecurring: notifyRecurring !== 'false',
+          hideBalance: hideBalance === 'true',
         };
       });
       set({ ...loaded, hydrated: true });

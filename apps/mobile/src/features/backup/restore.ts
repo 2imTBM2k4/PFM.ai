@@ -49,8 +49,20 @@ export function upgradeSnapshotTablesInMemory(
         })),
       };
     }
+    if (v === 4) {
+      // v4 -> v5 added period_type, start_date, end_date to budgets
+      current = {
+        ...current,
+        budgets: current.budgets.map((row) => ({
+          ...row,
+          period_type: row.period_type ?? 'monthly',
+          start_date: row.start_date ?? null,
+          end_date: row.end_date ?? null,
+        })),
+      };
+    }
   }
-  // Ensure v4 defaults are populated on every transaction row
+  // Ensure v5 defaults are populated on every transaction and budget row
   return {
     ...current,
     transactions: current.transactions.map((row) => ({
@@ -58,6 +70,12 @@ export function upgradeSnapshotTablesInMemory(
       original_currency: row.original_currency ?? 'VND',
       original_amount_minor: row.original_amount_minor ?? row.amount,
       booking_rate: row.booking_rate ?? null,
+    })),
+    budgets: current.budgets.map((row) => ({
+      ...row,
+      period_type: row.period_type ?? 'monthly',
+      start_date: row.start_date ?? null,
+      end_date: row.end_date ?? null,
     })),
   };
 }
@@ -351,8 +369,8 @@ export async function applySnapshot(
     await runBatchedInsert(
       tx,
       upgradedTables.budgets,
-      `INSERT INTO budgets (id, category_id, amount, warn_percent, start_month, end_month, is_active, created_at, updated_at)`,
-      '(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      `INSERT INTO budgets (id, category_id, amount, warn_percent, start_month, end_month, is_active, period_type, start_date, end_date, created_at, updated_at)`,
+      '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       (b) => [
         b.id,
         b.category_id,
@@ -361,6 +379,9 @@ export async function applySnapshot(
         b.start_month,
         b.end_month,
         b.is_active,
+        b.period_type ?? 'monthly',
+        b.start_date ?? null,
+        b.end_date ?? null,
         b.created_at,
         b.updated_at,
       ],

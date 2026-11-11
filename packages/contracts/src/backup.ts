@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const BACKUP_FORMAT = 'pfm-backup' as const;
 export const BACKUP_FORMAT_VERSION = 1 as const;
-export const BACKUP_LATEST_SCHEMA_VERSION = 4 as const;
+export const BACKUP_LATEST_SCHEMA_VERSION = 5 as const;
 
 export const BACKUP_ALLOWED_SETTINGS_KEYS = [
   'onboarding_complete',
@@ -161,6 +161,9 @@ export const BackupBudgetRowSchema = z
     start_month: z.string().min(1),
     end_month: z.string().nullable(),
     is_active: SqliteBoolSchema,
+    period_type: z.enum(['monthly', 'custom']).optional().default('monthly'),
+    start_date: z.string().nullable().optional().default(null),
+    end_date: z.string().nullable().optional().default(null),
     created_at: z.string().min(1),
     updated_at: z.string().min(1),
   })

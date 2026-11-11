@@ -1111,6 +1111,7 @@ export function TransactionForm({
   const [naturalError, setNaturalError] = useState('');
   const [naturalSession, setNaturalSession] =
     useState<NaturalConfirmSession | null>(null);
+  const [showNatural, setShowNatural] = useState(false);
 
   const {
     control,
@@ -1320,137 +1321,161 @@ export function TransactionForm({
       hideHeader={hideHeader}
       inModal={hideHeader}
     >
-      {/* Natural Language Quick-Entry Card with Confirmation Sheet before saving */}
+      {/* Natural Language Quick-Entry toggle */}
       {!row && (
-        <GlassCard
-          variant="elevated"
-          radius="xl"
-          padding={DesignSpacing.md}
-          style={{ gap: 10 }}
-        >
-          <View style={styles.inlineRow}>
+        <View style={{ gap: 8 }}>
+          <Pressable
+            onPress={() => setShowNatural((v) => !v)}
+            style={[
+              localStyles.naturalToggleBar,
+              createSoftShadow(theme.mode, 'sm'),
+              {
+                backgroundColor: theme.card.surfaceElevated,
+                borderColor: theme.card.border,
+              },
+            ]}
+          >
+            <View style={styles.inlineRow}>
+              <MaterialCommunityIcons
+                name="lightning-bolt-circle"
+                size={20}
+                color={theme.brand.primary}
+              />
+              <Text
+                variant="labelMedium"
+                style={{ fontWeight: '700', color: theme.brand.primaryText }}
+              >
+                {vi.txNaturalToggle}
+              </Text>
+            </View>
             <MaterialCommunityIcons
-              name="lightning-bolt-circle"
-              size={22}
-              color={theme.brand.primary}
+              name={showNatural ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={theme.text.secondary}
             />
-            <Text
-              variant="titleSmall"
-              style={{ fontWeight: '700', color: theme.text.primary, flex: 1 }}
+          </Pressable>
+
+          {showNatural && (
+            <GlassCard
+              variant="elevated"
+              radius="xl"
+              padding={DesignSpacing.md}
+              style={{ gap: 10 }}
             >
-              {vi.txNaturalTitle}
-            </Text>
-          </View>
+              <TextInput
+                mode="outlined"
+                placeholder={vi.txNaturalHint}
+                accessibilityLabel={vi.txNaturalTitle}
+                value={naturalText}
+                onChangeText={(value) => {
+                  setNaturalText(value);
+                  setNaturalError('');
+                }}
+                disabled={disabled}
+              />
 
-          <TextInput
-            mode="outlined"
-            placeholder={vi.txNaturalHint}
-            accessibilityLabel={vi.txNaturalTitle}
-            value={naturalText}
-            onChangeText={(value) => {
-              setNaturalText(value);
-              setNaturalError('');
-            }}
-            disabled={disabled}
-          />
+              <View style={localStyles.sampleRow}>
+                <Pill
+                  label={
+                    language === 'en'
+                      ? selectedCurrency === 'USD'
+                        ? 'spent $10 on breakfast'
+                        : 'spent 10000 VND on breakfast'
+                      : 'ăn sáng 30k'
+                  }
+                  tone="primary"
+                  size="sm"
+                  onPress={() =>
+                    setNaturalText(
+                      language === 'en'
+                        ? selectedCurrency === 'USD'
+                          ? 'spent $10 on breakfast'
+                          : 'spent 10000 VND on breakfast'
+                        : 'ăn sáng 30k',
+                    )
+                  }
+                />
+                <Pill
+                  label={
+                    language === 'en'
+                      ? selectedCurrency === 'USD'
+                        ? 'coffee $5 and lunch $12'
+                        : 'coffee 5000 VND and lunch 12000 VND'
+                      : 'cf 25k bánh 20k'
+                  }
+                  tone="glass"
+                  size="sm"
+                  onPress={() =>
+                    setNaturalText(
+                      language === 'en'
+                        ? selectedCurrency === 'USD'
+                          ? 'coffee $5 and lunch $12'
+                          : 'coffee 5000 VND and lunch 12000 VND'
+                        : 'cf 25k bánh 20k',
+                    )
+                  }
+                />
+                <Pill
+                  label={
+                    language === 'en'
+                      ? selectedCurrency === 'USD'
+                        ? 'salary $500'
+                        : 'salary 500000 VND'
+                      : 'lương 15tr'
+                  }
+                  tone="income"
+                  size="sm"
+                  onPress={() =>
+                    setNaturalText(
+                      language === 'en'
+                        ? selectedCurrency === 'USD'
+                          ? 'salary $500'
+                          : 'salary 500000 VND'
+                        : 'lương 15tr',
+                    )
+                  }
+                />
+              </View>
 
-          <View style={localStyles.sampleRow}>
-            <Pill
-              label={
-                language === 'en'
-                  ? selectedCurrency === 'USD'
-                    ? 'spent $10 on breakfast'
-                    : 'spent 10000 VND on breakfast'
-                  : 'ăn sáng 30k'
-              }
-              tone="primary"
-              size="sm"
-              onPress={() =>
-                setNaturalText(
-                  language === 'en'
-                    ? selectedCurrency === 'USD'
-                      ? 'spent $10 on breakfast'
-                      : 'spent 10000 VND on breakfast'
-                    : 'ăn sáng 30k',
-                )
-              }
-            />
-            <Pill
-              label={
-                language === 'en'
-                  ? selectedCurrency === 'USD'
-                    ? 'coffee $5 and lunch $12'
-                    : 'coffee 5000 VND and lunch 12000 VND'
-                  : 'cf 25k bánh 20k'
-              }
-              tone="glass"
-              size="sm"
-              onPress={() =>
-                setNaturalText(
-                  language === 'en'
-                    ? selectedCurrency === 'USD'
-                      ? 'coffee $5 and lunch $12'
-                      : 'coffee 5000 VND and lunch 12000 VND'
-                    : 'cf 25k bánh 20k',
-                )
-              }
-            />
-            <Pill
-              label={
-                language === 'en'
-                  ? selectedCurrency === 'USD'
-                    ? 'salary $500'
-                    : 'salary 500000 VND'
-                  : 'lương 15tr'
-              }
-              tone="income"
-              size="sm"
-              onPress={() =>
-                setNaturalText(
-                  language === 'en'
-                    ? selectedCurrency === 'USD'
-                      ? 'salary $500'
-                      : 'salary 500000 VND'
-                    : 'lương 15tr',
-                )
-              }
-            />
-          </View>
+              {!!naturalError && (
+                <Text
+                  accessibilityRole="alert"
+                  style={{ color: palette.danger }}
+                >
+                  {naturalError}
+                </Text>
+              )}
 
-          {!!naturalError && (
-            <Text accessibilityRole="alert" style={{ color: palette.danger }}>
-              {naturalError}
-            </Text>
+              {!naturalSession ? (
+                <Button
+                  mode="contained-tonal"
+                  icon="creation"
+                  disabled={disabled || !naturalText.trim()}
+                  loading={naturalBusy}
+                  onPress={() => void handleParseNatural()}
+                >
+                  {vi.txNaturalParseBtn}
+                </Button>
+              ) : (
+                <EntryConfirmation
+                  result={naturalSession.result}
+                  drafts={naturalSession.drafts}
+                  refs={naturalSession.context}
+                  busy={naturalBusy}
+                  error={naturalError}
+                  onSave={handleSaveNatural}
+                  onCancel={() => {
+                    setNaturalSession(null);
+                    setNaturalError('');
+                  }}
+                />
+              )}
+            </GlassCard>
           )}
-
-          {!naturalSession ? (
-            <Button
-              mode="contained-tonal"
-              icon="creation"
-              disabled={disabled || !naturalText.trim()}
-              loading={naturalBusy}
-              onPress={() => void handleParseNatural()}
-            >
-              {vi.txNaturalParseBtn}
-            </Button>
-          ) : (
-            <EntryConfirmation
-              result={naturalSession.result}
-              drafts={naturalSession.drafts}
-              refs={naturalSession.context}
-              busy={naturalBusy}
-              error={naturalError}
-              onSave={handleSaveNatural}
-              onCancel={() => {
-                setNaturalSession(null);
-                setNaturalError('');
-              }}
-            />
-          )}
-        </GlassCard>
+        </View>
       )}
 
-      {/* Manual Transaction Form */}
+      {/* Manual Transaction Form in 1 clean card */}
       <GlassCard
         variant="elevated"
         radius="xl"
@@ -1458,26 +1483,23 @@ export function TransactionForm({
         style={{ gap: 12 }}
       >
         {!row?.debt_id && (
-          <>
-            <Controller
-              control={control}
-              name="kind"
-              render={({ field }) => (
-                <AppleMenuPicker
-                  label={vi.transactionKind}
-                  value={field.value}
-                  options={kindOptions}
-                  disabled={disabled}
-                  onSelect={(value) => {
-                    field.onChange(value);
-                    setValue('categoryId', '');
-                    setValue('toWalletId', '');
-                  }}
-                />
-              )}
-            />
-            <Divider style={{ backgroundColor: theme.card.border }} />
-          </>
+          <Controller
+            control={control}
+            name="kind"
+            render={({ field }) => (
+              <AppleMenuPicker
+                label={vi.transactionKind}
+                value={field.value}
+                options={kindOptions}
+                disabled={disabled}
+                onSelect={(value) => {
+                  field.onChange(value);
+                  setValue('categoryId', '');
+                  setValue('toWalletId', '');
+                }}
+              />
+            )}
+          />
         )}
 
         <Controller
@@ -1521,14 +1543,9 @@ export function TransactionForm({
                 : 'Chưa có tỷ giá USD/VND. Cần kết nối mạng trước khi lưu.'}
           </Text>
         )}
-      </GlassCard>
 
-      <GlassCard
-        variant="elevated"
-        radius="xl"
-        padding={DesignSpacing.md}
-        style={{ gap: 10 }}
-      >
+        <Divider style={{ backgroundColor: theme.card.border }} />
+
         <Controller
           control={control}
           name="walletId"
@@ -1563,62 +1580,51 @@ export function TransactionForm({
             fg={palette.purpleInk}
           />
         ) : kind === 'transfer' ? (
-          <>
-            <Divider style={{ backgroundColor: theme.card.border }} />
-            <Controller
-              control={control}
-              name="toWalletId"
-              shouldUnregister
-              rules={{
-                validate: (value) =>
-                  kind !== 'transfer' ||
-                  (!!value && value !== walletId) ||
-                  vi.transactionWalletRequired,
-              }}
-              render={({ field, fieldState }) => (
-                <View>
-                  <AppleMenuPicker
-                    label={vi.transactionDestination}
-                    value={field.value}
-                    options={toWalletOptions}
-                    disabled={disabled}
-                    onSelect={field.onChange}
-                  />
-                  {!!fieldState.error && (
-                    <HelperText type="error">
-                      {fieldState.error.message}
-                    </HelperText>
-                  )}
-                </View>
-              )}
-            />
-          </>
-        ) : (
-          <>
-            <Divider style={{ backgroundColor: theme.card.border }} />
-            <Controller
-              control={control}
-              name="categoryId"
-              render={({ field }) => (
+          <Controller
+            control={control}
+            name="toWalletId"
+            shouldUnregister
+            rules={{
+              validate: (value) =>
+                kind !== 'transfer' ||
+                (!!value && value !== walletId) ||
+                vi.transactionWalletRequired,
+            }}
+            render={({ field, fieldState }) => (
+              <View>
                 <AppleMenuPicker
-                  label={vi.transactionCategory}
+                  label={vi.transactionDestination}
                   value={field.value}
-                  options={categoryOptions}
+                  options={toWalletOptions}
                   disabled={disabled}
                   onSelect={field.onChange}
                 />
-              )}
-            />
-          </>
+                {!!fieldState.error && (
+                  <HelperText type="error">
+                    {fieldState.error.message}
+                  </HelperText>
+                )}
+              </View>
+            )}
+          />
+        ) : (
+          <Controller
+            control={control}
+            name="categoryId"
+            render={({ field }) => (
+              <AppleMenuPicker
+                label={vi.transactionCategory}
+                value={field.value}
+                options={categoryOptions}
+                disabled={disabled}
+                onSelect={field.onChange}
+              />
+            )}
+          />
         )}
-      </GlassCard>
 
-      <GlassCard
-        variant="elevated"
-        radius="xl"
-        padding={DesignSpacing.md}
-        style={{ gap: 12 }}
-      >
+        <Divider style={{ backgroundColor: theme.card.border }} />
+
         <Controller
           control={control}
           name="date"
@@ -1732,6 +1738,15 @@ export function TransactionForm({
 }
 
 const localStyles = StyleSheet.create({
+  naturalToggleBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: DesignRadius.lg,
+    borderWidth: 1,
+  },
   headerAddBtn: {
     width: 36,
     height: 36,

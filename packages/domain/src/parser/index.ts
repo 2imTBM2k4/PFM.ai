@@ -6,6 +6,7 @@ import { extractDate } from './dates';
 import { normalizeText, withoutSpans } from './text';
 import type { ParseResult, ParseWarning } from './types';
 
+export { extractAmounts } from './amounts';
 export type {
   Confidence,
   ParsedEntry,

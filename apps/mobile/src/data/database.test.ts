@@ -49,6 +49,7 @@ import {
   listChatSessions,
   deleteChatSessions,
   listWallets,
+  listWalletsByRecentActivity,
 } from './repository';
 import {
   createWallet,
@@ -2631,7 +2632,7 @@ it('upgrades version 1 notes in bounded batches without changing original transa
       booking_rate: null,
     })),
   );
-  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
+  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(5);
   await migrate(db);
   expect(
     sqlite.prepare('SELECT * FROM transactions ORDER BY id').all(),
@@ -3861,7 +3862,7 @@ it('migrates once, seeds exactly 25 categories and one cash wallet twice', async
   expect(sqlite.prepare('SELECT count(*) n FROM wallets').get()?.n).toBe(1);
   expect(
     sqlite.prepare('SELECT count(*) n FROM schema_migrations').get()?.n,
-  ).toBe(4);
+  ).toBe(5);
   expect(
     sqlite
       .prepare('SELECT count(*) n FROM categories WHERE parent_id IS NOT NULL')
@@ -3961,4 +3962,196 @@ it('stores trimmed user chat only, rejects blank/oversize input and handles SQL 
     "'); DROP TABLE wallets; --",
   );
   expect(sqlite.prepare('SELECT count(*) n FROM wallets').get()?.n).toBe(0);
+});
+
+it('orders wallets by most recent transaction activity', async () => {
+  await migrate(db);
+  await seed(db, '2026-10-26T00:00:00Z');
+  const wallet1 = randomUUID();
+  const wallet2 = randomUUID();
+  await createWallet(
+    db,
+    wallet1,
+    { name: 'Wallet One', kind: 'cash', initialBalance: 0, isGoalFunding: false, sortOrder: 0 },
+    '2026-10-26T01:00:00Z',
+  );
+  await createWallet(
+    db,
+    wallet2,
+    { name: 'Wallet Two', kind: 'bank', initialBalance: 0, isGoalFunding: false, sortOrder: 1 },
+    '2026-10-26T02:00:00Z',
+  );
+
+  // Add transaction to wallet1 at older time
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'expense',
+      amount: 50000,
+      walletId: wallet1,
+      toWalletId: null,
+      categoryId: null,
+      debtId: null,
+      occurredOn: '2026-11-01',
+      occurredAt: '2026-11-01T10:00:00Z',
+      note: null,
+      source: 'manual',
+      recurringRuleId: null,
+      rawInput: null,
+    },
+    '2026-11-01T10:00:00Z',
+  );
+
+  // Add transaction to wallet2 at newer time
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'expense',
+      amount: 100000,
+      walletId: wallet2,
+      toWalletId: null,
+      categoryId: null,
+      debtId: null,
+      occurredOn: '2026-11-02',
+      occurredAt: '2026-11-02T15:00:00Z',
+      note: null,
+      source: 'manual',
+      recurringRuleId: null,
+      rawInput: null,
+    },
+    '2026-11-02T15:00:00Z',
+  );
+
+  const activeWallets = await listWalletsByRecentActivity(db);
+  const ids = activeWallets.map((w) => w.id);
+  expect(ids.indexOf(wallet2)).toBeLessThan(ids.indexOf(wallet1));
+});
+
+it('calculates spent correctly for custom date range budgets and monthly reset budgets', async () => {
+  await migrate(db);
+  await seed(db, '2026-10-26T00:00:00Z');
+
+  const customBudgetId = randomUUID();
+  await createBudget(
+    db,
+    customBudgetId,
+    {
+      amount: 500000,
+      warnPercent: 80,
+      periodType: 'custom',
+      startDate: '2026-11-05',
+      endDate: '2026-11-20',
+      startMonth: '2026-11',
+      endMonth: '2026-11',
+      categoryId: null,
+    },
+    '2026-10-26T00:00:00Z',
+  );
+
+  const monthlyBudgetId = randomUUID();
+  await createBudget(
+    db,
+    monthlyBudgetId,
+    {
+      amount: 2000000,
+      warnPercent: 80,
+      periodType: 'monthly',
+      startDate: null,
+      endDate: null,
+      startMonth: '2026-11',
+      endMonth: null,
+      categoryId: null,
+    },
+    '2026-10-26T00:00:00Z',
+  );
+
+  // Expense outside custom range (2026-11-02)
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'expense',
+      amount: 100000,
+      walletId: DEFAULT_WALLET_ID,
+      toWalletId: null,
+      categoryId: null,
+      debtId: null,
+      occurredOn: '2026-11-02',
+      occurredAt: '2026-11-02T10:00:00Z',
+      note: null,
+      source: 'manual',
+      recurringRuleId: null,
+      rawInput: null,
+    },
+    '2026-11-02T10:00:00Z',
+  );
+
+  // Expense inside custom range (2026-11-10)
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'expense',
+      amount: 250000,
+      walletId: DEFAULT_WALLET_ID,
+      toWalletId: null,
+      categoryId: null,
+      debtId: null,
+      occurredOn: '2026-11-10',
+      occurredAt: '2026-11-10T10:00:00Z',
+      note: null,
+      source: 'manual',
+      recurringRuleId: null,
+      rawInput: null,
+    },
+    '2026-11-10T10:00:00Z',
+  );
+
+  // Expense in December (2026-12-05)
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'expense',
+      amount: 400000,
+      walletId: DEFAULT_WALLET_ID,
+      toWalletId: null,
+      categoryId: null,
+      debtId: null,
+      occurredOn: '2026-12-05',
+      occurredAt: '2026-12-05T10:00:00Z',
+      note: null,
+      source: 'manual',
+      recurringRuleId: null,
+      rawInput: null,
+    },
+    '2026-12-05T10:00:00Z',
+  );
+
+  // Query November budgets
+  const novBudgets = await readBudgetMonth(db, '2026-11');
+  const customNov = novBudgets.find((b) => b.id === customBudgetId);
+  const monthlyNov = novBudgets.find((b) => b.id === monthlyBudgetId);
+
+  // Custom budget only counted 2026-11-10 expense (250,000)
+  expect(customNov?.spent).toBe(250000);
+  expect(Boolean(customNov?.in_period)).toBe(true);
+
+  // Monthly budget in November counted both Nov expenses (100,000 + 250,000 = 350,000)
+  expect(monthlyNov?.spent).toBe(350000);
+  expect(Boolean(monthlyNov?.in_period)).toBe(true);
+
+  // Query December budgets
+  const decBudgets = await readBudgetMonth(db, '2026-12');
+  const customDec = decBudgets.find((b) => b.id === customBudgetId);
+  const monthlyDec = decBudgets.find((b) => b.id === monthlyBudgetId);
+
+  // Custom budget ended on 2026-11-20, so not in December period
+  expect(Boolean(customDec?.in_period)).toBe(false);
+
+  // Monthly budget in December auto-resets: only counts December expense (400,000)
+  expect(monthlyDec?.spent).toBe(400000);
+  expect(Boolean(monthlyDec?.in_period)).toBe(true);
 });

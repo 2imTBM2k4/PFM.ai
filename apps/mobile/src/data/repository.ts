@@ -66,6 +66,24 @@ export function listWallets(db: Queries, includeArchived = false) {
   );
 }
 
+export function listWalletsByRecentActivity(
+  db: Queries,
+  includeArchived = false,
+) {
+  return db.getAllAsync<WalletRow>(
+    `SELECT w.id, w.name, w.kind, w.initial_balance, w.is_goal_funding, w.is_archived, w.sort_order, b.balance,
+       COALESCE((
+         SELECT MAX(t.occurred_at) FROM transactions t
+         WHERE t.wallet_id = w.id OR t.to_wallet_id = w.id
+       ), w.updated_at, w.created_at) AS last_activity
+     FROM wallets w
+     JOIN v_wallet_balance b ON b.wallet_id = w.id
+     WHERE (? = 1 OR w.is_archived = 0)
+     ORDER BY last_activity DESC, w.created_at DESC`,
+    includeArchived ? 1 : 0,
+  );
+}
+
 export function listChatMessages(
   db: Queries,
   before?: ChatRow,

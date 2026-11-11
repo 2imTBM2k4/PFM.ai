@@ -21,7 +21,7 @@ export type {
 export { goalProgress } from './goals';
 export { nextOccurrence } from './recurring';
 export type { RecurringSchedule } from './recurring';
-export { parseEntry } from './parser';
+export { parseEntry, extractAmounts } from './parser';
 export {
   classifyEntry,
   learningTokens,

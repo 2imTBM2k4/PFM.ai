@@ -43,6 +43,11 @@ export const MIGRATIONS: Migration[] = [
     description: 'Preserve original transaction currency and booking exchange rate',
     sql: "ALTER TABLE transactions ADD COLUMN original_currency TEXT NOT NULL DEFAULT 'VND' CHECK(original_currency IN ('VND','USD')); ALTER TABLE transactions ADD COLUMN original_amount_minor INTEGER; ALTER TABLE transactions ADD COLUMN booking_rate REAL; UPDATE transactions SET original_amount_minor=amount;",
   },
+  {
+    version: 5,
+    description: 'Add period_type, start_date, and end_date to budgets',
+    sql: "ALTER TABLE budgets ADD COLUMN period_type TEXT NOT NULL DEFAULT 'monthly' CHECK(period_type IN ('monthly','custom')); ALTER TABLE budgets ADD COLUMN start_date TEXT; ALTER TABLE budgets ADD COLUMN end_date TEXT;",
+  },
 ];
 
 export async function checkIntegrity(db: Queries) {

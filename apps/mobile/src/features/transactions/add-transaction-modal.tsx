@@ -1,8 +1,8 @@
 import * as Crypto from 'expo-crypto';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
-import { BottomSheetModal } from '@/components/ui/bottom-sheet-modal';
+import { useDesignTheme } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import { listCategories, type CategoryRow } from '@/data/categories';
 import { listWallets, type WalletRow } from '@/data/repository';
@@ -74,39 +74,45 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
     }
   };
 
+  const theme = useDesignTheme();
+
   return (
-    <BottomSheetModal
+    <Modal
       visible={visible}
-      onClose={close}
-      title={vi.addTransaction}
-      subtitle={vi.quickAddManual}
-      maxHeightPercent={0.92}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={close}
     >
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" />
-          <Text style={{ marginTop: 8 }}>{vi.loading}</Text>
-        </View>
-      ) : (
-        <TransactionForm
-          row={null}
-          wallets={wallets ?? []}
-          categories={categories ?? []}
-          busy={busy}
-          error={error}
-          onBack={close}
-          hideHeader={true}
-          onNaturalSaved={async () => {
-            void useApp.getState().refreshWallets();
-            useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
-            void checkBudgetAlerts();
-            close();
-            onSaved?.();
-          }}
-          onSave={handleSave}
-        />
-      )}
-    </BottomSheetModal>
+      <View style={{ flex: 1, backgroundColor: theme.sky.upperMid }}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" />
+            <Text style={{ marginTop: 8 }}>{vi.loading}</Text>
+          </View>
+        ) : (
+          <TransactionForm
+            row={null}
+            wallets={wallets ?? []}
+            categories={categories ?? []}
+            busy={busy}
+            error={error}
+            onBack={close}
+            hideHeader={false}
+            inModal={false}
+            onNaturalSaved={async () => {
+              void useApp.getState().refreshWallets();
+              useApp.setState((s) => ({
+                recurringVersion: s.recurringVersion + 1,
+              }));
+              void checkBudgetAlerts();
+              close();
+              onSaved?.();
+            }}
+            onSave={handleSave}
+          />
+        )}
+      </View>
+    </Modal>
   );
 }
 

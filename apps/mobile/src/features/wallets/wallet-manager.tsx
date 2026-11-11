@@ -35,7 +35,6 @@ import {
   createWallet,
   updateWallet,
   setWalletArchived,
-  reorderWallets,
 } from '@/data/wallets';
 import { vi } from '@/messages/vi';
 import { displayWalletName } from '@/messages/seed-labels';
@@ -160,35 +159,19 @@ export function WalletManager({ onClose }: { onClose(): void }) {
       ),
     [mutate],
   );
-  const move = useCallback(
-    (id: string, direction: number) => {
-      const ids = rows
-        .filter((wallet) => !wallet.is_archived)
-        .map((wallet) => wallet.id);
-      const from = ids.indexOf(id);
-      const to = from + direction;
-      if (from < 0 || to < 0 || to >= ids.length) return;
-      [ids[from], ids[to]] = [ids[to], ids[from]];
-      void mutate((db) => reorderWallets(db, ids, new Date().toISOString()));
-    },
-    [mutate, rows],
-  );
   const visibleRows = rows.filter(
     (wallet) => !!wallet.is_archived === archived,
   );
   const renderWallet = useCallback(
-    ({ item, index }: { item: WalletRow; index: number }) => (
+    ({ item }: { item: WalletRow }) => (
       <WalletItem
         wallet={item}
         busy={busy}
-        first={index === 0}
-        last={index === visibleRows.length - 1}
         onEdit={setEditing}
         onArchive={archive}
-        onMove={move}
       />
     ),
-    [archive, busy, move, visibleRows.length],
+    [archive, busy],
   );
 
   if (editing !== undefined)
@@ -305,19 +288,13 @@ export function WalletManager({ onClose }: { onClose(): void }) {
 const WalletItem = memo(function WalletItem({
   wallet,
   busy,
-  first,
-  last,
   onEdit,
   onArchive,
-  onMove,
 }: {
   wallet: WalletRow;
   busy: boolean;
-  first: boolean;
-  last: boolean;
   onEdit(wallet: WalletRow): void;
   onArchive(wallet: WalletRow): Promise<boolean>;
-  onMove(id: string, direction: number): void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const palette = useFinancePalette();
@@ -429,30 +406,6 @@ const WalletItem = memo(function WalletItem({
             >
               {vi.archiveWallet}
             </Button>
-          </View>
-          <View style={{ flexDirection: 'row' }}>
-            <IconButton
-              icon="arrow-up"
-              size={18}
-              style={{ margin: 0 }}
-              accessibilityLabel={vi.moveWalletUp.replace(
-                '{wallet}',
-                wallet.name,
-              )}
-              disabled={busy || first}
-              onPress={() => onMove(wallet.id, -1)}
-            />
-            <IconButton
-              icon="arrow-down"
-              size={18}
-              style={{ margin: 0 }}
-              accessibilityLabel={vi.moveWalletDown.replace(
-                '{wallet}',
-                wallet.name,
-              )}
-              disabled={busy || last}
-              onPress={() => onMove(wallet.id, 1)}
-            />
           </View>
         </View>
       )}

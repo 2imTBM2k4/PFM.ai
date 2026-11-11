@@ -167,23 +167,30 @@ export function Screen({
   if (inModal) {
     return (
       <View style={[styles.fill, { backgroundColor: 'transparent' }]}>
-        {scroll ? (
-          <ScrollView
-            style={styles.fill}
-            contentInsetAdjustmentBehavior="automatic"
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            contentContainerStyle={[
-              styles.scroll,
-              { paddingBottom: Math.max(insets.bottom, DesignSpacing.md) },
-            ]}
-            showsVerticalScrollIndicator={false}
-          >
-            {content}
-          </ScrollView>
-        ) : (
-          content
-        )}
+        <KeyboardAvoidingView
+          style={styles.fill}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
+        >
+          {scroll ? (
+            <ScrollView
+              style={styles.fill}
+              contentInsetAdjustmentBehavior="automatic"
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+              automaticallyAdjustKeyboardInsets={true}
+              contentContainerStyle={[
+                styles.scroll,
+                { paddingBottom: Math.max(insets.bottom, DesignSpacing.md) },
+              ]}
+              showsVerticalScrollIndicator={false}
+            >
+              {content}
+            </ScrollView>
+          ) : (
+            content
+          )}
+        </KeyboardAvoidingView>
       </View>
     );
   }
@@ -196,7 +203,8 @@ export function Screen({
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.fill}>
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
         >
           {scroll ? (
             <ScrollView
@@ -204,6 +212,7 @@ export function Screen({
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              automaticallyAdjustKeyboardInsets={true}
               onScroll={(e) => {
                 tabBarScroll.onScroll(e);
                 onScroll?.(e);

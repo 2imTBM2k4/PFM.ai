@@ -258,7 +258,10 @@ export async function buildSnapshot(
     );
 
     const budgets = await tx.getAllAsync<BackupBudgetRow>(
-      `SELECT id, category_id, amount, warn_percent, start_month, end_month, is_active, created_at, updated_at
+      `SELECT id, category_id, amount, warn_percent, start_month, end_month, is_active,
+        COALESCE(period_type, 'monthly') AS period_type,
+        start_date, end_date,
+        created_at, updated_at
        FROM budgets
        ORDER BY id ASC`,
     );

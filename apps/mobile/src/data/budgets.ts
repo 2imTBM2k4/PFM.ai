@@ -18,6 +18,9 @@ export interface BudgetRow {
   warn_percent: number;
   start_month: string;
   end_month: string | null;
+  period_type?: 'monthly' | 'custom';
+  start_date?: string | null;
+  end_date?: string | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -34,16 +37,34 @@ export async function readBudgetMonth(
 ) {
   monthKey(`${month}-01`);
   const [year, number] = month.split('-').map(Number);
+  const startDay = `${month}-01`;
+  const endDay = `${month}-${String(daysInMonth(year, number)).padStart(2, '0')}`;
   const rows = await db.getAllAsync<BudgetRow>(
-    `SELECT b.*,c.name category_name,c.is_archived category_archived,
-     CASE WHEN b.start_month<=? AND (b.end_month IS NULL OR b.end_month>=?) THEN 1 ELSE 0 END in_period,
-     COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.kind='expense' AND t.occurred_on>=? AND t.occurred_on<=?
-       AND (b.category_id IS NULL OR t.category_id=b.category_id OR t.category_id IN (SELECT id FROM categories WHERE parent_id=b.category_id))),0) spent
-     FROM budgets b LEFT JOIN categories c ON c.id=b.category_id ${budgetId === undefined ? '' : 'WHERE b.id=?'} ORDER BY b.is_active DESC,b.created_at,b.id`,
+    `SELECT b.*, c.name category_name, c.is_archived category_archived,
+     CASE
+       WHEN b.period_type = 'custom' AND b.start_date IS NOT NULL AND b.end_date IS NOT NULL THEN
+         CASE WHEN b.start_date <= ? AND (b.end_date IS NULL OR b.end_date >= ?) THEN 1 ELSE 0 END
+       ELSE
+         CASE WHEN b.start_month <= ? AND (b.end_month IS NULL OR b.end_month >= ?) THEN 1 ELSE 0 END
+     END in_period,
+     CASE
+       WHEN b.period_type = 'custom' AND b.start_date IS NOT NULL AND b.end_date IS NOT NULL THEN
+         COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.kind = 'expense'
+           AND t.occurred_on >= b.start_date AND t.occurred_on <= b.end_date
+           AND (b.category_id IS NULL OR t.category_id = b.category_id OR t.category_id IN (SELECT id FROM categories WHERE parent_id = b.category_id))), 0)
+       ELSE
+         COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.kind = 'expense'
+           AND t.occurred_on >= ? AND t.occurred_on <= ?
+           AND (b.category_id IS NULL OR t.category_id = b.category_id OR t.category_id IN (SELECT id FROM categories WHERE parent_id = b.category_id))), 0)
+     END spent
+     FROM budgets b LEFT JOIN categories c ON c.id = b.category_id ${budgetId === undefined ? '' : 'WHERE b.id = ?'}
+     ORDER BY b.is_active DESC, b.created_at, b.id`,
+    endDay,
+    startDay,
     month,
     month,
-    `${month}-01`,
-    `${month}-${String(daysInMonth(year, number)).padStart(2, '0')}`,
+    startDay,
+    endDay,
     ...(budgetId === undefined ? [] : [budgetId]),
   );
   if (rows.some((row) => !Number.isSafeInteger(row.spent)))
@@ -58,17 +79,29 @@ export async function createBudget(
   timestamp: string,
 ) {
   const value = BudgetInputSchema.parse(input);
+  const periodType = value.periodType ?? 'monthly';
+  const startMonth =
+    value.startMonth ??
+    (value.startDate ? value.startDate.slice(0, 7) : monthKey(timestamp));
+  const endMonth =
+    value.endMonth ?? (value.endDate ? value.endDate.slice(0, 7) : null);
+  const startDate = value.startDate ?? null;
+  const endDate = value.endDate ?? null;
+
   await db.transaction(async (transaction) => {
     if (value.categoryId)
       await requireActiveCategory(transaction, value.categoryId, 'expense');
     await transaction.runAsync(
-      'INSERT INTO budgets (id,category_id,amount,warn_percent,start_month,end_month,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
+      'INSERT INTO budgets (id, category_id, amount, warn_percent, start_month, end_month, period_type, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       id,
       value.categoryId,
       value.amount,
       value.warnPercent,
-      value.startMonth,
-      value.endMonth,
+      startMonth,
+      endMonth,
+      periodType,
+      startDate,
+      endDate,
       timestamp,
       timestamp,
     );
@@ -82,21 +115,33 @@ export async function updateBudget(
   timestamp: string,
 ) {
   const value = BudgetInputSchema.parse(input);
+  const periodType = value.periodType ?? 'monthly';
+  const startMonth =
+    value.startMonth ??
+    (value.startDate ? value.startDate.slice(0, 7) : monthKey(timestamp));
+  const endMonth =
+    value.endMonth ?? (value.endDate ? value.endDate.slice(0, 7) : null);
+  const startDate = value.startDate ?? null;
+  const endDate = value.endDate ?? null;
+
   await db.transaction(async (transaction) => {
     const old = await transaction.getFirstAsync<{ category_id: string | null }>(
-      'SELECT category_id FROM budgets WHERE id=?',
+      'SELECT category_id FROM budgets WHERE id = ?',
       id,
     );
     if (!old) throw new Error('BUDGET_NOT_FOUND');
     if (value.categoryId && value.categoryId !== old.category_id)
       await requireActiveCategory(transaction, value.categoryId, 'expense');
     await transaction.runAsync(
-      'UPDATE budgets SET category_id=?,amount=?,warn_percent=?,start_month=?,end_month=?,updated_at=? WHERE id=?',
+      'UPDATE budgets SET category_id = ?, amount = ?, warn_percent = ?, start_month = ?, end_month = ?, period_type = ?, start_date = ?, end_date = ?, updated_at = ? WHERE id = ?',
       value.categoryId,
       value.amount,
       value.warnPercent,
-      value.startMonth,
-      value.endMonth,
+      startMonth,
+      endMonth,
+      periodType,
+      startDate,
+      endDate,
       timestamp,
       id,
     );

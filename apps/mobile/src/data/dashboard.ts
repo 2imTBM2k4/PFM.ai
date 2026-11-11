@@ -3,7 +3,7 @@ import type { Queries } from './migrate';
 import { readBudgetMonth, readDismissedBudgetBannerKeys } from './budgets';
 import { listGoals } from './goals';
 import { listTransactions } from './transactions';
-import { listWallets } from './repository';
+import { listWallets, listWalletsByRecentActivity } from './repository';
 
 interface MonthTotals {
   month: string;
@@ -86,7 +86,7 @@ export async function readDashboard(db: Queries, month: string) {
   const otherCategoryAmount = categories
     .slice(6)
     .reduce((sum, row) => sum + row.amount, 0);
-  const wallets = await listWallets(db, true);
+  const wallets = await listWalletsByRecentActivity(db, true);
   if (wallets.some((wallet) => !Number.isSafeInteger(wallet.balance)))
     throw new Error('DASHBOARD_TOTAL_UNSAFE');
   const balance = wallets

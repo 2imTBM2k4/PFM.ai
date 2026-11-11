@@ -154,18 +154,36 @@ export const TransactionInputSchema = z
 
 export const BudgetInputSchema = z
   .object({
-    categoryId: NullableIdSchema,
+    categoryId: NullableIdSchema.optional().default(null),
     amount: MoneySchema.positive(),
     warnPercent: z.number().int().min(1).max(100).default(80),
-    startMonth: MonthSchema,
+    startMonth: MonthSchema.optional(),
     endMonth: MonthSchema.nullable().default(null),
+    periodType: z.enum(['monthly', 'custom']).default('monthly'),
+    startDate: DateSchema.nullable().optional().default(null),
+    endDate: DateSchema.nullable().optional().default(null),
   })
   .strict()
   .refine(
-    (value) => value.endMonth === null || value.endMonth >= value.startMonth,
+    (value) =>
+      value.endMonth === null ||
+      !value.startMonth ||
+      value.endMonth >= value.startMonth,
     {
       path: ['endMonth'],
       message: 'The end month must not precede the start month.',
+    },
+  )
+  .refine(
+    (value) =>
+      value.endDate === null ||
+      value.startDate === null ||
+      value.endDate === undefined ||
+      value.startDate === undefined ||
+      value.endDate >= value.startDate,
+    {
+      path: ['endDate'],
+      message: 'The end date must not precede the start date.',
     },
   );
 

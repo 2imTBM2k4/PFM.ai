@@ -29,6 +29,7 @@ import { displayCategoryName, factsLabels } from '@/messages/seed-labels';
 import { getOrCreateDeviceId } from '@/services/device-id';
 import { computeAdviceMetrics } from '@/services/advice-metrics';
 import { buildFactualAdviceReply } from '@/services/advice-factual';
+import { tryAIBudgetSetup } from '@/services/ai-budget-setup';
 import { usePreferences } from '@/state/preferences';
 
 export interface AIChartItem {
@@ -574,6 +575,12 @@ export class MockAIService implements AIService {
     const createdAt = new Date().toISOString();
     const id = `ai-${userMessageId}`;
 
+    const budgetSetupReply = await tryAIBudgetSetup({
+      prompt,
+      userMessageId,
+    });
+    if (budgetSetupReply) return budgetSetupReply;
+
     const scopeDecision = classifyAdviceScope(
       history
         .filter((item) => item.role === 'user')
@@ -792,6 +799,12 @@ export class RemoteAIService implements AIService {
     const id = `ai-${userMessageId}`;
     const { language, currency, exchangeRate } = usePreferences.getState();
     const strings = pickStrings(language);
+
+    const budgetSetupReply = await tryAIBudgetSetup({
+      prompt,
+      userMessageId,
+    });
+    if (budgetSetupReply) return budgetSetupReply;
 
     const currentScope = classifyAdviceScope(prompt);
     const scopeDecision =
