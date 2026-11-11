@@ -287,6 +287,7 @@ export function ChatComposer({
     setError('');
     setNotice('');
     let committed = false;
+    let validated = false;
     try {
       const confirmed = confirmSelectedEntries(
         session.result,
@@ -294,6 +295,7 @@ export function ChatComposer({
         new Date(),
         usePreferences.getState().exchangeRate,
       );
+      validated = true;
       const saved = await withDatabase((db) =>
         saveParsedEntries(
           db,
@@ -372,7 +374,9 @@ export function ChatComposer({
               ? vi.debtInvalidBalance
               : /^(WALLET_|CATEGORY_)/.test(code)
                 ? vi.transactionReferencesInvalid
-                : vi.quickInvalid),
+                : validated
+                  ? vi.saveError
+                  : vi.quickInvalid),
         );
       }
     } finally {
@@ -540,7 +544,8 @@ export function ChatComposer({
               mediaTypes: ['images'],
               allowsMultipleSelection: false,
             });
-      if (selected.canceled || !mounted.current || !selected.assets?.[0]) return;
+      if (selected.canceled || !mounted.current || !selected.assets?.[0])
+        return;
       await processReceiptAsset(selected.assets[0]);
     } catch (failure) {
       if (mounted.current)
@@ -553,7 +558,13 @@ export function ChatComposer({
   };
 
   useEffect(() => {
-    if (!pendingReceiptAsset || loading || disabled || !context || !mounted.current)
+    if (
+      !pendingReceiptAsset ||
+      loading ||
+      disabled ||
+      !context ||
+      !mounted.current
+    )
       return;
 
     const frame = requestAnimationFrame(() => {

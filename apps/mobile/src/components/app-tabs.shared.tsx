@@ -10,6 +10,7 @@ import { useResponsiveLayout } from '@/constants/responsive-layout';
 import { useDesignTheme } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { useIsTabBarVisible, usePreferences } from '@/state/preferences';
+import { isAnyGuardSaving, requestTabSwitch } from '@/utils/unsaved-changes';
 
 export type ExpoBottomTabBarProps = Parameters<
   NonNullable<ComponentProps<typeof Tabs>['tabBar']>
@@ -77,21 +78,34 @@ export function CustomBottomTabBar({
   }
 
   const handleSelectTab = (routeName: string) => {
-    usePreferences.getState().setTabBarVisible(true);
-    const targetRoute = state.routes.find((r) => r.name === routeName);
-    if (!targetRoute) {
-      router.navigate(routeName === 'index' ? '/' : (`/${routeName}` as never));
+    if (routeName === activeRouteName) {
+      usePreferences.getState().setTabBarVisible(true);
+      const targetRoute = state.routes.find((r) => r.name === routeName);
+      if (targetRoute) {
+        emitter.emit({
+          type: 'tabPress',
+          target: targetRoute.key,
+          canPreventDefault: true,
+        });
+      }
       return;
     }
-    const isFocused = targetRoute.key === activeRoute?.key;
-    const event = emitter.emit({
-      type: 'tabPress',
-      target: targetRoute.key,
-      canPreventDefault: true,
+    requestTabSwitch(activeRouteName, () => {
+      usePreferences.getState().setTabBarVisible(true);
+      const targetRoute = state.routes.find((r) => r.name === routeName);
+      if (!targetRoute) {
+        router.navigate(routeName === 'index' ? '/' : (`/${routeName}` as never));
+        return;
+      }
+      const event = emitter.emit({
+        type: 'tabPress',
+        target: targetRoute.key,
+        canPreventDefault: true,
+      });
+      if (!event.defaultPrevented) {
+        navigateToTab(targetRoute.key);
+      }
     });
-    if (!isFocused && !event.defaultPrevented) {
-      navigateToTab(targetRoute.key);
-    }
   };
 
   const captureReceiptFromTab = async (source: 'camera' | 'library') => {
@@ -129,6 +143,9 @@ export function CustomBottomTabBar({
   };
 
   const handleActionSelect = (action: 'manual' | 'camera' | 'chat') => {
+    if (isAnyGuardSaving()) {
+      return;
+    }
     if (action === 'manual') {
       usePreferences.getState().openAddTransaction('manual');
       return;

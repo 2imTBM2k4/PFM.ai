@@ -5,6 +5,7 @@ import {
   SchedulableTriggerInputTypes,
 } from 'expo-notifications';
 import { Platform } from 'react-native';
+import { parseReminderTime } from '@/components/ui/time-field-helpers';
 import {
   checkBudgetAlerts,
   clearBudgetNotifications,
@@ -39,14 +40,7 @@ async function ensureReminderChannel() {
   }
 }
 
-export function parseReminderTime(time: string): {
-  hour: number;
-  minute: number;
-} {
-  const match = /^(?:([01]\d|2[0-3])):([0-5]\d)$/.exec(time);
-  if (!match) return { hour: 20, minute: 0 };
-  return { hour: Number(match[1]), minute: Number(match[2]) };
-}
+export { parseReminderTime };
 
 export async function cancelDailyExpenseReminder() {
   try {

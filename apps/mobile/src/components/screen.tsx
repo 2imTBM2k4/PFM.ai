@@ -1,6 +1,16 @@
-import type { PropsWithChildren, ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type PropsWithChildren,
+  type ReactNode,
+} from 'react';
+import { RevealFieldContext } from './field-feedback';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -32,6 +42,9 @@ import {
 } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
+import { usePreferences } from '@/state/preferences';
+
+let hiddenTabBarOwners = 0;
 
 /**
  * Shared screen wrapper with safe area handling, keyboard avoidance, and glassmorphic header.
@@ -46,6 +59,9 @@ export function Screen({
   hideHeader = false,
   inModal = false,
   autoHideTabBar = true,
+  footer,
+  hasTabBar,
+  hideTabBar,
   onScroll,
   children,
   scroll = true,
@@ -58,17 +74,65 @@ export function Screen({
   rightRail?: ReactNode;
   hideHeader?: boolean;
   inModal?: boolean;
+  hasTabBar?: boolean;
+  hideTabBar?: boolean;
   autoHideTabBar?: boolean;
+  footer?: ReactNode;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scroll?: boolean;
 }>) {
   const palette = useFinancePalette();
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const contentRef = useRef<ComponentRef<typeof View>>(null);
+  const revealField = useCallback((target: ComponentRef<typeof View>) => {
+    if (!contentRef.current) return;
+    target.measureLayout(
+      contentRef.current,
+      (_x, y) => {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y - 16), animated: true });
+      },
+      () => {},
+    );
+  }, []);
   const designTheme = useDesignTheme();
   const insets = useSafeAreaInsets();
   const { width, height, isDuoClosedPortrait } = useResponsiveLayout();
   const cameraClearance = getCameraClearance(width, height, insets.top);
+  const tabBarActive = hasTabBar ?? !inModal;
+  const shouldHideTabBar = tabBarActive && (hideTabBar ?? Boolean(footer));
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent =
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () =>
+      setKeyboardVisible(true),
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () =>
+      setKeyboardVisible(false),
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!shouldHideTabBar) return;
+    hiddenTabBarOwners += 1;
+    usePreferences.getState().setTabBarVisible(false);
+    return () => {
+      hiddenTabBarOwners = Math.max(0, hiddenTabBarOwners - 1);
+      if (hiddenTabBarOwners === 0) {
+        usePreferences.getState().setTabBarVisible(true);
+      }
+    };
+  }, [shouldHideTabBar]);
+
   const tabBarScroll = useTabBarScroll({
-    enabled: !inModal && autoHideTabBar,
+    enabled: tabBarActive && autoHideTabBar && !shouldHideTabBar,
   });
   // The Duo camera sits in the reserved right rail, so left-side content can
   // use the upper space while the rail controls remain below the camera.
@@ -85,103 +149,113 @@ export function Screen({
         : DesignSpacing.screenPadding;
   const compactHeight = height < 700;
   const content = (
-    <Animated.View
-      entering={FadeIn.duration(240)}
-      style={[
-        styles.column,
-        scroll ? styles.scrollColumn : styles.fill,
-        {
-          paddingLeft: horizontalPadding,
-          paddingRight:
-            horizontalPadding + (isDuoClosedPortrait ? DUO_SIDE_RAIL_WIDTH : 0),
-          paddingTop: inModal
-            ? DesignSpacing.xs
-            : (compactHeight ? DesignSpacing.xs : DesignSpacing.sm) +
-              contentCameraClearance,
-          paddingBottom: inModal
-            ? DesignSpacing.md
-            : compactHeight
+    <RevealFieldContext.Provider value={revealField}>
+      <Animated.View
+        ref={contentRef}
+        collapsable={false}
+        entering={FadeIn.duration(240)}
+        style={[
+          styles.column,
+          scroll ? styles.scrollColumn : styles.fill,
+          {
+            paddingLeft: horizontalPadding,
+            paddingRight:
+              horizontalPadding +
+              (isDuoClosedPortrait ? DUO_SIDE_RAIL_WIDTH : 0),
+            paddingTop: inModal
+              ? DesignSpacing.xs
+              : (compactHeight ? DesignSpacing.xs : DesignSpacing.sm) +
+                contentCameraClearance,
+            paddingBottom: inModal
               ? DesignSpacing.md
-              : DesignSpacing.xl,
-          gap: compactHeight ? DesignSpacing.sm : DesignSpacing.md,
-        },
-      ]}
-    >
-      {!hideHeader && (
-        <View style={styles.headerContainer}>
-          {onBack && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={vi.back}
-              disabled={backDisabled}
-              onPress={onBack}
-              style={({ pressed }) => [
-                styles.backPill,
-                createSoftShadow(designTheme.mode, 'sm'),
-                {
-                  backgroundColor: designTheme.card.surfaceElevated,
-                  borderColor: designTheme.card.border,
-                  opacity: backDisabled ? 0.5 : pressed ? 0.75 : 1,
-                },
-              ]}
-            >
-              <Icon source="arrow-left" size={18} color={palette.text} />
-              <Text
-                variant="labelLarge"
-                style={{ color: palette.text, fontWeight: '600' }}
-              >
-                {vi.back}
-              </Text>
-            </Pressable>
-          )}
-          <View style={styles.headerTitleRow}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text
-                accessibilityRole="header"
-                variant="headlineSmall"
-                style={[
-                  styles.screenTitle,
-                  { color: designTheme.text.primary },
+              : compactHeight
+                ? DesignSpacing.md
+                : DesignSpacing.xl,
+            gap: compactHeight ? DesignSpacing.sm : DesignSpacing.md,
+          },
+        ]}
+      >
+        {!hideHeader && (
+          <View style={styles.headerContainer}>
+            {onBack && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={vi.back}
+                disabled={backDisabled}
+                onPress={onBack}
+                style={({ pressed }) => [
+                  styles.backPill,
+                  createSoftShadow(designTheme.mode, 'sm'),
+                  {
+                    backgroundColor: designTheme.card.surfaceElevated,
+                    borderColor: designTheme.card.border,
+                    opacity: backDisabled ? 0.5 : pressed ? 0.75 : 1,
+                  },
                 ]}
               >
-                {title}
-              </Text>
-              {!!subtitle && (
+                <Icon source="arrow-left" size={18} color={palette.text} />
                 <Text
-                  variant="bodyMedium"
-                  style={{ color: designTheme.text.secondary }}
+                  variant="labelLarge"
+                  style={{ color: palette.text, fontWeight: '600' }}
                 >
-                  {subtitle}
+                  {vi.back}
                 </Text>
+              </Pressable>
+            )}
+            <View style={styles.headerTitleRow}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  accessibilityRole="header"
+                  variant="headlineSmall"
+                  style={[
+                    styles.screenTitle,
+                    { color: designTheme.text.primary },
+                  ]}
+                >
+                  {title}
+                </Text>
+                {!!subtitle && (
+                  <Text
+                    variant="bodyMedium"
+                    style={{ color: designTheme.text.secondary }}
+                  >
+                    {subtitle}
+                  </Text>
+                )}
+              </View>
+              {!!headerRight && (
+                <View style={styles.headerActions}>{headerRight}</View>
               )}
             </View>
-            {!!headerRight && (
-              <View style={styles.headerActions}>{headerRight}</View>
-            )}
           </View>
-        </View>
-      )}
-      {children}
-    </Animated.View>
+        )}
+        {children}
+      </Animated.View>
+    </RevealFieldContext.Provider>
   );
   if (inModal) {
     return (
       <View style={[styles.fill, { backgroundColor: 'transparent' }]}>
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
         >
           {scroll ? (
             <ScrollView
+              ref={scrollRef}
               style={styles.fill}
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={true}
+              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
               contentContainerStyle={[
                 styles.scroll,
-                { paddingBottom: Math.max(insets.bottom, DesignSpacing.md) },
+                {
+                  paddingBottom: footer
+                    ? DesignSpacing.lg
+                    : Math.max(insets.bottom, DesignSpacing.md),
+                },
               ]}
               showsVerticalScrollIndicator={false}
             >
@@ -189,6 +263,35 @@ export function Screen({
             </ScrollView>
           ) : (
             content
+          )}
+          {!!footer && (
+            <View
+              style={[
+                styles.stickyFooter,
+                {
+                  backgroundColor: designTheme.card.surfaceElevated,
+                  borderTopColor: designTheme.card.border,
+                  paddingBottom: keyboardVisible
+                    ? DesignSpacing.sm
+                    : Math.max(insets.bottom, DesignSpacing.sm),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.column,
+                  {
+                    paddingLeft: horizontalPadding,
+                    paddingRight:
+                      horizontalPadding +
+                      (isDuoClosedPortrait ? DUO_SIDE_RAIL_WIDTH : 0),
+                    gap: DesignSpacing.xs,
+                  },
+                ]}
+              >
+                {footer}
+              </View>
+            </View>
           )}
         </KeyboardAvoidingView>
       </View>
@@ -203,16 +306,17 @@ export function Screen({
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.fill}>
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
+          behavior={Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined}
+          keyboardVerticalOffset={0}
         >
           {scroll ? (
             <ScrollView
+              ref={scrollRef}
               style={styles.fill}
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={true}
+              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
               onScroll={(e) => {
                 tabBarScroll.onScroll(e);
                 onScroll?.(e);
@@ -221,10 +325,11 @@ export function Screen({
               contentContainerStyle={[
                 styles.scroll,
                 {
-                  paddingBottom:
-                    (isDuoClosedPortrait
-                      ? DesignSpacing.xl
-                      : DesignSpacing.bottomTabClearance) + insets.bottom,
+                  paddingBottom: footer
+                    ? DesignSpacing.lg
+                    : !tabBarActive || isDuoClosedPortrait
+                      ? DesignSpacing.xl + insets.bottom
+                      : DesignSpacing.bottomTabClearance + insets.bottom,
                 },
               ]}
               showsVerticalScrollIndicator={false}
@@ -233,6 +338,35 @@ export function Screen({
             </ScrollView>
           ) : (
             content
+          )}
+          {!!footer && (
+            <View
+              style={[
+                styles.stickyFooter,
+                {
+                  backgroundColor: designTheme.card.surfaceElevated,
+                  borderTopColor: designTheme.card.border,
+                  paddingBottom: keyboardVisible
+                    ? DesignSpacing.sm
+                    : Math.max(insets.bottom, DesignSpacing.sm),
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.column,
+                  {
+                    paddingLeft: horizontalPadding,
+                    paddingRight:
+                      horizontalPadding +
+                      (isDuoClosedPortrait ? DUO_SIDE_RAIL_WIDTH : 0),
+                    gap: DesignSpacing.xs,
+                  },
+                ]}
+              >
+                {footer}
+              </View>
+            </View>
           )}
         </KeyboardAvoidingView>
         {isDuoClosedPortrait && !!rightRail && (
@@ -424,6 +558,10 @@ export const styles = StyleSheet.create({
     paddingBottom: DesignSpacing.bottomTabClearance,
   },
   scrollColumn: { flexGrow: 1, flexShrink: 0 },
+  stickyFooter: {
+    borderTopWidth: 1,
+    paddingTop: DesignSpacing.sm,
+  },
   column: {
     width: '100%',
     maxWidth: 720,

@@ -1,11 +1,17 @@
+import { FieldFeedback } from '@/components/field-feedback';
+import { quickEntryErrors } from './validation';
 import { useMemo, useState } from 'react';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import { areEntryDraftsChanged } from '@/utils/unsaved-changes';
 import { Modal, View } from 'react-native';
 import {
   Controller,
   useFieldArray,
   useForm,
+  useFormState,
   useWatch,
   type Control,
+  type ResolverResult,
   type UseFormSetValue,
 } from 'react-hook-form';
 import {
@@ -25,6 +31,7 @@ import {
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { Screen, styles } from '@/components/screen';
 import { AppleMenuPicker, DateField, MoneyInput } from '@/components/ui';
+import { orderCategoriesByParent } from '@/data/categories';
 import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
@@ -81,25 +88,49 @@ export function EntryConfirmation({
   onCancel(): void;
   onSave(drafts: EntryDraft[]): Promise<void>;
 }) {
+  const [initialDrafts] = useState<EntryDraft[]>(() =>
+    drafts.map((entry) => ({ ...entry })),
+  );
   const {
     control,
     setValue,
     handleSubmit,
     formState: { isSubmitting },
-  } = useForm<Fields>({ defaultValues: { entries: drafts } });
+  } = useForm<Fields>({
+    defaultValues: { entries: initialDrafts },
+    resolver: (values): ResolverResult<Fields> => {
+      const errors = quickEntryErrors(
+        result,
+        values.entries,
+        refs,
+        usePreferences.getState().exchangeRate,
+      );
+      return errors.some((entry) => Object.keys(entry).length > 0)
+        ? { values: {}, errors: { entries: errors } }
+        : { values, errors: {} };
+    },
+  });
   const { fields } = useFieldArray({ control, name: 'entries' });
   const values = useWatch({ control, name: 'entries' });
   const disabled = busy || isSubmitting;
   const palette = useFinancePalette();
+  const dirty = areEntryDraftsChanged(initialDrafts, values);
+  const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
+    id: 'entry-confirmation',
+    scope: 'modal',
+    dirty,
+    saving: disabled,
+    hasError: !!error,
+    changeSignature: JSON.stringify(values),
+    onDiscard: onCancel,
+  });
   return (
     <Modal
       visible
       animationType="slide"
       presentationStyle="pageSheet"
       allowSwipeDismissal={false}
-      onRequestClose={() => {
-        if (!disabled) onCancel();
-      }}
+      onRequestClose={requestLeave}
     >
       <SafeAreaProvider>
         <SafeAreaView
@@ -109,7 +140,7 @@ export function EntryConfirmation({
           <Screen
             title={vi.quickConfirmTitle}
             subtitle={vi.quickConfirmHint}
-            onBack={onCancel}
+            onBack={requestLeave}
             backDisabled={disabled}
           >
             <Text selectable variant="bodyMedium">
@@ -152,7 +183,9 @@ export function EntryConfirmation({
               disabled={disabled || !values.some((entry) => entry.selected)}
               loading={disabled}
               onPress={() =>
-                void handleSubmit((values) => onSave(values.entries))()
+                void handleSubmit((values) =>
+                  runGuardedSave(() => onSave(values.entries)),
+                )()
               }
             >
               {vi.quickSave}
@@ -160,7 +193,7 @@ export function EntryConfirmation({
             <Button
               contentStyle={styles.button}
               disabled={disabled}
-              onPress={onCancel}
+              onPress={requestLeave}
             >
               {vi.cancel}
             </Button>
@@ -189,6 +222,9 @@ function CandidateFields({
   expandedByDefault: boolean;
 }) {
   const draft = useWatch({ control, name: `entries.${index}` });
+  const { errors } = useFormState({ control });
+  const hasErrors =
+    !!errors.entries?.[index] && Object.keys(errors.entries[index]!).length > 0;
   const [expanded, setExpanded] = useState(expandedByDefault);
   const palette = useFinancePalette();
   const path = `entries.${index}` as const;
@@ -310,7 +346,7 @@ function CandidateFields({
         iconBg: palette.surfaceMuted,
         iconColor: palette.textMuted,
       },
-      ...categories.map((category) => {
+      ...orderCategoriesByParent(categories).map((category) => {
         const isExpense = category.kind === 'expense';
         const parent = category.parent_id
           ? refs.categories.find((p) => p.id === category.parent_id)
@@ -356,38 +392,44 @@ function CandidateFields({
     <Controller
       control={control}
       name={`${path}.${name}`}
-      render={({ field }) => (
-        <View>
-          {name === 'amount' ? (
-            <MoneyInput
-              currency={draft.currency}
-              label={label}
-              accessibilityLabel={label}
-              value={field.value}
-              disabled={disabled || !draft.selected}
-              onBlur={field.onBlur}
-              outlineColor={low ? palette.warning : undefined}
-              onChangeText={(value) => {
-                field.onChange(value);
-                setValue(`${path}.amountConfirmed`, false);
-              }}
-            />
-          ) : (
-            <TextInput
-              mode="outlined"
-              label={label}
-              accessibilityLabel={label}
-              value={field.value}
-              disabled={disabled || !draft.selected}
-              keyboardType="default"
-              multiline={name === 'note'}
-              onBlur={field.onBlur}
-              outlineColor={low ? palette.warning : undefined}
-              onChangeText={field.onChange}
-            />
-          )}
-          {low && <HelperText type="info">{vi.quickCheckField}</HelperText>}
-        </View>
+      render={({ field, fieldState }) => (
+        <FieldFeedback fieldRef={field.ref} message={fieldState.error?.message}>
+          <View>
+              {name === 'amount' ? (
+                <MoneyInput
+                  currency={draft.currency}
+                  label={label}
+                  accessibilityLabel={label}
+                  value={field.value}
+                  disabled={disabled || !draft.selected}
+                  error={!!fieldState.error}
+                  onBlur={field.onBlur}
+                  outlineColor={low ? palette.warning : undefined}
+                  onChangeText={(value) => {
+                    field.onChange(value);
+                    setValue(`${path}.amountConfirmed`, false, {
+                      shouldValidate: true,
+                    });
+                  }}
+                />
+              ) : (
+                <TextInput
+                  mode="outlined"
+                  label={label}
+                  accessibilityLabel={label}
+                  value={field.value}
+                  disabled={disabled || !draft.selected}
+                  keyboardType="default"
+                  multiline={name === 'note'}
+                  error={!!fieldState.error}
+                  onBlur={field.onBlur}
+                  outlineColor={low ? palette.warning : undefined}
+                  onChangeText={field.onChange}
+                />
+              )}
+              {low && <HelperText type="info">{vi.quickCheckField}</HelperText>}
+            </View>
+        </FieldFeedback>
       )}
     />
   );
@@ -437,14 +479,19 @@ function CandidateFields({
       <Controller
         control={control}
         name={`${path}.selected`}
-        render={({ field }) => (
-          <Checkbox.Item
-            position="leading"
-            label={`${index + 1}. ${vi.quickSelect}`}
-            status={field.value ? 'checked' : 'unchecked'}
-            onPress={() => field.onChange(!field.value)}
-            disabled={disabled}
-          />
+        render={({ field, fieldState }) => (
+          <FieldFeedback
+            fieldRef={field.ref}
+            message={fieldState.error?.message}
+          >
+            <Checkbox.Item
+                position="leading"
+                label={`${index + 1}. ${vi.quickSelect}`}
+                status={field.value ? 'checked' : 'unchecked'}
+                onPress={() => field.onChange(!field.value)}
+                disabled={disabled}
+              />
+          </FieldFeedback>
         )}
       />
       <Text variant="titleMedium" style={styles.number}>
@@ -465,145 +512,239 @@ function CandidateFields({
       >
         {vi.quickDetails}
       </Button>
-      {expanded && (
-        <>
-          <AppleMenuPicker
-            label={vi.transactionKind}
-            value={draft.kind}
-            options={kindOptions}
-            disabled={formDisabled}
-            helperText={
-              candidate.kindConfidence < CONFIDENCE_HIGH ||
-              draft.kind === 'unknown'
-                ? vi.quickCheckField
-                : undefined
-            }
-            onSelect={(value) => {
-              const choice = ENTRY_KINDS.find((kind) => kind.value === value);
-              if (!choice) return;
-              setValue(`${path}.kind`, choice.value);
-              setValue(`${path}.categoryId`, '');
-              setValue(`${path}.toWalletId`, '');
-              setValue(`${path}.debtId`, '');
-            }}
-          />
-          <AppleMenuPicker
-            label={vi.settingsCurrencyLabel}
-            value={draft.currency}
-            options={[
-              { value: 'VND', label: 'VND (₫)' },
-              { value: 'USD', label: 'USD ($)' },
-            ]}
-            disabled={formDisabled}
-            onSelect={(value) => {
-              setValue(`${path}.currency`, value as 'VND' | 'USD');
-              setValue(`${path}.amount`, '');
-              setValue(`${path}.amountConfirmed`, false);
-            }}
-          />
-          {textField(
-            'amount',
-            `${vi.transactionAmount.replace(' (₫)', '')} (${draft.currency})`,
-            candidate.amount.confidence !== 'high',
-          )}
-          {candidate.explanation.includes('amount.assumed_thousands') && (
-            <>
-              <Text style={{ color: palette.warningInk }}>
-                {vi.quickAssumed}
-              </Text>
-              <Controller
-                control={control}
-                name={`${path}.amountConfirmed`}
-                render={({ field }) => (
-                  <Checkbox.Item
-                    label={vi.quickAmountConfirm}
-                    status={field.value ? 'checked' : 'unchecked'}
-                    disabled={formDisabled}
-                    onPress={() => field.onChange(!field.value)}
-                  />
-                )}
-              />
-            </>
-          )}
-          <AppleMenuPicker
-            label={
-              draft.kind === 'transfer'
-                ? vi.transactionSourceWallet
-                : vi.transactionWallet
-            }
-            value={draft.walletId}
-            options={walletOptions}
-            disabled={formDisabled}
-            onSelect={(value) => setValue(`${path}.walletId`, value)}
-          />
-          {draft.kind === 'transfer' && (
-            <AppleMenuPicker
-              label={vi.transactionDestination}
-              value={draft.toWalletId}
-              options={toWalletOptions}
-              disabled={formDisabled}
-              onSelect={(value) => setValue(`${path}.toWalletId`, value)}
-            />
-          )}
-          {financialCategory && (
-            <AppleMenuPicker
-              label={vi.transactionCategory}
-              value={draft.categoryId}
-              options={categoryOptions}
-              disabled={formDisabled}
-              helperText={
-                candidate.categoryConfidence < CONFIDENCE_HIGH ||
-                (!!candidate.categoryKey && !draft.categoryId)
-                  ? vi.quickCheckField
-                  : undefined
-              }
-              onSelect={(value) => setValue(`${path}.categoryId`, value)}
-            />
-          )}
-          {newLoan && (
-            <>
-              {textField('counterpartyLabel', vi.quickCounterparty)}
-              <Text variant="bodySmall">{vi.quickNewDebtHint}</Text>
-            </>
-          )}
-          {repayment && (
-            <>
+      <View style={{ display: expanded || hasErrors ? 'flex' : 'none', gap: 8 }}>
+        <Controller
+          control={control}
+          name={`${path}.kind`}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
               <AppleMenuPicker
-                label={vi.quickExistingDebt}
-                value={draft.debtId}
-                options={debtOptions}
+                label={vi.transactionKind}
+                value={draft.kind}
+                options={kindOptions}
                 disabled={formDisabled}
-                onSelect={(value) => setValue(`${path}.debtId`, value)}
-              />
-              {!debts.length && <Text>{vi.quickNoDebt}</Text>}
-            </>
-          )}
-          <Controller
-            control={control}
-            name={`${path}.date`}
-            render={({ field }) => (
-              <DateField
-                label={vi.transactionDate}
-                value={field.value}
-                onChange={field.onChange}
-                disabled={formDisabled}
-                error={candidate.date.confidence !== 'high' || !draft.date}
                 helperText={
-                  candidate.date.confidence !== 'high' || !draft.date
+                  candidate.kindConfidence < CONFIDENCE_HIGH ||
+                  draft.kind === 'unknown'
                     ? vi.quickCheckField
                     : undefined
                 }
+                onSelect={(value) => {
+                  const choice = ENTRY_KINDS.find(
+                    (kind) => kind.value === value,
+                  );
+                  if (!choice) return;
+                  setValue(`${path}.kind`, choice.value, {
+                    shouldValidate: true,
+                  });
+                  setValue(`${path}.categoryId`, '', { shouldValidate: true });
+                  setValue(`${path}.toWalletId`, '', { shouldValidate: true });
+                  setValue(`${path}.debtId`, '', { shouldValidate: true });
+                }}
               />
+            </FieldFeedback>
+          )}
+        />
+        <Controller
+          control={control}
+          name={`${path}.currency`}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <AppleMenuPicker
+                label={vi.settingsCurrencyLabel}
+                value={draft.currency}
+                options={[
+                  { value: 'VND', label: 'VND (₫)' },
+                  { value: 'USD', label: 'USD ($)' },
+                ]}
+                disabled={formDisabled}
+                onSelect={(value) => {
+                  setValue(`${path}.currency`, value as 'VND' | 'USD', {
+                    shouldValidate: true,
+                  });
+                  setValue(`${path}.amount`, '', { shouldValidate: true });
+                  setValue(`${path}.amountConfirmed`, false, {
+                    shouldValidate: true,
+                  });
+                }}
+              />
+            </FieldFeedback>
+          )}
+        />
+        {textField(
+          'amount',
+          `${vi.transactionAmount.replace(' (₫)', '')} (${draft.currency})`,
+          candidate.amount.confidence !== 'high',
+        )}
+        {candidate.explanation.includes('amount.assumed_thousands') && (
+          <>
+            <Text style={{ color: palette.warningInk }}>{vi.quickAssumed}</Text>
+            <Controller
+              control={control}
+              name={`${path}.amountConfirmed`}
+              render={({ field, fieldState }) => (
+                <FieldFeedback
+                  fieldRef={field.ref}
+                  message={fieldState.error?.message}
+                >
+                  <Checkbox.Item
+                      label={vi.quickAmountConfirm}
+                      status={field.value ? 'checked' : 'unchecked'}
+                      disabled={formDisabled}
+                      onPress={() => field.onChange(!field.value)}
+                    />
+                </FieldFeedback>
+              )}
+            />
+          </>
+        )}
+        <Controller
+          control={control}
+          name={`${path}.walletId`}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <AppleMenuPicker
+                label={
+                  draft.kind === 'transfer'
+                    ? vi.transactionSourceWallet
+                    : vi.transactionWallet
+                }
+                value={draft.walletId}
+                options={walletOptions}
+                disabled={formDisabled}
+                onSelect={(value) =>
+                  setValue(`${path}.walletId`, value, { shouldValidate: true })
+                }
+              />
+            </FieldFeedback>
+          )}
+        />
+        {draft.kind === 'transfer' && (
+          <Controller
+            control={control}
+            name={`${path}.toWalletId`}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                <AppleMenuPicker
+                  label={vi.transactionDestination}
+                  value={draft.toWalletId}
+                  options={toWalletOptions}
+                  disabled={formDisabled}
+                  onSelect={(value) =>
+                    setValue(`${path}.toWalletId`, value, {
+                      shouldValidate: true,
+                    })
+                  }
+                />
+              </FieldFeedback>
             )}
           />
-          {textField('note', vi.transactionNote)}
-          {!!candidate.amount.matchedText && (
-            <Text variant="bodySmall">
-              {vi.quickMatchedAmount}: “{candidate.amount.matchedText}”
-            </Text>
+        )}
+        {financialCategory && (
+          <Controller
+            control={control}
+            name={`${path}.categoryId`}
+            render={({ field, fieldState }) => (
+              <FieldFeedback
+                fieldRef={field.ref}
+                message={fieldState.error?.message}
+              >
+                <AppleMenuPicker
+                  label={vi.transactionCategory}
+                  value={draft.categoryId}
+                  options={categoryOptions}
+                  disabled={formDisabled}
+                  helperText={
+                    candidate.categoryConfidence < CONFIDENCE_HIGH ||
+                    (!!candidate.categoryKey && !draft.categoryId)
+                      ? vi.quickCheckField
+                      : undefined
+                  }
+                  onSelect={(value) =>
+                    setValue(`${path}.categoryId`, value, {
+                      shouldValidate: true,
+                    })
+                  }
+                />
+              </FieldFeedback>
+            )}
+          />
+        )}
+        {newLoan && (
+          <>
+            {textField('counterpartyLabel', vi.quickCounterparty)}
+            <Text variant="bodySmall">{vi.quickNewDebtHint}</Text>
+          </>
+        )}
+        {repayment && (
+          <>
+            <Controller
+              control={control}
+              name={`${path}.debtId`}
+              render={({ field, fieldState }) => (
+                <FieldFeedback
+                  fieldRef={field.ref}
+                  message={fieldState.error?.message}
+                >
+                  <AppleMenuPicker
+                    label={vi.quickExistingDebt}
+                    value={draft.debtId}
+                    options={debtOptions}
+                    disabled={formDisabled}
+                    onSelect={(value) =>
+                      setValue(`${path}.debtId`, value, {
+                        shouldValidate: true,
+                      })
+                    }
+                  />
+                </FieldFeedback>
+              )}
+            />
+            {!debts.length && <Text>{vi.quickNoDebt}</Text>}
+          </>
+        )}
+        <Controller
+          control={control}
+          name={`${path}.date`}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <DateField
+                  label={vi.transactionDate}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={formDisabled}
+                  error={candidate.date.confidence !== 'high' || !draft.date}
+                  helperText={
+                    candidate.date.confidence !== 'high' || !draft.date
+                      ? vi.quickCheckField
+                      : undefined
+                  }
+                />
+            </FieldFeedback>
           )}
-        </>
-      )}
+        />
+        {textField('note', vi.transactionNote)}
+        {!!candidate.amount.matchedText && (
+          <Text variant="bodySmall">
+            {vi.quickMatchedAmount}: “{candidate.amount.matchedText}”
+          </Text>
+        )}
+      </View>
       {future && (
         <Text style={{ color: palette.warningInk }}>
           {vi.transactionFutureWarning}

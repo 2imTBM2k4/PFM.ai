@@ -15,6 +15,10 @@ import {
 } from '@/components/ui/floating-tab-bar';
 import { vi as viMessages } from '@/messages/vi';
 import { usePreferences } from '@/state/preferences';
+import {
+  registerUnsavedGuard,
+  resetUnsavedGuards,
+} from '@/utils/unsaved-changes';
 
 const mockNavigate = vi.fn();
 const { mockWindowDimensions, mockState } = vi.hoisted(() => ({
@@ -770,6 +774,57 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
     emitSpy.mockReturnValue({ defaultPrevented: true });
     (tabs[1]!.props.onPress as () => void)();
     expect(navigateToTabSpy).not.toHaveBeenCalled();
+  });
+
+  it('prompts before switching tabs when the active tab has unsaved form changes', () => {
+    resetUnsavedGuards();
+    const onDiscard = vi.fn();
+    registerUnsavedGuard({
+      id: 'budget-form',
+      scope: 'tab',
+      routeKey: 'budgets',
+      dirty: true,
+      saving: false,
+      saved: false,
+      onDiscard,
+    });
+
+    const { props, navigateToTabSpy } = makeMockBottomTabBarProps(1); // index 1 = 'budgets'
+    const tabs = collectElements(
+      CustomBottomTabBar(props),
+      (el) => el.props.accessibilityRole === 'tab',
+    );
+    (tabs[2]!.props.onPress as () => void)(); // switch to 'transactions'
+
+    expect(navigateToTabSpy).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      viMessages.unsavedChangesTitle,
+      viMessages.unsavedChangesMessage,
+      expect.any(Array),
+    );
+    const buttons = vi.mocked(Alert.alert).mock.calls.at(-1)![2] as {
+      onPress?: () => void;
+    }[];
+    buttons[1]?.onPress?.();
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(navigateToTabSpy).toHaveBeenCalledWith('transactions-key');
+
+    // Saving form blocks tab switching and quick actions
+    vi.mocked(Alert.alert).mockClear();
+    navigateToTabSpy.mockClear();
+    registerUnsavedGuard({
+      id: 'budget-form',
+      scope: 'tab',
+      routeKey: 'budgets',
+      dirty: true,
+      saving: true,
+      saved: false,
+      onDiscard,
+    });
+    (tabs[2]!.props.onPress as () => void)();
+    expect(navigateToTabSpy).not.toHaveBeenCalled();
+    expect(Alert.alert).not.toHaveBeenCalled();
+    resetUnsavedGuards();
   });
 
   it('hides navigation in regular iPhone Chat and keeps the closed Duo rail', () => {
