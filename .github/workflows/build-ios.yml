@@ -25,6 +25,21 @@ on:
           - ad-hoc
           - development
           - app-store
+      google_ios_client_id:
+        description: 'EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID (để trống để lấy từ GitHub Secret)'
+        required: false
+        default: ''
+        type: string
+      google_web_client_id:
+        description: 'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID (để trống để lấy từ GitHub Secret)'
+        required: false
+        default: ''
+        type: string
+      ios_bundle_id:
+        description: 'Bundle Identifier ghi đè nếu sideload đổi mã gói (mặc định com.pfmai.app)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -36,7 +51,7 @@ jobs:
 
     env:
       # Compile Expo modules together to avoid incompatible precompiled Swift symbols.
-      EXPO_USE_PRECOMPILED_MODULES: "0"
+      EXPO_USE_PRECOMPILED_MODULES: '0'
 
     steps:
       - name: Checkout code
@@ -55,11 +70,48 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Write mobile .env
+        env:
+          INPUT_PROXY_URL: ${{ inputs.proxy_url }}
+          INPUT_GOOGLE_IOS_CLIENT_ID: ${{ inputs.google_ios_client_id }}
+          INPUT_GOOGLE_WEB_CLIENT_ID: ${{ inputs.google_web_client_id }}
+          INPUT_IOS_BUNDLE_ID: ${{ inputs.ios_bundle_id }}
+          SECRET_GOOGLE_IOS_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+          SECRET_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
         run: |
           mkdir -p apps/mobile
-          cat << 'EOF' > apps/mobile/.env
-          EXPO_PUBLIC_PROXY_URL=${{ inputs.proxy_url }}
-          EOF
+          GOOGLE_IOS_CLIENT_ID="${INPUT_GOOGLE_IOS_CLIENT_ID:-$SECRET_GOOGLE_IOS_CLIENT_ID}"
+          GOOGLE_WEB_CLIENT_ID="${INPUT_GOOGLE_WEB_CLIENT_ID:-$SECRET_GOOGLE_WEB_CLIENT_ID}"
+          IOS_BUNDLE_ID="${INPUT_IOS_BUNDLE_ID}"
+
+          {
+            printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$INPUT_PROXY_URL"
+            if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
+              printf "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=%s\n" "$GOOGLE_IOS_CLIENT_ID"
+            fi
+            if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then
+              printf "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=%s\n" "$GOOGLE_WEB_CLIENT_ID"
+            fi
+            if [ -n "$IOS_BUNDLE_ID" ]; then
+              printf "EXPO_PUBLIC_IOS_BUNDLE_ID=%s\n" "$IOS_BUNDLE_ID"
+            fi
+          } > apps/mobile/.env
+
+          {
+            printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$INPUT_PROXY_URL"
+            if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
+              printf "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=%s\n" "$GOOGLE_IOS_CLIENT_ID"
+            fi
+            if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then
+              printf "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=%s\n" "$GOOGLE_WEB_CLIENT_ID"
+            fi
+            if [ -n "$IOS_BUNDLE_ID" ]; then
+              printf "EXPO_PUBLIC_IOS_BUNDLE_ID=%s\n" "$IOS_BUNDLE_ID"
+            fi
+          } >> "$GITHUB_ENV"
+
+          if [ -z "$GOOGLE_IOS_CLIENT_ID" ]; then
+            echo "::warning::EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is empty; Google Drive backup sign-in will report not_configured on this IPA."
+          fi
 
       - name: Select Xcode
         run: |
@@ -70,6 +122,14 @@ jobs:
         working-directory: apps/mobile
         run: |
           npx expo prebuild --platform ios --clean
+          if [ -n "${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-}" ]; then
+            INFO_PLIST=$(find ios -maxdepth 2 -name "Info.plist" ! -path "*/Pods/*" | head -n 1)
+            echo "Checking URL scheme in $INFO_PLIST"
+            if grep -q "placeholder-replace-with-reversed-ios-client-id" "$INFO_PLIST" || ! grep -q "com.googleusercontent.apps." "$INFO_PLIST"; then
+              echo "::error::Info.plist is missing a valid reversed Google iOS Client ID URL scheme."
+              exit 1
+            fi
+          fi
 
       - name: Setup Apple Signing (Only for signed mode)
         if: ${{ inputs.build_type == 'signed' }}

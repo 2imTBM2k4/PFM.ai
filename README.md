@@ -136,7 +136,8 @@ Google Sign-In and Google Drive backup (`drive.file` scope) require a native dev
    - **Android Client ID**: Create an OAuth 2.0 Client ID of type **Android** with package name `com.pfmai.app` and your signing certificate's SHA-1 fingerprint:
      - Debug keystore SHA-1: `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android`
      - EAS build SHA-1: `eas credentials -p android`
-   - **iOS Client ID**: Create an OAuth 2.0 Client ID of type **iOS** with bundle identifier `com.pfmai.app`. Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` in `apps/mobile/.env` and replace `iosUrlScheme` in `apps/mobile/app.json` with the reversed client ID (`com.googleusercontent.apps.<IOS_CLIENT_ID_PREFIX>`).
+   - **iOS Client ID**: Create an OAuth 2.0 Client ID of type **iOS** with bundle identifier `com.pfmai.app` (or the exact bundle ID you use when sideloading). Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` in `apps/mobile/.env` (or via GitHub Secrets / workflow inputs); `apps/mobile/app.config.ts` automatically derives `iosUrlScheme` (`com.googleusercontent.apps.<IOS_CLIENT_ID_PREFIX>`) during `expo prebuild`.
+   - **GitHub Actions IPA + Sideloadly**: Add `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in repository **Settings ? Secrets and variables ? Actions** (or pass them into `Build iOS IPA` workflow inputs). When sideloading with Sideloadly, keep the bundle identifier matching the iOS OAuth Client ID (disable automatic bundle ID rewriting or pass `ios_bundle_id` to the workflow).
 4. **Build & Run Development Client**:
    - Android: `npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile android`
    - iOS: `npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile ios`

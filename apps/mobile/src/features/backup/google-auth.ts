@@ -260,8 +260,13 @@ export function classifyGoogleAuthError(error: unknown): GoogleAuthErrorReason {
   if (
     code.includes('DEVELOPER_ERROR') ||
     code === '10' ||
+    code === 'CONFIGURE' ||
     message.includes('developer_error') ||
-    message.includes('not configured')
+    message.includes('not configured') ||
+    message.includes('failed to determine clientid') ||
+    message.includes('googleservice-info.plist') ||
+    message.includes('iosclientid was not provided') ||
+    message.includes('missing support for the following url schemes')
   ) {
     return 'not_configured';
   }
@@ -422,8 +427,11 @@ export function createGoogleAuthService(
           }
         } catch (firstError) {
           const firstReason = classifyGoogleAuthError(firstError);
-          if (firstReason === 'network_error') {
-            return { ok: false, reason: 'network_error' };
+          if (
+            firstReason === 'network_error' ||
+            firstReason === 'not_configured'
+          ) {
+            return { ok: false, reason: firstReason };
           }
           if (typeof driver.signInSilently === 'function') {
             const silentResponse = await driver.signInSilently();
@@ -442,7 +450,10 @@ export function createGoogleAuthService(
         const reason = classifyGoogleAuthError(error);
         return {
           ok: false,
-          reason: reason === 'network_error' ? 'network_error' : 'needs_reauth',
+          reason:
+            reason === 'network_error' || reason === 'not_configured'
+              ? reason
+              : 'needs_reauth',
         };
       }
     },

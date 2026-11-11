@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { migrate, type Database, type Queries } from '@/data/migrate';
+import { deriveGoogleIosUrlScheme } from '../../../app.config';
 import {
   BACKUP_STATE_SETTING_KEY,
   classifyGoogleAuthError,
@@ -127,6 +128,31 @@ describe('Google Auth & Backup State Persistence (B3)', () => {
     expect(classifyGoogleAuthError({ code: 'DEVELOPER_ERROR' })).toBe(
       'not_configured',
     );
+    expect(
+      classifyGoogleAuthError({
+        code: 'configure',
+        message:
+          'RNGoogleSignin: failed to determine clientID - GoogleService-Info.plist was not found and iosClientId was not provided.',
+      }),
+    ).toBe('not_configured');
+    expect(
+      classifyGoogleAuthError({
+        code: 'SIGN_IN_ERROR',
+        message:
+          'Your app is missing support for the following URL schemes: com.googleusercontent.apps.123',
+      }),
+    ).toBe('not_configured');
+  });
+
+  it('derives reversed iOS URL scheme from EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID', () => {
+    expect(
+      deriveGoogleIosUrlScheme('123456-abc.apps.googleusercontent.com'),
+    ).toBe('com.googleusercontent.apps.123456-abc');
+    expect(
+      deriveGoogleIosUrlScheme('com.googleusercontent.apps.123456-abc'),
+    ).toBe('com.googleusercontent.apps.123456-abc');
+    expect(deriveGoogleIosUrlScheme('')).toBeUndefined();
+    expect(deriveGoogleIosUrlScheme(undefined)).toBeUndefined();
   });
 
   it('blocks sign-in and token access cleanly in Expo Go without loading the native module', async () => {
@@ -211,5 +237,43 @@ describe('Google Auth & Backup State Persistence (B3)', () => {
 
     await auth.signOut();
     expect(driver.signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces not_configured instead of unknown when native iOS configure rejects', async () => {
+    const driver: NativeGoogleSignInDriver = {
+      configure: vi.fn(),
+      hasPlayServices: vi.fn(async () => true),
+      signIn: vi.fn(async () => {
+        throw {
+          code: 'configure',
+          message:
+            'RNGoogleSignin: failed to determine clientID - GoogleService-Info.plist was not found and iosClientId was not provided.',
+        };
+      }),
+      getTokens: vi.fn(async () => {
+        throw {
+          code: 'configure',
+          message:
+            'RNGoogleSignin: failed to determine clientID - GoogleService-Info.plist was not found and iosClientId was not provided.',
+        };
+      }),
+      signOut: vi.fn(async () => null),
+    };
+
+    const auth = createGoogleAuthService({
+      isExpoGo: () => false,
+      getWebClientId: () => undefined,
+      getIosClientId: () => undefined,
+      loadDriver: () => driver,
+    });
+
+    expect(await auth.signIn()).toEqual({
+      ok: false,
+      reason: 'not_configured',
+    });
+    expect(await auth.getAccessToken()).toEqual({
+      ok: false,
+      reason: 'not_configured',
+    });
   });
 });
