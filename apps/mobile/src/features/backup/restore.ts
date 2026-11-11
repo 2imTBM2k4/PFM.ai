@@ -14,6 +14,7 @@ import {
   computeBackupTablesChecksum,
   defaultHashPort,
   isAllowedBackupSettingKey,
+  normalizeTablesForCanonicalJson,
   type HashPort,
 } from './snapshot';
 
@@ -154,7 +155,31 @@ export async function validateAndPrepareSnapshot(
   }
 
   // Verify SHA-256 checksum over canonicalized tables before any DB write
-  const actualChecksum = await computeBackupTablesChecksum(tables, hashPort);
+  let actualChecksum = await computeBackupTablesChecksum(tables, hashPort);
+  // Older writers omitted budget periods from the checksum and only preserved monthly defaults.
+  if (
+    actualChecksum !== snapshot.checksum.toLowerCase() &&
+    tables.budgets.every(
+      (row) =>
+        row.period_type === 'monthly' &&
+        row.start_date === null &&
+        row.end_date === null,
+    )
+  ) {
+    const legacyTables = normalizeTablesForCanonicalJson(tables);
+    const legacyJson = JSON.stringify({
+      ...legacyTables,
+      budgets: legacyTables.budgets.map(
+        ({
+          period_type: _period,
+          start_date: _start,
+          end_date: _end,
+          ...row
+        }) => row,
+      ),
+    });
+    actualChecksum = (await hashPort(legacyJson)).toLowerCase();
+  }
   if (actualChecksum.toLowerCase() !== snapshot.checksum.toLowerCase()) {
     throw new Error('BACKUP_CHECKSUM_MISMATCH');
   }

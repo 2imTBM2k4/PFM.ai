@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { AdvicePlanRequestSchema } from '@pfm/contracts';
 import type { Database, Queries } from '@/data/migrate';
 import { vi as messages } from '@/messages/vi';
@@ -234,6 +235,9 @@ it('accepts the reported motorcycle follow-up as a valid contextual request', ()
   expect(parsed.success).toBe(true);
   expect(history).toHaveLength(2);
 });
+
+vi.mock('@/features/budgets/mobile', () => ({ checkBudgetAlerts: vi.fn() }));
+vi.mock('@/state/app', () => ({ useApp: { setState: vi.fn() } }));
 
 vi.mock('@/data/connection', () => ({
   withDatabase: async (fn: (db: unknown) => unknown) => fn({}),

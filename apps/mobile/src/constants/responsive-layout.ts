@@ -2,6 +2,61 @@ import { useWindowDimensions } from 'react-native';
 
 export const DUO_SIDE_RAIL_WIDTH = 72;
 
+export interface FloatingTabBarLayout {
+  rowWidth: number;
+  rowHeight: number;
+  pillWidth: number;
+  pillHeight: number;
+  inactiveTabWidth: number;
+  activeTabWidth: number;
+  tabHeight: number;
+  addButtonSize: number;
+  controlGap: number;
+  showActiveLabel: boolean;
+  compact: boolean;
+}
+
+/** Reserves a separate action button before allocating the remaining width to tabs. */
+export function getFloatingTabBarLayout(
+  windowWidth: number,
+  leftInset = 0,
+  rightInset = 0,
+  itemCount = 4,
+  vertical = false,
+): FloatingTabBarLayout {
+  const safeWidth = Math.max(0, windowWidth - leftInset - rightInset);
+  const outerPadding = Math.min(
+    safeWidth < 360 ? 10 : safeWidth < 430 ? 16 : 20,
+    Math.max(0, (safeWidth - (itemCount * 44 + 14 + 48 + 8)) / 2),
+  );
+  const rowWidth = Math.min(468, Math.max(0, safeWidth - outerPadding * 2));
+  const compact = rowWidth < 344;
+  const addButtonSize = 48;
+  const controlGap = compact ? 8 : 12;
+  const pillWidth = Math.max(0, rowWidth - addButtonSize - controlGap);
+  const showActiveLabel = !vertical && rowWidth >= 358;
+  const activeWeight = showActiveLabel ? 1.35 : 1;
+  const inactiveTabWidth =
+    Math.max(0, pillWidth - 14) / (Math.max(1, itemCount - 1) + activeWeight);
+  const tabHeight = vertical || compact ? 48 : 52;
+  const pillHeight = vertical
+    ? itemCount * tabHeight + Math.max(0, itemCount - 1) * 4 + 18
+    : tabHeight + 12;
+  return {
+    rowWidth: vertical ? 58 : rowWidth,
+    rowHeight: vertical ? pillHeight + controlGap + addButtonSize : pillHeight,
+    pillWidth: vertical ? 58 : pillWidth,
+    pillHeight,
+    inactiveTabWidth: vertical ? 48 : inactiveTabWidth,
+    activeTabWidth: vertical ? 48 : inactiveTabWidth * activeWeight,
+    tabHeight,
+    addButtonSize,
+    controlGap,
+    showActiveLabel,
+    compact,
+  };
+}
+
 export interface ResponsiveLayout {
   width: number;
   height: number;

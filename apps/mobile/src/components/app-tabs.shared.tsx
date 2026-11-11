@@ -24,24 +24,32 @@ export const APP_TAB_ITEMS: readonly TabBarItem[] = [
     label: vi.overview,
     icon: 'home-variant-outline',
     activeIcon: 'home-variant',
+    iosIcon: 'house',
+    iosActiveIcon: 'house.fill',
   },
   {
     key: 'budgets',
     label: vi.budgetsTabTitle,
     icon: 'chart-box-outline',
     activeIcon: 'chart-box',
+    iosIcon: 'chart.bar',
+    iosActiveIcon: 'chart.bar.fill',
   },
   {
     key: 'transactions',
     label: vi.transactions,
     icon: 'wallet-outline',
     activeIcon: 'wallet',
+    iosIcon: 'wallet.bifold',
+    iosActiveIcon: 'wallet.bifold.fill',
   },
   {
     key: 'settings',
     label: vi.settings,
     icon: 'cog-outline',
     activeIcon: 'cog',
+    iosIcon: 'gearshape',
+    iosActiveIcon: 'gearshape.fill',
   },
 ] as const;
 

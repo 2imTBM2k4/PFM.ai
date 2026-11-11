@@ -137,12 +137,13 @@ export function OverviewScreen({
 
   const activeWallets =
     data?.wallets.filter((wallet) => !wallet.is_archived) ?? [];
+  const goals = data?.goals;
   const topGoal = useMemo(() => {
-    if (!data?.goals?.length) return null;
-    const candidates = data.goals.filter((g) => g.status !== 'archived');
+    if (!goals?.length) return null;
+    const candidates = goals.filter((g) => g.status !== 'archived');
     if (!candidates.length) return null;
     return [...candidates].sort((a, b) => b.progress - a.progress)[0];
-  }, [data?.goals]);
+  }, [goals]);
   const visibleBannerItems = data
     ? filterVisibleBudgetBannerItems(
         budgetBannerItems(data.budgets),

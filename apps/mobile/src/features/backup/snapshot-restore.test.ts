@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   BACKUP_FORMAT,
@@ -479,6 +480,61 @@ describe('Snapshot & Restore (B1 & B2)', () => {
     targetSqlite.close();
   });
 
+  it('preserves custom budget periods through a real SQLite backup and restore', async () => {
+    await populateComprehensiveDatabase(sourceDb);
+    await sourceDb.runAsync(
+      "UPDATE budgets SET period_type = 'custom', start_date = '2026-06-10', end_date = '2026-06-20'",
+    );
+    const snapshot = await buildSnapshot(sourceDb);
+    expect(snapshot.tables.budgets[0]).toMatchObject({
+      period_type: 'custom',
+      start_date: '2026-06-10',
+      end_date: '2026-06-20',
+    });
+    await applySnapshot(targetDb, snapshot);
+    const restored = await buildSnapshot(targetDb);
+    expect(restored.tables.budgets).toEqual(snapshot.tables.budgets);
+    for (const field of ['period_type', 'start_date', 'end_date'] as const) {
+      const tampered = structuredClone(snapshot);
+      if (field === 'period_type')
+        tampered.tables.budgets[0]![field] = 'monthly';
+      else tampered.tables.budgets[0]![field] = '2026-06-15';
+      await expect(validateAndPrepareSnapshot(tampered)).rejects.toThrow(
+        'BACKUP_CHECKSUM_MISMATCH',
+      );
+    }
+  });
+
+  it('accepts historical budget checksums with missing or default periods, but rejects unauthenticated custom periods', async () => {
+    await populateComprehensiveDatabase(sourceDb);
+    const snapshot = await buildSnapshot(sourceDb);
+    const oldTables = structuredClone(snapshot.tables);
+    for (const budget of oldTables.budgets) {
+      for (const key of ['period_type', 'start_date', 'end_date'])
+        Reflect.deleteProperty(budget, key);
+    }
+    const checksum = createHash('sha256')
+      .update(JSON.stringify(oldTables))
+      .digest('hex');
+    for (const tables of [oldTables, snapshot.tables]) {
+      const legacy = { ...snapshot, tables, checksum };
+      await applySnapshot(targetDb, legacy);
+      expect((await buildSnapshot(targetDb)).tables.budgets).toEqual(
+        snapshot.tables.budgets,
+      );
+    }
+    const tampered = structuredClone(snapshot);
+    tampered.checksum = checksum;
+    Object.assign(tampered.tables.budgets[0]!, {
+      period_type: 'custom',
+      start_date: '2026-06-10',
+      end_date: '2026-06-20',
+    });
+    await expect(validateAndPrepareSnapshot(tampered)).rejects.toThrow(
+      'BACKUP_CHECKSUM_MISMATCH',
+    );
+  });
+
   it('1. Full DB roundtrip preserves all 10 tables row-by-row, wallet balances, and Vietnamese/emoji/1e11 precision', async () => {
     await populateComprehensiveDatabase(sourceDb);
 
@@ -585,8 +641,7 @@ describe('Snapshot & Restore (B1 & B2)', () => {
     const tampered: BackupSnapshot = {
       ...snapshot,
       checksum:
-        (snapshot.checksum[0] === 'a' ? 'b' : 'a') +
-        snapshot.checksum.slice(1),
+        (snapshot.checksum[0] === 'a' ? 'b' : 'a') + snapshot.checksum.slice(1),
     };
 
     await expect(applySnapshot(targetDb, tampered)).rejects.toThrow(
@@ -668,9 +723,9 @@ describe('Snapshot & Restore (B1 & B2)', () => {
         [DEFAULT_WALLET_ID]: 123456789,
       },
     };
-    await expect(
-      applySnapshot(targetDb, badBalanceSnapshot),
-    ).rejects.toThrow('BACKUP_WALLET_BALANCE_MISMATCH');
+    await expect(applySnapshot(targetDb, badBalanceSnapshot)).rejects.toThrow(
+      'BACKUP_WALLET_BALANCE_MISMATCH',
+    );
 
     const afterBalanceRollback = await buildSnapshot(targetDb, {
       createdAt: '2026-06-15T00:00:00.000Z',
@@ -761,7 +816,9 @@ describe('Snapshot & Restore (B1 & B2)', () => {
       original_currency: string;
       original_amount_minor: number;
       amount: number;
-    }>('SELECT original_currency, original_amount_minor, amount FROM transactions');
+    }>(
+      'SELECT original_currency, original_amount_minor, amount FROM transactions',
+    );
     expect(restoredRows.length).toBe(v4Snapshot.counts.transactions);
     expect(
       restoredRows.every(

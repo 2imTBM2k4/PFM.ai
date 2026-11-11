@@ -132,6 +132,9 @@ export function normalizeTablesForCanonicalJson(
       warn_percent: row.warn_percent,
       start_month: row.start_month,
       end_month: row.end_month,
+      period_type: row.period_type,
+      start_date: row.start_date,
+      end_date: row.end_date,
       is_active: row.is_active,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -292,7 +295,9 @@ export async function buildSnapshot(
     const balanceRows = await tx.getAllAsync<{
       wallet_id: string;
       balance: number;
-    }>('SELECT wallet_id, balance FROM v_wallet_balance ORDER BY wallet_id ASC');
+    }>(
+      'SELECT wallet_id, balance FROM v_wallet_balance ORDER BY wallet_id ASC',
+    );
     walletBalances = {};
     for (const row of balanceRows) {
       walletBalances[row.wallet_id] = row.balance;

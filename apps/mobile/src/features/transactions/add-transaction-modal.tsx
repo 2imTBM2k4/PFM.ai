@@ -98,7 +98,6 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
             error={error}
             onBack={close}
             hideHeader={false}
-            inModal={false}
             onNaturalSaved={async () => {
               void useApp.getState().refreshWallets();
               useApp.setState((s) => ({

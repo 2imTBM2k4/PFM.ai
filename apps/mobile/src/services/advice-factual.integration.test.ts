@@ -18,6 +18,9 @@ const CLOCK = {
 
 const holder = vi.hoisted(() => ({ db: null as unknown }));
 
+vi.mock('@/features/budgets/mobile', () => ({ checkBudgetAlerts: vi.fn() }));
+vi.mock('@/state/app', () => ({ useApp: { setState: vi.fn() } }));
+
 vi.mock('@/data/connection', () => ({
   withDatabase: async (fn: (db: unknown) => unknown) => fn(holder.db),
 }));

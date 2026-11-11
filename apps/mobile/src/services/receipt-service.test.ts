@@ -1,5 +1,7 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { scanReceipt } from './receipt-service';
+
+afterEach(() => vi.unstubAllGlobals());
 
 it('sends one JPEG through the proxy and validates the returned receipt', async () => {
   const calls: { url: string; options?: RequestInit }[] = [];
@@ -19,6 +21,7 @@ it('does not accept an unvalidated amount from a malformed proxy reply', async (
 });
 
 it('does not send a receipt photo over HTTP outside development', async () => {
+  vi.stubGlobal('__DEV__', false);
   let called = false;
   const fakeFetch: typeof fetch = async () => { called = true; throw new Error('unexpected request'); };
   await expect(scanReceipt('jpeg-base64', 'http://proxy.example', 'device-1', fakeFetch)).rejects.toThrow();
