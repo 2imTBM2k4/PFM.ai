@@ -1,3 +1,4 @@
+import SegmentedButtons from '@/components/ui/native-segmented-buttons';
 import { useTransientState } from '@/hooks/use-transient-state';
 import {
   FieldFeedback,
@@ -20,13 +21,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { Alert, BackHandler, View } from 'react-native';
+import { Alert, BackHandler, Platform, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   IconButton,
-  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
@@ -181,6 +181,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
   }, [editing, leaveEditForm, selected, onClose, setUndo]);
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         back();
         return true;
@@ -326,6 +327,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
           ]}
         >
           <Button
+            hitSlop={4}
             mode="contained-tonal"
             disabled={busy || loading}
             onPress={() => void mutate((db) => undoDeleteTransaction(db, undo))}
@@ -409,6 +411,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
 
             <View style={styles.row}>
               <Button
+                hitSlop={4}
                 mode="outlined"
                 icon="pencil-outline"
                 contentStyle={styles.compactButton}
@@ -421,6 +424,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
                 {vi.debtEdit}
               </Button>
               <Button
+                hitSlop={4}
                 mode="contained"
                 icon="cash-check"
                 contentStyle={styles.compactButton}
@@ -484,6 +488,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
               <Divider style={{ backgroundColor: palette.borderSubtle }} />
               <View style={[styles.row, { justifyContent: 'flex-end' }]}>
                 <Button
+                  hitSlop={4}
                   compact
                   mode="contained-tonal"
                   icon="pencil-outline"
@@ -496,6 +501,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
                   {vi.editTransaction}
                 </Button>
                 <Button
+                  hitSlop={4}
                   compact
                   mode="text"
                   textColor={palette.danger}
@@ -526,6 +532,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
           ))}
           {more && (
             <Button
+              hitSlop={4}
               mode="outlined"
               disabled={busy || loading}
               contentStyle={styles.button}
@@ -538,6 +545,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
       ) : (
         <>
           <Button
+            hitSlop={4}
             mode="contained"
             icon="plus"
             disabled={
@@ -584,6 +592,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
               </Text>
             </View>
             <Button
+              hitSlop={4}
               compact
               mode="contained-tonal"
               disabled={busy || loading}
@@ -675,6 +684,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
                 </View>
               </View>
               <Button
+                hitSlop={4}
                 mode="contained-tonal"
                 icon="chevron-right"
                 contentStyle={[
@@ -841,6 +851,7 @@ function DebtForm({
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         contentStyle={styles.button}

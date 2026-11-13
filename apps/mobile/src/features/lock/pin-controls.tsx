@@ -115,6 +115,7 @@ function ActivePinSettings() {
       ) : enabled ? (
         <>
           <Button
+            hitSlop={4}
             contentStyle={styles.button}
             onPress={() => {
               setSaved(false);
@@ -124,6 +125,7 @@ function ActivePinSettings() {
             {vi.pinChange}
           </Button>
           <Button
+            hitSlop={4}
             contentStyle={styles.button}
             onPress={() => {
               setSaved(false);
@@ -133,6 +135,7 @@ function ActivePinSettings() {
             {vi.pinDisable}
           </Button>
           <Button
+            hitSlop={4}
             contentStyle={styles.button}
             onPress={() => lockSession.getState().lock()}
           >
@@ -141,6 +144,7 @@ function ActivePinSettings() {
         </>
       ) : (
         <Button
+          hitSlop={4}
           contentStyle={styles.button}
           onPress={() => {
             setSaved(false);
@@ -287,6 +291,7 @@ function PinForm({
       )}
       {__DEV__ && (
         <Button
+          hitSlop={4}
           disabled={busy}
           contentStyle={styles.button}
           onPress={diagnoseStorage}
@@ -298,6 +303,7 @@ function PinForm({
         <Text accessibilityLiveRegion="polite">{storageResult}</Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         contentStyle={styles.button}
         loading={busy}
@@ -307,6 +313,7 @@ function PinForm({
         {mode === 'disable' ? vi.pinDisable : vi.pinSave}
       </Button>
       <Button
+        hitSlop={4}
         contentStyle={styles.button}
         disabled={busy}
         onPress={requestLeave}

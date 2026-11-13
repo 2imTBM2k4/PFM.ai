@@ -79,10 +79,10 @@ export const DesignColors: Record<ThemeMode, DesignColorScheme> = {
   light: {
     mode: 'light',
     sky: {
-      top: '#D4E6FF',
-      upperMid: '#E2D4FF',
-      lowerMid: '#FAD4EA',
-      horizon: '#FFE3CC',
+      top: '#F2F2F7',
+      upperMid: '#F2F2F7',
+      lowerMid: '#F2F2F7',
+      horizon: '#F2F2F7',
     },
     hills: {
       far: 'rgba(176, 152, 232, 0.36)',
@@ -97,10 +97,10 @@ export const DesignColors: Record<ThemeMode, DesignColorScheme> = {
       glow: 'rgba(124, 92, 255, 0.35)',
     },
     card: {
-      surface: 'rgba(255, 255, 255, 0.78)',
-      surfaceElevated: 'rgba(255, 255, 255, 0.92)',
-      surfaceSubtle: 'rgba(255, 255, 255, 0.56)',
-      border: 'rgba(255, 255, 255, 0.88)',
+      surface: '#FFFFFF',
+      surfaceElevated: '#FFFFFF',
+      surfaceSubtle: '#F2F2F7',
+      border: '#D1D1D6',
       shadow: 'rgba(67, 56, 114, 0.10)',
     },
     brand: {
@@ -112,12 +112,12 @@ export const DesignColors: Record<ThemeMode, DesignColorScheme> = {
       primaryGlow: 'rgba(124, 92, 255, 0.32)',
     },
     finance: {
-      income: '#16A34A',
+      income: '#18713A',
       incomeSoft: '#DCFCE7',
-      incomeText: '#15803D',
-      expense: '#EF4444',
+      incomeText: '#18713A',
+      expense: '#C62828',
       expenseSoft: '#FEE2E2',
-      expenseText: '#DC2626',
+      expenseText: '#B42318',
       savings: '#7C5CFF',
       savingsSoft: '#EDE9FE',
       savingsText: '#6D28D9',
@@ -125,34 +125,34 @@ export const DesignColors: Record<ThemeMode, DesignColorScheme> = {
     chat: {
       userBubble: '#E4DCFF',
       userText: '#1E1B4B',
-      aiBubble: 'rgba(243, 244, 248, 0.92)',
+      aiBubble: '#E5E5EA',
       aiText: '#111827',
-      inputSurface: 'rgba(255, 255, 255, 0.94)',
+      inputSurface: '#FFFFFF',
       inputBorder: 'rgba(255, 255, 255, 0.95)',
     },
     tabBar: {
-      pillBackground: 'rgba(255, 255, 255, 0.78)',
-      pillBorder: 'rgba(255, 255, 255, 0.88)',
-      activeTab: '#7C5CFF',
-      activeIcon: '#FFFFFF',
-      inactiveIcon: '#6B7280',
+      pillBackground: '#FFFFFF',
+      pillBorder: '#D1D1D6',
+      activeTab: '#ECE6FF',
+      activeIcon: '#5B3DE0',
+      inactiveIcon: '#636366',
       addButton: '#7C5CFF',
       addButtonGlow: 'rgba(124, 92, 255, 0.35)',
     },
     text: {
       primary: '#111827',
       secondary: '#4B5563',
-      muted: '#6B7280',
+      muted: '#636366',
       onPrimary: '#FFFFFF',
     },
   },
   dark: {
     mode: 'dark',
     sky: {
-      top: '#0B1026',
-      upperMid: '#191336',
-      lowerMid: '#2B183D',
-      horizon: '#3B213A',
+      top: '#000000',
+      upperMid: '#000000',
+      lowerMid: '#000000',
+      horizon: '#000000',
     },
     hills: {
       far: 'rgba(92, 68, 158, 0.28)',
@@ -167,10 +167,10 @@ export const DesignColors: Record<ThemeMode, DesignColorScheme> = {
       glow: 'rgba(139, 110, 255, 0.45)',
     },
     card: {
-      surface: 'rgba(24, 26, 44, 0.78)',
-      surfaceElevated: 'rgba(32, 35, 58, 0.92)',
-      surfaceSubtle: 'rgba(20, 22, 38, 0.58)',
-      border: 'rgba(255, 255, 255, 0.12)',
+      surface: '#1C1C1E',
+      surfaceElevated: '#1C1C1E',
+      surfaceSubtle: '#2C2C2E',
+      border: '#48484A',
       shadow: 'rgba(0, 0, 0, 0.35)',
     },
     brand: {
@@ -195,13 +195,13 @@ export const DesignColors: Record<ThemeMode, DesignColorScheme> = {
     chat: {
       userBubble: '#4832A8',
       userText: '#F8FAFC',
-      aiBubble: 'rgba(30, 33, 54, 0.92)',
+      aiBubble: '#2C2C2E',
       aiText: '#F1F5F9',
-      inputSurface: 'rgba(26, 29, 48, 0.94)',
+      inputSurface: '#1C1C1E',
       inputBorder: 'rgba(255, 255, 255, 0.14)',
     },
     tabBar: {
-      pillBackground: 'rgba(18, 20, 36, 0.78)',
+      pillBackground: 'rgba(28, 28, 30, 0.78)',
       pillBorder: 'rgba(255, 255, 255, 0.14)',
       activeTab: '#7C5CFF',
       activeIcon: '#FFFFFF',
@@ -227,7 +227,7 @@ export const DesignSpacing = {
   xl: 24,
   xxl: 32,
   xxxl: 48,
-  screenPadding: 20,
+  screenPadding: 16,
   bottomTabClearance: 112,
 } as const;
 
@@ -249,7 +249,7 @@ export const DesignTypography = {
   size: {
     caption: 12,
     small: 13,
-    body: 15,
+    body: 17,
     subtitle: 17,
     title: 20,
     heading: 26,
@@ -264,6 +264,115 @@ export const DesignTypography = {
   },
 } as const;
 
+// Paper variants share the system type hierarchy and keep font scaling enabled.
+export const DesignTextStyles = {
+  displayLarge: {
+    fontFamily: 'System',
+    fontSize: 34,
+    lineHeight: 41,
+    fontWeight: '700' as const,
+    letterSpacing: 0,
+  },
+  displayMedium: {
+    fontFamily: 'System',
+    fontSize: 34,
+    lineHeight: 41,
+    fontWeight: '700' as const,
+    letterSpacing: 0,
+  },
+  displaySmall: {
+    fontFamily: 'System',
+    fontSize: 34,
+    lineHeight: 41,
+    fontWeight: '700' as const,
+    letterSpacing: 0,
+  },
+  headlineLarge: {
+    fontFamily: 'System',
+    fontSize: 34,
+    lineHeight: 41,
+    fontWeight: '700' as const,
+    letterSpacing: 0,
+  },
+  headlineMedium: {
+    fontFamily: 'System',
+    fontSize: 28,
+    lineHeight: 34,
+    fontWeight: '700' as const,
+    letterSpacing: 0,
+  },
+  headlineSmall: {
+    fontFamily: 'System',
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700' as const,
+    letterSpacing: 0,
+  },
+  titleLarge: {
+    fontFamily: 'System',
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: '600' as const,
+    letterSpacing: 0,
+  },
+  titleMedium: {
+    fontFamily: 'System',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '600' as const,
+    letterSpacing: 0,
+  },
+  titleSmall: {
+    fontFamily: 'System',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600' as const,
+    letterSpacing: 0,
+  },
+  bodyLarge: {
+    fontFamily: 'System',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '400' as const,
+    letterSpacing: 0,
+  },
+  bodyMedium: {
+    fontFamily: 'System',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '400' as const,
+    letterSpacing: 0,
+  },
+  bodySmall: {
+    fontFamily: 'System',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '400' as const,
+    letterSpacing: 0,
+  },
+  labelLarge: {
+    fontFamily: 'System',
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '600' as const,
+    letterSpacing: 0,
+  },
+  labelMedium: {
+    fontFamily: 'System',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600' as const,
+    letterSpacing: 0,
+  },
+  labelSmall: {
+    fontFamily: 'System',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500' as const,
+    letterSpacing: 0,
+  },
+};
+
 /**
  * Builds a consistent soft ambient shadow style for glassmorphic cards and floating controls.
  */
@@ -275,9 +384,9 @@ export function createSoftShadow(
   const radius = elevation === 'sm' ? 10 : elevation === 'md' ? 18 : 26;
   const height = elevation === 'sm' ? 4 : elevation === 'md' ? 8 : 14;
   return {
-    shadowColor: isDark ? '#000000' : '#433872',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height },
-    shadowOpacity: isDark ? 0.34 : 0.09,
+    shadowOpacity: isDark ? 0.24 : 0.04,
     shadowRadius: radius,
     elevation: elevation === 'sm' ? 3 : elevation === 'md' ? 6 : 10,
   };

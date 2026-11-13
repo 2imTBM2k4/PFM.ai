@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { Host, HStack, Picker, Text as SwiftUIText } from '@expo/ui/swift-ui';
 import { frame, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { SymbolView } from 'expo-symbols';
@@ -178,10 +178,7 @@ export function MonthField({
                   ]}
                 >
                   {monthLabels.map((monthText, monthIndex) => (
-                    <SwiftUIText
-                      key={monthIndex}
-                      modifiers={[tag(monthIndex)]}
-                    >
+                    <SwiftUIText key={monthIndex} modifiers={[tag(monthIndex)]}>
                       {monthText}
                     </SwiftUIText>
                   ))}
@@ -201,10 +198,7 @@ export function MonthField({
                   ]}
                 >
                   {yearOptions.map((yearOption) => (
-                    <SwiftUIText
-                      key={yearOption}
-                      modifiers={[tag(yearOption)]}
-                    >
+                    <SwiftUIText key={yearOption} modifiers={[tag(yearOption)]}>
                       {String(yearOption)}
                     </SwiftUIText>
                   ))}
@@ -214,6 +208,7 @@ export function MonthField({
 
             <View style={styles.sheetActions}>
               <Button
+                hitSlop={4}
                 mode="text"
                 onPress={() => commitValue(currentMonthKey)}
                 textColor={theme.brand.primaryText}
@@ -222,6 +217,7 @@ export function MonthField({
               </Button>
               {allowClear && (
                 <Button
+                  hitSlop={4}
                   mode="text"
                   onPress={() => commitValue('')}
                   textColor={theme.finance.expense}
@@ -229,10 +225,11 @@ export function MonthField({
                   {vi.clear}
                 </Button>
               )}
-              <Button mode="text" onPress={() => setOpen(false)}>
+              <Button hitSlop={4} mode="text" onPress={() => setOpen(false)}>
                 {vi.cancel}
               </Button>
               <Button
+                hitSlop={4}
                 mode="contained"
                 onPress={() => commitValue(formatMonthDraftToKey(draft))}
               >

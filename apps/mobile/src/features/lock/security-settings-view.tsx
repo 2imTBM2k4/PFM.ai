@@ -1,6 +1,7 @@
+import { useFocusedBackHandler } from '@/hooks/use-focused-back-handler';
 import { useTransientState } from '@/hooks/use-transient-state';
-import { useEffect, useState } from 'react';
-import { BackHandler, View } from 'react-native';
+import { useState } from 'react';
+import { View } from 'react-native';
 import { Button, Divider, Icon, Text } from 'react-native-paper';
 import { DeleteDataControl } from '@/components/delete-data-control';
 import { IconBadge, Screen, styles } from '@/components/screen';
@@ -24,24 +25,18 @@ export function SecuritySettingsView({ onClose }: { onClose(): void }) {
   const palette = useFinancePalette();
   const pinEnabled = useLockSession((state) => state.enabled);
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        if (subView === 'pin') {
-          requestGuardLeave('pin-form', () => setSubView('menu'));
-          return true;
-        }
-        if (subView !== 'menu') {
-          setSubView('menu');
-          return true;
-        }
-        onClose();
-        return true;
-      },
-    );
-    return () => subscription.remove();
-  }, [subView, onClose]);
+  useFocusedBackHandler(() => {
+    if (subView === 'pin') {
+      requestGuardLeave('pin-form', () => setSubView('menu'));
+      return true;
+    }
+    if (subView !== 'menu') {
+      setSubView('menu');
+      return true;
+    }
+    onClose();
+    return true;
+  });
 
   if (subView === 'pin') {
     return (
@@ -104,6 +99,7 @@ export function SecuritySettingsView({ onClose }: { onClose(): void }) {
           <Divider style={{ backgroundColor: theme.card.border }} />
 
           <Button
+            hitSlop={4}
             mode="outlined"
             onPress={() =>
               void withDatabase(withdrawReceiptConsent)

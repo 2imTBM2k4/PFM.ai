@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { useDesignTheme } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
@@ -12,33 +12,34 @@ import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
-import { requestGuardLeave } from '@/utils/unsaved-changes';
+import { unregisterUnsavedGuard } from '@/utils/unsaved-changes';
 import { TransactionForm } from './transaction-manager';
 
 export interface AddTransactionModalProps {
   onSaved?(): void;
+  onClose(): void;
 }
 
-export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
-  const visible = usePreferences((state) => state.isAddTransactionOpen);
-  const close = usePreferences((state) => state.closeAddTransaction);
+export function AddTransactionModal({
+  onSaved,
+  onClose,
+}: AddTransactionModalProps) {
+  const close = () => {
+    unregisterUnsavedGuard('transaction-form-modal');
+    usePreferences.getState().closeAddTransaction();
+    onClose();
+  };
 
   const [wallets, setWallets] = useState<WalletRow[] | null>(null);
   const [categories, setCategories] = useState<CategoryRow[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const loading = visible && (wallets === null || categories === null);
+  const loading = wallets === null || categories === null;
 
   useEffect(() => {
-    if (!visible) {
-      return;
-    }
     let active = true;
-    void Promise.all([
-      withDatabase(listWallets),
-      withDatabase(listCategories),
-    ])
+    void Promise.all([withDatabase(listWallets), withDatabase(listCategories)])
       .then(([w, c]) => {
         if (!active) return;
         setWallets(w);
@@ -53,7 +54,7 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
     return () => {
       active = false;
     };
-  }, [visible]);
+  }, []);
 
   const handleSave = async (input: TransactionInput) => {
     setBusy(true);
@@ -78,45 +79,35 @@ export function AddTransactionModal({ onSaved }: AddTransactionModalProps) {
   const theme = useDesignTheme();
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={() => {
-        if (busy) return;
-        requestGuardLeave('transaction-form', close);
-      }}
-    >
-      <View style={{ flex: 1, backgroundColor: theme.sky.upperMid }}>
-        {!visible ? null : loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" />
-            <Text style={{ marginTop: 8 }}>{vi.loading}</Text>
-          </View>
-        ) : (
-          <TransactionForm
-            row={null}
-            wallets={wallets ?? []}
-            categories={categories ?? []}
-            busy={busy}
-            error={error}
-            onBack={close}
-            hideHeader={false}
-            guardScope="modal"
-            onNaturalSaved={async () => {
-              void useApp.getState().refreshWallets();
-              useApp.setState((s) => ({
-                recurringVersion: s.recurringVersion + 1,
-              }));
-              void checkBudgetAlerts();
-              close();
-              onSaved?.();
-            }}
-            onSave={handleSave}
-          />
-        )}
-      </View>
-    </Modal>
+    <View style={{ flex: 1, backgroundColor: theme.sky.upperMid }}>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" />
+          <Text style={{ marginTop: 8 }}>{vi.loading}</Text>
+        </View>
+      ) : (
+        <TransactionForm
+          row={null}
+          wallets={wallets ?? []}
+          categories={categories ?? []}
+          busy={busy}
+          error={error}
+          onBack={close}
+          hideHeader={false}
+          guardScope="modal"
+          onNaturalSaved={async () => {
+            void useApp.getState().refreshWallets();
+            useApp.setState((s) => ({
+              recurringVersion: s.recurringVersion + 1,
+            }));
+            void checkBudgetAlerts();
+            close();
+            onSaved?.();
+          }}
+          onSave={handleSave}
+        />
+      )}
+    </View>
   );
 }
 

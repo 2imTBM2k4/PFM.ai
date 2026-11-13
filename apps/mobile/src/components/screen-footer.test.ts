@@ -20,6 +20,9 @@ vi.mock('react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react')>();
   return {
     ...actual,
+    useContext: () => false,
+    useSyncExternalStore: (_subscribe: unknown, getSnapshot: () => unknown) =>
+      getSnapshot(),
     useEffect: (fn: () => void | (() => void)) => {
       effectCallbacks.push(fn);
       const cleanup = fn();
@@ -69,6 +72,7 @@ vi.mock('react-native-reanimated', () => ({
   default: { View: 'Animated.View' },
   FadeIn: { duration: () => ({}) },
   LinearTransition: { duration: () => ({}) },
+  useReducedMotion: () => false,
 }));
 
 vi.mock('react-native-paper', () => ({
@@ -228,8 +232,8 @@ describe('Screen sticky footer and tab bar clearance (D3 / 3-PA1)', () => {
         button.props.style as (state: { pressed: boolean }) => object[]
       )({ pressed: false });
       expect(Object.assign({}, ...buttonStyle)).toMatchObject({
-        width: 32,
-        height: 32,
+        width: 44,
+        height: 44,
       });
       expect(button.props.hitSlop).toBe(6);
       expect(

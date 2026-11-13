@@ -42,6 +42,7 @@ vi.mock('expo-router', () => ({
   useFocusEffect: (effect: () => void) => harness.focusEffects.push(effect),
 }));
 vi.mock('react-native', () => ({
+  Platform: { OS: 'android' },
   BackHandler: { addEventListener: () => ({ remove() {} }) },
   FlatList: 'FlatList',
   View: 'View',

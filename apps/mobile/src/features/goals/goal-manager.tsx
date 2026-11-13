@@ -1,3 +1,4 @@
+import SegmentedButtons from '@/components/ui/native-segmented-buttons';
 import { FieldFeedback } from '@/components/field-feedback';
 import { amountError, dateError } from '@/utils/form-validation';
 import { uuid } from 'expo';
@@ -9,13 +10,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { BackHandler, View } from 'react-native';
+import { BackHandler, Platform, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   ProgressBar,
-  SegmentedButtons,
   Text,
   TextInput,
   useTheme,
@@ -115,6 +115,7 @@ export function GoalManager({
   }, [editing, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         back();
         return true;
@@ -183,6 +184,7 @@ export function GoalManager({
       headerRight={
         editing === undefined ? (
           <Button
+            hitSlop={4}
             mode="contained"
             icon="plus"
             disabled={busy || loading}
@@ -255,6 +257,7 @@ export function GoalManager({
             {error}
           </Text>
           <Button
+            hitSlop={4}
             disabled={busy || loading}
             onPress={() => {
               setLoading(true);
@@ -372,6 +375,7 @@ export function GoalManager({
 
             {archived ? (
               <Button
+                hitSlop={4}
                 mode="contained-tonal"
                 icon="restore"
                 disabled={busy}
@@ -387,6 +391,7 @@ export function GoalManager({
             ) : (
               <View style={[styles.row, { justifyContent: 'flex-end' }]}>
                 <Button
+                  hitSlop={4}
                   compact
                   mode="contained-tonal"
                   icon="pencil-outline"
@@ -399,6 +404,7 @@ export function GoalManager({
                   {vi.editGoal}
                 </Button>
                 <Button
+                  hitSlop={4}
                   compact
                   mode="text"
                   icon="archive-arrow-down-outline"
@@ -524,6 +530,7 @@ function GoalForm({
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         contentStyle={styles.button}
@@ -675,15 +682,15 @@ function GoalForm({
                 message={fieldState.error?.message}
               >
                 <MoneyInput
-                    error={!!fieldState.error}
-                    label={vi.goalManual}
-                    accessibilityLabel={vi.goalManual}
-                    value={field.value}
-                    disabled={disabled}
-                    onBlur={field.onBlur}
-                    left={<TextInput.Icon icon="piggy-bank-outline" />}
-                    onChangeText={field.onChange}
-                  />
+                  error={!!fieldState.error}
+                  label={vi.goalManual}
+                  accessibilityLabel={vi.goalManual}
+                  value={field.value}
+                  disabled={disabled}
+                  onBlur={field.onBlur}
+                  left={<TextInput.Icon icon="piggy-bank-outline" />}
+                  onChangeText={field.onChange}
+                />
               </FieldFeedback>
             )}
           />
@@ -692,8 +699,6 @@ function GoalForm({
           {vi.goalSourceHint}
         </Text>
       </View>
-
-
     </Screen>
   );
 }

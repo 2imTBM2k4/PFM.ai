@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentRef,
   type PropsWithChildren,
   type ReactNode,
@@ -10,7 +11,11 @@ import {
 import { RevealFieldContext } from './field-feedback';
 import { SymbolView } from 'expo-symbols';
 import { toSfSymbol } from '@/utils/sf-symbols';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  LinearTransition,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -19,6 +24,7 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   type StyleProp,
@@ -45,6 +51,8 @@ import {
 import { vi } from '@/messages/vi';
 import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import { usePreferences } from '@/state/preferences';
+
+const subscribeToHydration = () => () => {};
 
 /** Scrolls the focused field into view, favoring the last lines of tall notes. */
 export function getFieldScrollOffset(
@@ -95,6 +103,13 @@ export function Screen({
   scroll?: boolean;
 }>) {
   const palette = useFinancePalette();
+  const reduceMotion = useReducedMotion();
+  const layoutReady = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
+  const { fontScale = 1 } = useWindowDimensions();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const contentRef = useRef<ComponentRef<typeof View>>(null);
   const focusedField = useRef<ComponentRef<typeof View> | null>(null);
@@ -109,17 +124,22 @@ export function Screen({
           if (focusedField.current !== target) return;
           scrollRef.current?.scrollTo({
             y: getFieldScrollOffset(y, height, viewportHeight.current),
-            animated: true,
+            animated: !reduceMotion,
           });
         },
         () => {},
       );
     },
-    [],
+    [reduceMotion],
   );
   const designTheme = useDesignTheme();
   const insets = useSafeAreaInsets();
-  const { width, height, isDuoClosedPortrait } = useResponsiveLayout();
+  const measured = useResponsiveLayout();
+  // Server and first browser render must agree before applying viewport measurements.
+  const useMeasuredLayout = Platform.OS !== 'web' || layoutReady;
+  const width = useMeasuredLayout ? measured.width : 0;
+  const height = useMeasuredLayout ? measured.height : 0;
+  const isDuoClosedPortrait = useMeasuredLayout && measured.isDuoClosedPortrait;
   const cameraClearance = getCameraClearance(width, height, insets.top);
   const tabBarActive = hasTabBar ?? !inModal;
   const shouldHideTabBar = tabBarActive && (hideTabBar ?? Boolean(footer));
@@ -177,7 +197,7 @@ export function Screen({
       <Animated.View
         ref={contentRef}
         collapsable={false}
-        entering={FadeIn.duration(240)}
+        entering={reduceMotion ? undefined : FadeIn.duration(180)}
         style={[
           styles.column,
           scroll ? styles.scrollColumn : styles.fill,
@@ -226,11 +246,19 @@ export function Screen({
                 </Text>
               </Pressable>
             )}
-            <View style={styles.headerTitleRow}>
+            <View
+              style={[
+                styles.headerTitleRow,
+                fontScale > 1.3 && {
+                  flexDirection: 'column',
+                  alignItems: 'stretch',
+                },
+              ]}
+            >
               <View style={{ flex: 1, gap: 2 }}>
                 <Text
                   accessibilityRole="header"
-                  variant="headlineSmall"
+                  variant={onBack ? 'titleLarge' : 'headlineLarge'}
                   style={[
                     styles.screenTitle,
                     { color: designTheme.text.primary },
@@ -506,9 +534,10 @@ export function QuickTile({
 }) {
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
+  const reduceMotion = useReducedMotion();
   return (
     <Animated.View
-      layout={LinearTransition.duration(220)}
+      layout={reduceMotion ? undefined : LinearTransition.duration(180)}
       style={
         compact
           ? { width: 44, minHeight: 44, justifyContent: 'center' }
@@ -529,14 +558,14 @@ export function QuickTile({
             backgroundColor: designTheme.card.surface,
             borderColor: designTheme.card.border,
             opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-            transform: [{ scale: pressed ? 0.97 : 1 }],
+            transform: [{ scale: pressed && !reduceMotion ? 0.97 : 1 }],
           },
           style,
           compact && {
             flex: 0,
-            width: 32,
-            minWidth: 32,
-            height: 32,
+            width: 44,
+            minWidth: 44,
+            height: 44,
             paddingVertical: 0,
             paddingHorizontal: 0,
             alignSelf: 'center',
@@ -558,7 +587,6 @@ export function QuickTile({
         {!compact && (
           <Text
             variant="labelMedium"
-            numberOfLines={2}
             style={{
               color: palette.text,
               fontWeight: '600',
@@ -684,9 +712,9 @@ export const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.78)',
     shadowColor: '#433872',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0,
     shadowRadius: 18,
-    elevation: 4,
+    elevation: 0,
   },
   subtlePanel: {
     padding: 16,
@@ -704,6 +732,7 @@ export const styles = StyleSheet.create({
   },
   inlineRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 10,
   },

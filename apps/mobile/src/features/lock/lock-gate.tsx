@@ -51,30 +51,33 @@ export function LockGate({ children }: PropsWithChildren) {
   let content = children;
   if (deleting)
     content = (
-      <Screen title={vi.appName}>
+      <Screen title={vi.appName} hasTabBar={false}>
         <ActivityIndicator />
         <Text>{vi.deletingData}</Text>
       </Screen>
     );
   else if (deleteFailed)
     content = (
-      <Screen title={vi.appName}>
+      <Screen title={vi.appName} hasTabBar={false}>
         <Text accessibilityRole="alert">{vi.deleteError}</Text>
-        <Button onPress={deleteData}>{vi.retry}</Button>
+        <Button hitSlop={4} onPress={deleteData}>
+          {vi.retry}
+        </Button>
       </Screen>
     );
   else if (status === 'checking')
     content = (
-      <Screen title={vi.appName}>
+      <Screen title={vi.appName} hasTabBar={false}>
         <ActivityIndicator />
         <Text>{vi.pinChecking}</Text>
       </Screen>
     );
   else if (status === 'error')
     content = (
-      <Screen title={vi.lockTitle}>
+      <Screen title={vi.lockTitle} hasTabBar={false}>
         <Text accessibilityRole="alert">{vi[storageError]}</Text>
         <Button
+          hitSlop={4}
           contentStyle={styles.button}
           onPress={() => lockSession.getState().initialize()}
         >
@@ -106,7 +109,7 @@ export function LockGate({ children }: PropsWithChildren) {
             { backgroundColor: colors.background },
           ]}
         >
-          <Screen title={vi.appName}>
+          <Screen title={vi.appName} hasTabBar={false}>
             <Text>{vi.contentHidden}</Text>
           </Screen>
         </View>
@@ -134,7 +137,7 @@ function UnlockScreen() {
     }
   }
   return (
-    <Screen title={vi.lockTitle}>
+    <Screen title={vi.lockTitle} hasTabBar={false}>
       <PinField
         label={vi.pinLabel}
         value={pin}
@@ -148,6 +151,7 @@ function UnlockScreen() {
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         contentStyle={styles.button}
         disabled={busy || !pin}
@@ -157,6 +161,7 @@ function UnlockScreen() {
         {busy ? vi.pinWaiting : vi.pinUnlock}
       </Button>
       <Button
+        hitSlop={4}
         contentStyle={styles.button}
         disabled={busy}
         onPress={() => setForgotten(!forgotten)}

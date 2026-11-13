@@ -117,6 +117,7 @@ export function TransactionFilterForm({
       )}
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Button
+          hitSlop={4}
           mode="outlined"
           icon="filter-remove-outline"
           contentStyle={styles.compactButton}
@@ -127,6 +128,7 @@ export function TransactionFilterForm({
           {vi.filterClear}
         </Button>
         <Button
+          hitSlop={4}
           contentStyle={styles.compactButton}
           style={{ flex: 1 }}
           mode="contained"
@@ -243,13 +245,13 @@ export function TransactionFilterForm({
                 message={fieldState.error?.message}
               >
                 <DateField
-                    error={!!fieldState.error}
-                    label={name === 'from' ? vi.filterFrom : vi.filterTo}
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={disabled}
-                    allowClear
-                  />
+                  error={!!fieldState.error}
+                  label={name === 'from' ? vi.filterFrom : vi.filterTo}
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={disabled}
+                  allowClear
+                />
               </FieldFeedback>
             )}
           />
@@ -271,20 +273,20 @@ export function TransactionFilterForm({
               message={fieldState.error?.message}
             >
               <AppleMenuPicker
-                  label={vi.transactionKind}
-                  value={field.value}
-                  disabled={disabled}
-                  onSelect={(value) => {
-                    field.onChange(value);
-                    setValue('categoryId', '');
-                  }}
-                  options={[
-                    { value: '', label: vi.filterAll },
-                    { value: 'expense', label: vi.transactionExpense },
-                    { value: 'income', label: vi.transactionIncome },
-                    { value: 'transfer', label: vi.transactionTransfer },
-                  ]}
-                />
+                label={vi.transactionKind}
+                value={field.value}
+                disabled={disabled}
+                onSelect={(value) => {
+                  field.onChange(value);
+                  setValue('categoryId', '');
+                }}
+                options={[
+                  { value: '', label: vi.filterAll },
+                  { value: 'expense', label: vi.transactionExpense },
+                  { value: 'income', label: vi.transactionIncome },
+                  { value: 'transfer', label: vi.transactionTransfer },
+                ]}
+              />
             </FieldFeedback>
           )}
         />
@@ -297,18 +299,18 @@ export function TransactionFilterForm({
               message={fieldState.error?.message}
             >
               <AppleMenuPicker
-                  label={vi.transactionWallet}
-                  value={field.value}
-                  disabled={disabled}
-                  onSelect={field.onChange}
-                  options={[
-                    { value: '', label: vi.filterAll },
-                    ...wallets.map((w) => ({
-                      value: w.id,
-                      label: `${displayWalletName(w.name)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
-                    })),
-                  ]}
-                />
+                label={vi.transactionWallet}
+                value={field.value}
+                disabled={disabled}
+                onSelect={field.onChange}
+                options={[
+                  { value: '', label: vi.filterAll },
+                  ...wallets.map((w) => ({
+                    value: w.id,
+                    label: `${displayWalletName(w.name)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+                  })),
+                ]}
+              />
             </FieldFeedback>
           )}
         />
@@ -324,24 +326,22 @@ export function TransactionFilterForm({
               message={fieldState.error?.message}
             >
               <AppleMenuPicker
-                  label={vi.transactionCategory}
-                  value={field.value}
-                  disabled={disabled}
-                  onSelect={field.onChange}
-                  options={[
-                    { value: '', label: vi.filterAll },
-                    ...orderCategoriesByParent(categories).map((c) => ({
-                      value: c.id,
-                      label: `${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} › ` : ''}${displayCategoryName(c.name)}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
-                    })),
-                  ]}
-                />
+                label={vi.transactionCategory}
+                value={field.value}
+                disabled={disabled}
+                onSelect={field.onChange}
+                options={[
+                  { value: '', label: vi.filterAll },
+                  ...orderCategoriesByParent(categories).map((c) => ({
+                    value: c.id,
+                    label: `${c.parent_id ? `${displayCategoryName(categories.find((p) => p.id === c.parent_id)?.name)} › ` : ''}${displayCategoryName(c.name)}${c.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+                  })),
+                ]}
+              />
             </FieldFeedback>
           )}
         />
       </View>
-
-
     </Screen>
   );
 }

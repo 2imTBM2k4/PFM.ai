@@ -1,4 +1,13 @@
-import { Circle, Host, HStack, Image, Label, Menu, Picker, Text as SwiftUIText } from '@expo/ui/swift-ui';
+import {
+  Circle,
+  Host,
+  HStack,
+  Image,
+  Label,
+  Menu,
+  Picker,
+  Text as SwiftUIText,
+} from '@expo/ui/swift-ui';
 import {
   accessibilityLabel as accessibilityLabelModifier,
   background,
@@ -24,7 +33,10 @@ import { useDesignTheme } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { toSfSymbol } from '@/utils/sf-symbols';
 import type { AppleMenuPickerProps } from './apple-menu-picker';
-import { formatPickerOptionLabel, resolveSelectedOption } from './picker-helpers';
+import {
+  formatPickerOptionLabel,
+  resolveSelectedOption,
+} from './picker-helpers';
 
 /**
  * Native iOS menu picker backed by SwiftUI Menu and inline Picker with SF Symbols.
@@ -46,18 +58,13 @@ function AppleMenuPickerInner<T extends string | number>({
   );
   const displayTitle = selectedOption?.label ?? placeholder;
   const pillBackground =
-    theme.mode === 'dark'
-      ? 'rgba(255, 255, 255, 0.08)'
-      : 'rgba(0, 0, 0, 0.05)';
+    theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)';
   const selectedSfSymbol = toSfSymbol(selectedOption?.icon);
 
   return (
     <View style={[styles.container, disabled && styles.disabledContainer]}>
       <View style={styles.rowWrapper}>
-        <Text
-          numberOfLines={2}
-          style={[styles.rowLabel, { color: theme.text.primary }]}
-        >
+        <Text style={[styles.rowLabel, { color: theme.text.primary }]}>
           {label}
         </Text>
 

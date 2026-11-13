@@ -14,6 +14,8 @@ import {
   resetUnsavedGuards,
   resolveGuardLeave,
   unregisterUnsavedGuard,
+  getBlockingGuard,
+  subscribeUnsavedGuards,
 } from './unsaved-changes';
 
 vi.mock('react-native', () => ({
@@ -30,7 +32,6 @@ vi.mock('react-native-paper', () => ({
 vi.mock('@/state/preferences', () => ({
   usePreferences: () => 'vi',
 }));
-
 
 function makeDraft(overrides: Partial<EntryDraft> = {}): EntryDraft {
   return {
@@ -53,6 +54,53 @@ function makeDraft(overrides: Partial<EntryDraft> = {}): EntryDraft {
 }
 
 describe('unsaved changes helpers', () => {
+  it('keeps a transaction draft in its tab protected after a separate modal draft closes', () => {
+    const tab = {
+      id: 'transaction-form',
+      scope: 'tab' as const,
+      routeKey: 'transactions',
+      dirty: true,
+      saving: false,
+      saved: false,
+      onDiscard: vi.fn(),
+    };
+    registerUnsavedGuard(tab);
+    registerUnsavedGuard({
+      ...tab,
+      id: 'transaction-form-modal',
+      scope: 'modal',
+      routeKey: undefined,
+    });
+    expect(getBlockingGuard('modal')?.id).toBe('transaction-form-modal');
+    unregisterUnsavedGuard('transaction-form-modal');
+    expect(getBlockingGuard('modal')).toBeUndefined();
+    expect(getBlockingGuard('tab', 'transactions')).toBe(tab);
+  });
+  it('notifies native navigation when a matching draft becomes dirty, saves, or unmounts', () => {
+    resetUnsavedGuards();
+    const changed = vi.fn();
+    const unsubscribe = subscribeUnsavedGuards(changed);
+    const guard = {
+      id: 'native-form',
+      scope: 'modal' as const,
+      dirty: true,
+      saving: false,
+      saved: false,
+      onDiscard: vi.fn(),
+    };
+    registerUnsavedGuard(guard);
+    expect(getBlockingGuard('modal')).toBe(guard);
+    expect(getBlockingGuard('tab', 'settings')).toBeUndefined();
+    registerUnsavedGuard({ ...guard, saving: true, dirty: false });
+    expect(getBlockingGuard('modal')?.saving).toBe(true);
+    registerUnsavedGuard({ ...guard, saved: true });
+    expect(getBlockingGuard('modal')).toBeUndefined();
+    unregisterUnsavedGuard(guard.id);
+    expect(changed).toHaveBeenCalledTimes(4);
+    unsubscribe();
+    registerUnsavedGuard(guard);
+    expect(changed).toHaveBeenCalledTimes(4);
+  });
   beforeEach(() => {
     resetUnsavedGuards();
     setActiveLanguage('vi');
@@ -63,15 +111,23 @@ describe('unsaved changes helpers', () => {
   it('normalizes formatted money strings so reverting an edit is not dirty', () => {
     const initial = { amount: '50.000', note: 'C? ph?', walletId: 'w1' };
     expect(
-      haveFieldsChanged(initial, { amount: '50000', note: 'C? ph?', walletId: 'w1' }, {
-        moneyKeys: ['amount'],
-      }),
+      haveFieldsChanged(
+        initial,
+        { amount: '50000', note: 'C? ph?', walletId: 'w1' },
+        {
+          moneyKeys: ['amount'],
+        },
+      ),
     ).toBe(false);
 
     expect(
-      haveFieldsChanged(initial, { amount: '60000', note: 'C? ph?', walletId: 'w1' }, {
-        moneyKeys: ['amount'],
-      }),
+      haveFieldsChanged(
+        initial,
+        { amount: '60000', note: 'C? ph?', walletId: 'w1' },
+        {
+          moneyKeys: ['amount'],
+        },
+      ),
     ).toBe(true);
 
     expect(normalizeMoneyCompare('1,250.50', 'USD')).toBe('1250.50');
@@ -84,9 +140,9 @@ describe('unsaved changes helpers', () => {
     expect(areEntryDraftsChanged(base, [makeDraft({ amount: '30000' })])).toBe(
       false,
     );
-    expect(
-      areEntryDraftsChanged(base, [makeDraft({ selected: false })]),
-    ).toBe(true);
+    expect(areEntryDraftsChanged(base, [makeDraft({ selected: false })])).toBe(
+      true,
+    );
     expect(areEntryDraftsChanged(base, [makeDraft({ note: '?n tr?a' })])).toBe(
       true,
     );
@@ -98,7 +154,12 @@ describe('unsaved changes helpers', () => {
 
     // Clean: leaves immediately
     expect(
-      resolveGuardLeave({ dirty: false, saving: false, saved: false, onDiscard }),
+      resolveGuardLeave({
+        dirty: false,
+        saving: false,
+        saved: false,
+        onDiscard,
+      }),
     ).toBe(true);
     expect(onDiscard).toHaveBeenCalledTimes(1);
     expect(alertSpy).not.toHaveBeenCalled();
@@ -119,7 +180,12 @@ describe('unsaved changes helpers', () => {
 
     // Dirty: prompts and discards only when user chooses discard
     expect(
-      resolveGuardLeave({ dirty: true, saving: false, saved: false, onDiscard }),
+      resolveGuardLeave({
+        dirty: true,
+        saving: false,
+        saved: false,
+        onDiscard,
+      }),
     ).toBe(false);
     expect(alertSpy).toHaveBeenCalledTimes(1);
     const buttons = alertSpy.mock.calls[0]![2] as {

@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { budgetBannerItems, monthKey } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
@@ -38,7 +38,7 @@ import {
 import { readDashboard, type Dashboard } from '@/data/dashboard';
 import { prioritizePinnedWallets } from '@/data/wallets';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
-import { NotificationsView } from '@/features/notifications/notifications-view';
+
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
@@ -76,7 +76,7 @@ export function OverviewScreen({
   const [dismissedBannerKeys, setDismissedBannerKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
+
   const request = useRef(0);
   const hasLoadedOnce = useRef(false);
   const recurringVersion = useApp((state) => state.recurringVersion);
@@ -154,10 +154,6 @@ export function OverviewScreen({
       )
     : [];
 
-  if (showNotifications) {
-    return <NotificationsView onClose={() => setShowNotifications(false)} />;
-  }
-
   const headerActions = (
     <View
       style={[
@@ -173,7 +169,9 @@ export function OverviewScreen({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={vi.notificationsTitle}
-        onPress={() => setShowNotifications(true)}
+        onPress={() =>
+          router.push({ pathname: '/detail', params: { screen: 'alerts' } })
+        }
         style={({ pressed }) => [
           localStyles.circleHeaderBtn,
           !isDuoClosedPortrait && createSoftShadow(designTheme.mode, 'sm'),
@@ -202,49 +200,9 @@ export function OverviewScreen({
   return (
     <Screen
       title={vi.overviewTitle}
-      hideHeader
+      headerRight={isDuoClosedPortrait ? undefined : headerActions}
       rightRail={isDuoClosedPortrait ? headerActions : undefined}
     >
-      {/* Top Header: Avatar + Greeting + 2 Circular Action Buttons */}
-      <View style={localStyles.topHeader}>
-        <View style={localStyles.greetingGroup}>
-          <View
-            style={[
-              localStyles.avatarCircle,
-              createSoftShadow(designTheme.mode, 'sm'),
-              { backgroundColor: designTheme.brand.primary },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name="wallet-bifold-outline"
-              size={22}
-              color={designTheme.text.onPrimary}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text
-              variant="labelMedium"
-              style={{ color: designTheme.text.secondary, fontWeight: '600' }}
-            >
-              {vi.appName}
-            </Text>
-            <Text
-              accessibilityRole="header"
-              variant="titleLarge"
-              style={{
-                color: designTheme.text.primary,
-                fontWeight: '800',
-                letterSpacing: -0.4,
-              }}
-            >
-              {vi.overviewTitle}
-            </Text>
-          </View>
-        </View>
-
-        {!isDuoClosedPortrait && headerActions}
-      </View>
-
       {loading && !data && (
         <View style={localStyles.centerBox}>
           <ActivityIndicator size="large" accessibilityLabel={vi.loading} />
@@ -263,6 +221,7 @@ export function OverviewScreen({
             {vi.overviewLoadError}
           </Text>
           <Button
+            hitSlop={4}
             mode="contained-tonal"
             disabled={loading}
             onPress={() => void load(true)}
@@ -333,9 +292,6 @@ export function OverviewScreen({
                   </Pressable>
                 </View>
                 <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.7}
                   style={[
                     styles.number,
                     localStyles.heroBalanceText,
@@ -366,7 +322,6 @@ export function OverviewScreen({
                     color={designTheme.finance.incomeText}
                   />
                   <Text
-                    numberOfLines={1}
                     style={[
                       styles.number,
                       localStyles.heroStatNumber,
@@ -397,7 +352,6 @@ export function OverviewScreen({
                     color={designTheme.finance.expenseText}
                   />
                   <Text
-                    numberOfLines={1}
                     style={[
                       styles.number,
                       localStyles.heroStatNumber,
@@ -459,7 +413,7 @@ export function OverviewScreen({
                       <View style={{ flex: 1 }}>
                         <Text
                           variant="labelMedium"
-                          numberOfLines={1}
+
                           style={{
                             color: designTheme.text.secondary,
                             fontWeight: '600',
@@ -469,7 +423,7 @@ export function OverviewScreen({
                         </Text>
                         <Text
                           variant="bodyMedium"
-                          numberOfLines={1}
+
                           style={[
                             styles.number,
                             {
@@ -526,7 +480,7 @@ export function OverviewScreen({
                     </Text>
                     <Text
                       variant="titleMedium"
-                      numberOfLines={1}
+
                       style={{
                         fontWeight: '800',
                         color: designTheme.text.primary,
@@ -648,7 +602,7 @@ export function OverviewScreen({
                         <View style={styles.row}>
                           <Text
                             variant="labelMedium"
-                            numberOfLines={1}
+
                             style={{
                               color: designTheme.text.primary,
                               fontWeight: '600',
@@ -755,7 +709,7 @@ export function OverviewScreen({
                             <View style={{ flex: 1, gap: 3 }}>
                               <Text
                                 variant="bodyLarge"
-                                numberOfLines={1}
+
                                 style={{
                                   fontWeight: '700',
                                   color: designTheme.text.primary,
@@ -787,8 +741,7 @@ export function OverviewScreen({
                           >
                             <Text
                               variant="bodyLarge"
-                              numberOfLines={1}
-                              adjustsFontSizeToFit
+
                               minimumFontScale={0.75}
                               style={[
                                 styles.number,
@@ -901,8 +854,7 @@ const localStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
     gap: 12,
   },
@@ -912,14 +864,22 @@ const localStyles = StyleSheet.create({
     gap: 6,
   },
   eyeIconButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: 2,
     borderRadius: DesignRadius.pill,
   },
   heroIncomeExpenseBlock: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
   },
   heroStatPill: {
+    flex: 1,
+    minWidth: 120,
+    flexWrap: 'wrap',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -953,7 +913,7 @@ const localStyles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: DesignRadius.md,
     borderWidth: 1,
-    width: 170,
+    width: 210,
     flexShrink: 0,
   },
   summaryGrid: {
@@ -964,7 +924,7 @@ const localStyles = StyleSheet.create({
   summaryCardItem: {
     flexGrow: 1,
     flexBasis: '47%',
-    minWidth: 0,
+    minWidth: 150,
   },
   summaryCardWide: {
     flexGrow: 0,

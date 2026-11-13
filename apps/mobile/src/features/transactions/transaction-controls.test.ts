@@ -1,6 +1,9 @@
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { expect, it, vi } from 'vitest';
 import { TransactionManager } from './transaction-manager';
+vi.mock('@/components/platform-icon', () => ({
+  default: 'MaterialCommunityIcons',
+}));
 
 const harness = vi.hoisted(() => ({
   values: [] as unknown[],
@@ -48,6 +51,7 @@ vi.mock('expo', () => ({ uuid: { v4: () => 'new' } }));
 vi.mock('expo-router', () => ({ useFocusEffect: () => {} }));
 vi.mock('@expo/vector-icons', () => ({ MaterialCommunityIcons: 'Icon' }));
 vi.mock('react-native', () => ({
+  Platform: { OS: 'android' },
   FlatList: 'FlatList',
   ScrollView: 'ScrollView',
   View: 'View',

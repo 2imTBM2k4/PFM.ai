@@ -66,6 +66,7 @@ vi.mock('react', async (importOriginal) => {
 });
 
 vi.mock('react-native', () => ({
+  useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
   View: 'View',
   Text: 'RNText',
   Pressable: 'Pressable',
@@ -90,6 +91,7 @@ vi.mock('react-native', () => ({
 }));
 
 vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
   default: { View: 'Animated.View' },
   useSharedValue: (initial: number) => ({ value: initial, set: vi.fn() }),
   useAnimatedStyle: (fn: () => Record<string, unknown>) => fn(),
@@ -281,8 +283,11 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
       );
       expect(buttons[0]!.props.accessibilityState).toEqual({ selected: true });
       expect(
-        Object.assign({}, ...(buttons[0]!.props.style as object[])),
-      ).toMatchObject({ width: 32, height: 32 });
+        Object.assign(
+          {},
+          ...(buttons[0]!.props.style as object[]).flat(Infinity),
+        ),
+      ).toMatchObject({ width: 44, height: 44 });
       expect(
         collectElements(compact, (element) => element.type === 'RNText'),
       ).toHaveLength(0);
@@ -365,6 +370,14 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
       'wallet-outline',
       'chart-donut',
       'repeat',
+      'eye-outline',
+      'bell-outline',
+      'shield-lock-outline',
+      'database-remove-outline',
+      'magnify',
+      'pencil-outline',
+      'receipt-text-outline',
+      'wallet-plus-outline',
     ]) {
       expect(toSfSymbol(icon)).not.toBe('circle');
     }

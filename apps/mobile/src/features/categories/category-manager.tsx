@@ -1,19 +1,19 @@
+import SegmentedButtons from '@/components/ui/native-segmented-buttons';
 import { useTransientState } from '@/hooks/use-transient-state';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import type { CategoryInput } from '@pfm/contracts';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { BackHandler, FlatList, Pressable, View } from 'react-native';
+import { BackHandler, Platform, FlatList, Pressable, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   HelperText,
-  SegmentedButtons,
   Switch,
   Text,
   TextInput,
@@ -101,6 +101,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
 
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         back();
         return true;
@@ -234,6 +235,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
         scroll={false}
         headerRight={
           <Button
+            hitSlop={4}
             contentStyle={styles.compactButton}
             mode="contained"
             icon="plus"
@@ -294,7 +296,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
             <Text accessibilityRole="alert" style={{ color: colors.error }}>
               {error}
             </Text>
-            <Button disabled={loading} onPress={reload}>
+            <Button hitSlop={4} disabled={loading} onPress={reload}>
               {vi.retry}
             </Button>
           </View>
@@ -390,6 +392,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
       scroll={false}
       headerRight={
         <Button
+          hitSlop={4}
           contentStyle={styles.compactButton}
           mode="contained"
           icon="plus"
@@ -451,7 +454,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
           <Text accessibilityRole="alert" style={{ color: colors.error }}>
             {error}
           </Text>
-          <Button disabled={loading} onPress={reload}>
+          <Button hitSlop={4} disabled={loading} onPress={reload}>
             {vi.retry}
           </Button>
         </View>
@@ -585,6 +588,7 @@ const ParentCategoryCard = memo(function ParentCategoryCard({
 
       {category.is_archived ? (
         <Button
+          hitSlop={4}
           mode="contained-tonal"
           icon="restore"
           disabled={busy}
@@ -601,6 +605,7 @@ const ParentCategoryCard = memo(function ParentCategoryCard({
           ]}
         >
           <Button
+            hitSlop={4}
             compact
             mode="text"
             icon="format-list-bulleted"
@@ -612,6 +617,7 @@ const ParentCategoryCard = memo(function ParentCategoryCard({
 
           <View style={{ flexDirection: 'row', gap: 4 }}>
             <Button
+              hitSlop={4}
               compact
               mode="contained-tonal"
               icon="pencil-outline"
@@ -621,6 +627,7 @@ const ParentCategoryCard = memo(function ParentCategoryCard({
               {vi.editCategory}
             </Button>
             <Button
+              hitSlop={4}
               compact
               mode="text"
               icon="archive-arrow-down-outline"
@@ -704,6 +711,7 @@ const CategoryItem = memo(function CategoryItem({
 
       {category.is_archived ? (
         <Button
+          hitSlop={4}
           mode="contained-tonal"
           icon="restore"
           disabled={busy}
@@ -715,6 +723,7 @@ const CategoryItem = memo(function CategoryItem({
       ) : (
         <View style={[styles.row, { justifyContent: 'flex-end' }]}>
           <Button
+            hitSlop={4}
             compact
             mode="contained-tonal"
             icon="pencil-outline"
@@ -724,6 +733,7 @@ const CategoryItem = memo(function CategoryItem({
             {vi.editCategory}
           </Button>
           <Button
+            hitSlop={4}
             compact
             mode="text"
             icon="archive-arrow-down-outline"
@@ -1071,6 +1081,7 @@ function CategoryForm({
       )}
 
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         contentStyle={styles.button}
@@ -1215,6 +1226,7 @@ function ArchiveForm({
       )}
 
       <Button
+        hitSlop={4}
         mode="contained"
         icon="archive-arrow-down-outline"
         contentStyle={styles.button}

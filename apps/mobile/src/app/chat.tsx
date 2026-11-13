@@ -1,4 +1,5 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { NativeRouteGuard } from '@/components/native-route-guard';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { uuid } from 'expo';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -136,11 +137,12 @@ function SwipeDeleteAction({
  */
 export default function Chat({
   onClose,
-  isModal = false,
+  isModal = true,
 }: {
   onClose?: () => void;
   isModal?: boolean;
 } = {}) {
+  useEffect(() => () => usePreferences.getState().closeChat(), []);
   const [messages, setMessages] = useState<ChatRow[]>([]);
   const [aiReplies, setAiReplies] = useState<Record<string, AIResponsePayload>>(
     {},
@@ -287,10 +289,7 @@ export default function Chat({
         if (isAppBackground || isAwayFromChat) {
           void notifyAIReplyCompleted(reply.replyText);
         }
-        if (
-          !mounted.current ||
-          useApp.getState().chatSessionId !== sessionId
-        )
+        if (!mounted.current || useApp.getState().chatSessionId !== sessionId)
           return;
         setAiReplies((current) => ({
           ...current,
@@ -567,12 +566,13 @@ export default function Chat({
 
   return (
     <GestureHandlerRootView style={styles.fill}>
+      <NativeRouteGuard scope="modal" />
       <SafeAreaView edges={isModal ? [] : ['bottom']} style={styles.fill}>
         <Screen
           title={vi.chat}
           scroll={false}
-          onBack={onClose ?? (() => router.navigate('/'))}
-          hideHeader={isModal}
+          onBack={onClose ?? (() => router.back())}
+          hideHeader={false}
           inModal={isModal}
           headerRight={
             <View style={localStyles.headerActions}>
@@ -665,6 +665,7 @@ export default function Chat({
                 {vi.chatLoadError}
               </Text>
               <Button
+                hitSlop={4}
                 disabled={loading}
                 onPress={() => void load(cursor.current)}
               >
@@ -740,7 +741,7 @@ export default function Chat({
                     )}
                     <Text
                       variant="titleMedium"
-                      numberOfLines={2}
+
                       style={{ color: theme.text.primary }}
                     >
                       {session.title}
@@ -757,6 +758,7 @@ export default function Chat({
               ))}
               {selecting && (
                 <Button
+                  hitSlop={4}
                   mode="contained"
                   disabled={!selectedIds.length || deleting}
                   onPress={confirmBulkDelete}
@@ -895,6 +897,7 @@ export default function Chat({
                     <ActivityIndicator accessibilityLabel={vi.loading} />
                   ) : more ? (
                     <Button
+                      hitSlop={4}
                       mode="outlined"
                       disabled={loading}
                       onPress={() => void load(cursor.current)}
@@ -913,11 +916,11 @@ export default function Chat({
               chatSessionId={activeSessionId}
               adviceFollowup={Boolean(
                 messages[0] &&
-                  aiReplies[messages[0].id] &&
-                  (classifyAdviceScope(messages[0].text).status === 'allowed' ||
-                    aiReplies[messages[0].id].replyText.includes('?') ||
-                    parseAdviceQuery(messages[0].text, [], ADVICE_CLOCK)
-                      .range !== null),
+                aiReplies[messages[0].id] &&
+                (classifyAdviceScope(messages[0].text).status === 'allowed' ||
+                  aiReplies[messages[0].id].replyText.includes('?') ||
+                  parseAdviceQuery(messages[0].text, [], ADVICE_CLOCK).range !==
+                    null),
               )}
               disabled={loading || loadError}
               onMessage={onMessage}

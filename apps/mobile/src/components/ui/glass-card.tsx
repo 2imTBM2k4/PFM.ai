@@ -10,6 +10,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  useReducedMotion,
 } from 'react-native-reanimated';
 import {
   createSoftShadow,
@@ -41,6 +42,7 @@ export function GlassCard({
   accessibilityLabel,
 }: GlassCardProps) {
   const theme = useDesignTheme();
+  const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -87,10 +89,12 @@ export function GlassCard({
         accessibilityLabel={accessibilityLabel}
         onPress={onPress}
         onPressIn={() => {
-          scale.set(withSpring(0.98, { damping: 18, stiffness: 280 }));
+          if (!reduceMotion)
+            scale.set(withSpring(0.98, { damping: 18, stiffness: 280 }));
         }}
         onPressOut={() => {
-          scale.set(withSpring(1, { damping: 18, stiffness: 280 }));
+          if (!reduceMotion)
+            scale.set(withSpring(1, { damping: 18, stiffness: 280 }));
         }}
         style={cardStyle}
       >

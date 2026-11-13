@@ -175,6 +175,7 @@ export function EntryConfirmation({
               </Text>
             )}
             <Button
+              hitSlop={4}
               mode="contained"
               contentStyle={styles.button}
               disabled={disabled || !values.some((entry) => entry.selected)}
@@ -188,6 +189,7 @@ export function EntryConfirmation({
               {vi.quickSave}
             </Button>
             <Button
+              hitSlop={4}
               contentStyle={styles.button}
               disabled={disabled}
               onPress={requestLeave}
@@ -502,6 +504,7 @@ function CandidateFields({
         {formatDisplayDate(draft.date) || vi.quickInvalidDate}
       </Text>
       <Button
+        hitSlop={4}
         mode="outlined"
         contentStyle={styles.compactButton}
         disabled={disabled}

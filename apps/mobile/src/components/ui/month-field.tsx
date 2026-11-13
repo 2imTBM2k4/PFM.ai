@@ -203,6 +203,7 @@ export function MonthField({
 
             <View style={styles.sheetActions}>
               <Button
+                hitSlop={4}
                 mode="text"
                 onPress={() => choose(currentMonthKey)}
                 textColor={theme.brand.primaryText}
@@ -211,6 +212,7 @@ export function MonthField({
               </Button>
               {allowClear && (
                 <Button
+                  hitSlop={4}
                   mode="text"
                   onPress={() => choose('')}
                   textColor={theme.finance.expense}
@@ -218,7 +220,7 @@ export function MonthField({
                   {vi.clear}
                 </Button>
               )}
-              <Button mode="text" onPress={() => setOpen(false)}>
+              <Button hitSlop={4} mode="text" onPress={() => setOpen(false)}>
                 {vi.cancel}
               </Button>
             </View>

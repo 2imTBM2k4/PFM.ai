@@ -1,3 +1,4 @@
+import SegmentedButtons from '@/components/ui/native-segmented-buttons';
 import { useTransientState } from '@/hooks/use-transient-state';
 import { uuid } from 'expo';
 import { SymbolView } from 'expo-symbols';
@@ -15,7 +16,6 @@ import {
   Button,
   Divider,
   HelperText,
-  SegmentedButtons,
   Switch,
   Text,
   TextInput,
@@ -119,6 +119,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
   }, [editing, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
         () => {
@@ -230,6 +231,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
       scroll={false}
       headerRight={
         <Button
+          hitSlop={4}
           mode="contained"
           icon="plus"
           contentStyle={styles.compactButton}
@@ -284,7 +286,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
           <Text accessibilityRole="alert" style={{ color: colors.error }}>
             {error}
           </Text>
-          <Button disabled={busy || loading} onPress={reload}>
+          <Button hitSlop={4} disabled={busy || loading} onPress={reload}>
             {vi.retry}
           </Button>
         </View>
@@ -390,6 +392,7 @@ const WalletItem = memo(function WalletItem({
           </Text>
           <View style={styles.row}>
             <Button
+              hitSlop={4}
               mode="contained-tonal"
               disabled={busy}
               onPress={async () => {
@@ -399,6 +402,7 @@ const WalletItem = memo(function WalletItem({
               {vi.archiveWallet}
             </Button>
             <Button
+              hitSlop={4}
               mode="text"
               disabled={busy}
               onPress={() => setConfirming(false)}
@@ -409,6 +413,7 @@ const WalletItem = memo(function WalletItem({
         </View>
       ) : wallet.is_archived ? (
         <Button
+          hitSlop={4}
           mode="contained-tonal"
           icon="restore"
           contentStyle={styles.button}
@@ -421,6 +426,7 @@ const WalletItem = memo(function WalletItem({
         <View style={styles.row}>
           <View style={[styles.inlineRow, { flexWrap: 'wrap' }]}>
             <Button
+              hitSlop={4}
               compact
               mode={pinned ? 'contained-tonal' : 'text'}
               icon={
@@ -444,6 +450,7 @@ const WalletItem = memo(function WalletItem({
               {pinned ? vi.unpinWallet : vi.pinWallet}
             </Button>
             <Button
+              hitSlop={4}
               compact
               mode="contained-tonal"
               icon="pencil-outline"
@@ -453,6 +460,7 @@ const WalletItem = memo(function WalletItem({
               {vi.editWallet}
             </Button>
             <Button
+              hitSlop={4}
               compact
               mode="text"
               icon="archive-arrow-down-outline"
@@ -652,6 +660,7 @@ function WalletForm({
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         contentStyle={styles.button}

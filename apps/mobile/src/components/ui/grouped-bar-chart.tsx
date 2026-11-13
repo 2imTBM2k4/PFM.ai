@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
-import { formatCompactMoney as formatCompactVnd, formatMoney as formatVnd } from '@/utils/display-money';
+import {
+  formatCompactMoney as formatCompactVnd,
+  formatMoney as formatVnd,
+} from '@/utils/display-money';
 import { DesignSpacing, useDesignTheme } from '@/constants/theme';
 
 export interface GroupedBarPoint {
@@ -37,6 +40,7 @@ export function GroupedBarChart({
   accessibilityLabel,
 }: GroupedBarChartProps) {
   const theme = useDesignTheme();
+  const { fontScale = 1 } = useWindowDimensions();
   const resolvedIncome = incomeColor ?? theme.finance.income;
   const resolvedExpense = expenseColor ?? theme.finance.expense;
   const scale = useMemo(() => buildScale(data), [data]);
@@ -48,6 +52,34 @@ export function GroupedBarChart({
           `${point.label}: ${incomeLabel} ${formatVnd(point.income)}, ${expenseLabel} ${formatVnd(point.expense)}`,
       )
       .join('. ');
+
+  if (fontScale > 1.3) {
+    return (
+      <View accessible accessibilityLabel={summary} style={styles.container}>
+        {data.map((point) => (
+          <View
+            key={point.label}
+            style={{
+              gap: 4,
+              paddingVertical: 8,
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: theme.card.border,
+            }}
+          >
+            <Text variant="titleSmall" style={{ color: theme.text.primary }}>
+              {point.label}
+            </Text>
+            <Text
+              style={{ color: theme.finance.incomeText }}
+            >{`${incomeLabel}: ${formatVnd(point.income)}`}</Text>
+            <Text
+              style={{ color: theme.finance.expenseText }}
+            >{`${expenseLabel}: ${formatVnd(point.expense)}`}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -67,7 +99,7 @@ export function GroupedBarChart({
             <Text
               key={tick}
               variant="labelSmall"
-              numberOfLines={1}
+
               style={[styles.yLabel, { color: theme.text.muted }]}
             >
               {formatValue(tick)}
@@ -131,7 +163,7 @@ export function GroupedBarChart({
               <Text
                 key={`label-${point.label}`}
                 variant="labelSmall"
-                numberOfLines={1}
+
                 style={[styles.xLabel, { color: theme.text.secondary }]}
               >
                 {point.label}
@@ -218,7 +250,7 @@ const styles = StyleSheet.create({
     paddingRight: 2,
   },
   yLabel: {
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 12,
     textAlign: 'right',
   },
@@ -265,6 +297,6 @@ const styles = StyleSheet.create({
   xLabel: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 10,
+    fontSize: 11,
   },
 });

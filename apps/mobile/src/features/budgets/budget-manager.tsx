@@ -1,3 +1,4 @@
+import SegmentedButtons from '@/components/ui/native-segmented-buttons';
 import { useTransientState } from '@/hooks/use-transient-state';
 import { useCurrentDate } from '@/hooks/use-current-date';
 import { FieldFeedback } from '@/components/field-feedback';
@@ -23,14 +24,19 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { BackHandler, FlatList, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  Platform,
+  FlatList,
+  StyleSheet,
+  View,
+} from 'react-native';
 import {
   ActivityIndicator,
   Button,
   Divider,
   IconButton,
   ProgressBar,
-  SegmentedButtons,
   Switch,
   Text,
   TextInput,
@@ -157,6 +163,7 @@ export function BudgetManager({
   }, [mode.type, leaveForm]);
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         if (mode.type === 'list') return false;
         back();
@@ -308,6 +315,7 @@ export function BudgetManager({
       </View>
 
       <Button
+        hitSlop={4}
         mode="contained"
         icon="plus"
         contentStyle={styles.button}
@@ -352,7 +360,7 @@ export function BudgetManager({
           <Text accessibilityRole="alert" style={{ color: colors.error }}>
             {error}
           </Text>
-          <Button disabled={loading || busy} onPress={load}>
+          <Button hitSlop={4} disabled={loading || busy} onPress={load}>
             {vi.retry}
           </Button>
         </View>
@@ -574,6 +582,7 @@ const BudgetItem = memo(function BudgetItem({
       <Divider style={{ backgroundColor: palette.borderSubtle }} />
       <View style={[styles.row, { justifyContent: 'flex-end' }]}>
         <Button
+          hitSlop={4}
           compact
           mode="contained-tonal"
           icon="pencil-outline"
@@ -583,6 +592,7 @@ const BudgetItem = memo(function BudgetItem({
           {vi.editBudget}
         </Button>
         <Button
+          hitSlop={4}
           compact
           mode="outlined"
           icon={row.is_active ? 'pause' : 'play'}
@@ -740,6 +750,7 @@ function BudgetForm({
       )}
 
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         contentStyle={styles.button}

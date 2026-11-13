@@ -16,7 +16,9 @@ export default function Budgets() {
   };
 
   if (activeTab === 'goals') {
-    return <GoalManager guardRouteKey="budgets" onSwitchTab={handleSwitchTab} />;
+    return (
+      <GoalManager guardRouteKey="budgets" onSwitchTab={handleSwitchTab} />
+    );
   }
 
   if (activeTab === 'stats') {

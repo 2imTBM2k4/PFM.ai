@@ -1,8 +1,10 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import {
   DarkTheme,
   DefaultTheme,
   ThemeProvider,
+  Stack,
+  useRouter,
   type ErrorBoundaryProps,
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -17,11 +19,11 @@ import {
   MD3LightTheme,
   PaperProvider,
   Text,
+  configureFonts,
 } from 'react-native-paper';
-import AppTabs from '@/components/app-tabs';
 import { Onboarding } from '@/components/onboarding';
 import { Screen } from '@/components/screen';
-import { DesignColors } from '@/constants/design-tokens';
+import { DesignColors, DesignTextStyles } from '@/constants/design-tokens';
 import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
@@ -29,24 +31,26 @@ import { LockGate } from '@/features/lock/lock-gate';
 import { BackupWatcher } from '@/features/backup/mobile';
 import { BudgetNotificationWatcher } from '@/features/budgets/notification-watcher';
 import { RecurringWatcher } from '@/features/recurring/watcher';
-import { AddTransactionModal } from '@/features/transactions/add-transaction-modal';
-import { AIChatModal } from '@/features/chat/ai-chat-modal';
 import { DeleteDataControl } from '@/components/delete-data-control';
+
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 /**
  * Global route error boundary fallback screen.
  */
 export function ErrorBoundary({ retry }: ErrorBoundaryProps) {
   return (
-    <Screen title={vi.appName}>
+    <Screen title={vi.appName} hasTabBar={false}>
       <Text>{vi.screenError}</Text>
-      <Button onPress={retry}>{vi.retry}</Button>
+      <Button hitSlop={4} onPress={retry}>
+        {vi.retry}
+      </Button>
     </Screen>
   );
 }
 
 /**
- * Root application layout synchronizing native iOS appearance, Pastel Sunset tokens, and tabs.
+ * Root layout synchronizing native appearance, semantic type styles, and navigation.
  */
 export default function RootLayout() {
   const themeMode = usePreferences((state) => state.themeMode);
@@ -62,8 +66,7 @@ export default function RootLayout() {
   }, [hydratePreferences]);
 
   useEffect(() => {
-    // Synchronize native iOS/Android window color scheme with the app's selected themeMode
-    // so NativeTabs Liquid Glass and native surfaces stay bright in Light Mode even if OS Dark Mode is on.
+    // Keep system controls synchronized with the selected app appearance.
     try {
       Appearance.setColorScheme(themeMode);
     } catch {
@@ -77,7 +80,8 @@ export default function RootLayout() {
   const base = dark ? MD3DarkTheme : MD3LightTheme;
   const theme = {
     ...base,
-    roundness: 20,
+    roundness: 12,
+    fonts: configureFonts({ config: DesignTextStyles }),
     colors: {
       ...base.colors,
       primary: tokens.brand.primaryStrong,
@@ -142,15 +146,17 @@ function ApplicationContent() {
     void initialize();
   }, [initialize]);
   return status === 'error' ? (
-    <Screen title={vi.appName}>
+    <Screen title={vi.appName} hasTabBar={false}>
       <Text accessibilityRole="alert">
         {Platform.OS === 'web' ? vi.expoGoOnly : vi[startupError]}
       </Text>
-      <Button onPress={initialize}>{vi.retry}</Button>
+      <Button hitSlop={4} onPress={initialize}>
+        {vi.retry}
+      </Button>
       <DeleteDataControl />
     </Screen>
   ) : status !== 'ready' ? (
-    <Screen title={vi.appName}>
+    <Screen title={vi.appName} hasTabBar={false}>
       <ActivityIndicator accessibilityLabel={vi.loading} />
       <Text>{vi.loading}</Text>
     </Screen>
@@ -161,10 +167,52 @@ function ApplicationContent() {
       <BudgetNotificationWatcher />
       <RecurringWatcher />
       <BackupWatcher />
-      <AppTabs />
-      <AddTransactionModal />
-      <AIChatModal />
+      <ApplicationNavigator />
     </>
+  );
+}
+
+/** Presents primary destinations, drill-down screens and focused tasks with native navigation. */
+function ApplicationNavigator() {
+  const router = useRouter();
+  const tokens = DesignColors[usePreferences((state) => state.themeMode)];
+  const addOpen = usePreferences((state) => state.isAddTransactionOpen);
+  const chatOpen = usePreferences((state) => state.isChatOpen);
+  useEffect(() => {
+    if (addOpen) router.push('/add-transaction');
+  }, [addOpen, router]);
+  useEffect(() => {
+    if (chatOpen) router.push('/chat');
+  }, [chatOpen, router]);
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: tokens.sky.upperMid },
+        gestureEnabled: true,
+      }}
+    >
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="detail" />
+      <Stack.Screen
+        name="add-transaction"
+        options={{
+          presentation: Platform.OS === 'ios' ? 'formSheet' : 'modal',
+          sheetAllowedDetents: [1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 28,
+        }}
+      />
+      <Stack.Screen
+        name="chat"
+        options={{
+          presentation: Platform.OS === 'ios' ? 'formSheet' : 'modal',
+          sheetAllowedDetents: [1],
+          sheetGrabberVisible: true,
+          sheetCornerRadius: 28,
+        }}
+      />
+    </Stack>
   );
 }
 

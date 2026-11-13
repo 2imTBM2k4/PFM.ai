@@ -5,7 +5,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { FocusAwareTextInput } from '@/components/field-feedback';
 import { useTransientState } from '@/hooks/use-transient-state';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import { parseEntry, today, validateDate, type ParseResult } from '@pfm/domain';
@@ -19,6 +19,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   BackHandler,
+  Platform,
   Keyboard,
   FlatList,
   Pressable,
@@ -272,6 +273,7 @@ export function TransactionManager({
 
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         if (mode.type === 'list') return false;
         back();
@@ -529,6 +531,7 @@ export function TransactionManager({
 
         <View style={localStyles.detailActions}>
           <Button
+            hitSlop={4}
             mode="contained"
             icon="pencil-outline"
             buttonColor={theme.brand.primaryStrong}
@@ -541,6 +544,7 @@ export function TransactionManager({
             {vi.editTransaction}
           </Button>
           <Button
+            hitSlop={4}
             mode="outlined"
             icon="trash-can-outline"
             textColor={palette.danger}
@@ -621,6 +625,7 @@ export function TransactionManager({
           </Text>
         )}
         <Button
+          hitSlop={4}
           mode="contained"
           buttonColor={colors.error}
           icon="trash-can-outline"
@@ -636,6 +641,7 @@ export function TransactionManager({
           {vi.deleteTransaction}
         </Button>
         <Button
+          hitSlop={4}
           mode="outlined"
           contentStyle={styles.button}
           disabled={busy}
@@ -828,6 +834,7 @@ export function TransactionManager({
               {vi.transactionDeleted}
             </Text>
             <Button
+              hitSlop={4}
               compact
               mode="contained-tonal"
               disabled={busy || loading}
@@ -857,7 +864,7 @@ export function TransactionManager({
           <Text accessibilityRole="alert" style={{ color: colors.error }}>
             {error}
           </Text>
-          <Button disabled={busy || loading} onPress={load}>
+          <Button hitSlop={4} disabled={busy || loading} onPress={load}>
             {vi.retry}
           </Button>
         </View>
@@ -901,6 +908,7 @@ export function TransactionManager({
             ListFooterComponent={
               more ? (
                 <Button
+                  hitSlop={4}
                   mode="outlined"
                   contentStyle={styles.button}
                   disabled={busy}
@@ -1008,96 +1016,98 @@ const TransactionItem = memo(function TransactionItem({
       : null;
 
   return (
-    <GlassCard
-      variant="elevated"
-      radius="lg"
-      padding={16}
-      onPress={() => onPress(row)}
-      style={{ gap: 10 }}
-    >
-      <View style={styles.row}>
-        <View style={[styles.inlineRow, { flex: 1 }]}>
-          <IconBadge
-            icon={badgeIcon}
-            bg={badgeBg}
-            fg={category?.color ?? badgeFg}
-            size={42}
-            iconSize={20}
-          />
-          <View style={{ flex: 1, gap: 4 }}>
-            <View style={[styles.inlineRow, { gap: 6 }]}>
-              <Text
-                variant="titleMedium"
-                numberOfLines={1}
-                style={{
-                  fontWeight: '700',
-                  color: theme.text.primary,
-                  flexShrink: 1,
-                }}
-              >
-                {categoryTitle ?? kindTitle}
+    <GlassCard variant="elevated" radius="lg" padding={16} style={{ gap: 10 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${categoryTitle ?? kindTitle}. ${formatEntryAmount(row)}. ${formatDisplayDate(row.occurred_on)}. ${row.note ?? ''}`}
+        disabled={busy}
+        onPress={() => onPress(row)}
+        style={{ minHeight: 44, gap: 10 }}
+      >
+        <View style={styles.row}>
+          <View style={[styles.inlineRow, { flex: 1 }]}>
+            <IconBadge
+              icon={badgeIcon}
+              bg={badgeBg}
+              fg={category?.color ?? badgeFg}
+              size={42}
+              iconSize={20}
+            />
+            <View style={{ flex: 1, gap: 4 }}>
+              <View style={[styles.inlineRow, { gap: 6 }]}>
+                <Text
+                  variant="titleMedium"
+
+                  style={{
+                    fontWeight: '700',
+                    color: theme.text.primary,
+                    flexShrink: 1,
+                  }}
+                >
+                  {categoryTitle ?? kindTitle}
+                </Text>
+                <Pill
+                  label={kindTitle}
+                  tone={isIncome ? 'income' : isExpense ? 'expense' : 'primary'}
+                  size="sm"
+                />
+              </View>
+              <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+                {formatDisplayDate(row.occurred_on)} ·{' '}
+                {displayWalletName(
+                  wallets.find((w) => w.id === row.wallet_id)?.name,
+                )}
+                {row.to_wallet_id
+                  ? ` → ${wallets.find((w) => w.id === row.to_wallet_id)?.name ?? ''}`
+                  : ''}
               </Text>
-              <Pill
-                label={kindTitle}
-                tone={isIncome ? 'income' : isExpense ? 'expense' : 'primary'}
-                size="sm"
-              />
             </View>
-            <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-              {formatDisplayDate(row.occurred_on)} ·{' '}
-              {displayWalletName(
-                wallets.find((w) => w.id === row.wallet_id)?.name,
-              )}
-              {row.to_wallet_id
-                ? ` → ${wallets.find((w) => w.id === row.to_wallet_id)?.name ?? ''}`
-                : ''}
-            </Text>
           </View>
+          <Text
+            variant="titleMedium"
+
+            minimumFontScale={0.75}
+            style={[
+              styles.number,
+              {
+                fontWeight: '800',
+                maxWidth: '44%',
+                color: isIncome
+                  ? theme.finance.incomeText
+                  : isExpense
+                    ? theme.finance.expenseText
+                    : theme.text.primary,
+              },
+            ]}
+          >
+            {row.kind === 'expense' ? '−' : row.kind === 'income' ? '+' : ''}
+            {formatEntryAmount(row)}
+          </Text>
         </View>
-        <Text
-          variant="titleMedium"
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
-          style={[
-            styles.number,
-            {
-              fontWeight: '800',
-              maxWidth: '44%',
-              color: isIncome
-                ? theme.finance.incomeText
-                : isExpense
-                  ? theme.finance.expenseText
-                  : theme.text.primary,
-            },
-          ]}
-        >
-          {row.kind === 'expense' ? '−' : row.kind === 'income' ? '+' : ''}
-          {formatEntryAmount(row)}
-        </Text>
-      </View>
 
-      {!!row.note && (
-        <Text variant="bodyMedium" style={{ color: theme.text.primary }}>
-          {row.note}
-        </Text>
-      )}
+        {!!row.note && (
+          <Text variant="bodyMedium" style={{ color: theme.text.primary }}>
+            {row.note}
+          </Text>
+        )}
 
-      {!!row.recurring_rule_id && (
-        <StatusPill
-          icon="calendar-sync-outline"
-          label={vi.recurringEntry}
-          bg={palette.tealSoft}
-          fg={palette.tealInk}
-        />
-      )}
+        {!!row.recurring_rule_id && (
+          <StatusPill
+            icon="calendar-sync-outline"
+            label={vi.recurringEntry}
+            bg={palette.tealSoft}
+            fg={palette.tealInk}
+          />
+        )}
 
-      <TransactionBalance row={row} wallets={wallets} />
+        <TransactionBalance row={row} wallets={wallets} />
+      </Pressable>
 
       <Divider style={{ backgroundColor: theme.card.border }} />
 
       <View style={[styles.row, { justifyContent: 'flex-end' }]}>
         <Button
+          hitSlop={4}
           compact
           mode="contained-tonal"
           icon="pencil-outline"
@@ -1107,6 +1117,7 @@ const TransactionItem = memo(function TransactionItem({
           {vi.editTransaction}
         </Button>
         <Button
+          hitSlop={4}
           compact
           mode="text"
           textColor={palette.danger}
@@ -1228,7 +1239,7 @@ export function TransactionForm({
       keys: relevantKeys,
     });
   const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
-    id: 'transaction-form',
+    id: guardScope === 'modal' ? 'transaction-form-modal' : 'transaction-form',
     scope: guardScope,
     routeKey: guardScope === 'tab' ? guardRouteKey : undefined,
     dirty,
@@ -1420,6 +1431,7 @@ export function TransactionForm({
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         buttonColor={theme.brand.primaryStrong}
@@ -1605,6 +1617,7 @@ export function TransactionForm({
 
               {!naturalSession ? (
                 <Button
+                  hitSlop={4}
                   mode="contained-tonal"
                   icon="creation"
                   disabled={disabled || !naturalText.trim()}

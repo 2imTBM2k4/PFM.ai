@@ -101,6 +101,7 @@ export function LocalTransferSettings() {
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Button
+          hitSlop={4}
           mode="contained"
           compact
           icon="tray-arrow-up"
@@ -113,6 +114,7 @@ export function LocalTransferSettings() {
           {vi.csvExportBtn}
         </Button>
         <Button
+          hitSlop={4}
           mode="contained-tonal"
           compact
           icon="folder-open-outline"

@@ -16,6 +16,9 @@ import { DEFAULT_WALLET_ID, seed } from '@/data/seed';
 import { createTransaction, deleteTransaction } from '@/data/transactions';
 import { setActiveLanguage } from '@/messages/language';
 import { formatBudgetBannerMessage } from './budget-banner';
+vi.mock('@/components/platform-icon', () => ({
+  default: 'MaterialCommunityIcons',
+}));
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',

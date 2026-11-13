@@ -171,7 +171,8 @@ export function DateField({
                 variant="titleMedium"
                 style={{ color: theme.text.primary, fontWeight: '700' }}
               >
-                {activeLanguage === 'en' ? 'Month' : 'Tháng'} {view.month + 1}/{view.year}
+                {activeLanguage === 'en' ? 'Month' : 'Tháng'} {view.month + 1}/
+                {view.year}
               </Text>
               <IconButton
                 icon="chevron-right"
@@ -185,8 +186,16 @@ export function DateField({
             <View style={styles.jumpRow}>
               <TextInput
                 mode="outlined"
-                label={activeLanguage === 'en' ? 'Month/year (MM/YYYY)' : 'Tháng/năm (MM/YYYY)'}
-                accessibilityLabel={activeLanguage === 'en' ? 'Go to month/year (MM/YYYY)' : 'Chuyển đến tháng/năm (MM/YYYY)'}
+                label={
+                  activeLanguage === 'en'
+                    ? 'Month/year (MM/YYYY)'
+                    : 'Tháng/năm (MM/YYYY)'
+                }
+                accessibilityLabel={
+                  activeLanguage === 'en'
+                    ? 'Go to month/year (MM/YYYY)'
+                    : 'Chuyển đến tháng/năm (MM/YYYY)'
+                }
                 value={jump}
                 onChangeText={(next) => {
                   setJump(next);
@@ -199,11 +208,15 @@ export function DateField({
                 error={jumpError}
                 style={styles.jumpInput}
               />
-              <Button onPress={jumpToMonth}>{activeLanguage === 'en' ? 'Go' : 'Đi đến'}</Button>
+              <Button hitSlop={4} onPress={jumpToMonth}>
+                {activeLanguage === 'en' ? 'Go' : 'Đi đến'}
+              </Button>
             </View>
             {jumpError && (
               <HelperText type="error">
-                {activeLanguage === 'en' ? 'Enter month 01–12 and year 0001–9999.' : 'Nhập tháng 01–12 và năm 0001–9999.'}
+                {activeLanguage === 'en'
+                  ? 'Enter month 01–12 and year 0001–9999.'
+                  : 'Nhập tháng 01–12 và năm 0001–9999.'}
               </HelperText>
             )}
 
@@ -260,6 +273,7 @@ export function DateField({
 
             <View style={styles.sheetActions}>
               <Button
+                hitSlop={4}
                 mode="text"
                 onPress={() => choose(today)}
                 textColor={theme.brand.primaryText}
@@ -268,6 +282,7 @@ export function DateField({
               </Button>
               {allowClear && (
                 <Button
+                  hitSlop={4}
                   mode="text"
                   onPress={() => choose('')}
                   textColor={theme.finance.expense}
@@ -275,7 +290,7 @@ export function DateField({
                   {vi.clear}
                 </Button>
               )}
-              <Button mode="text" onPress={() => setOpen(false)}>
+              <Button hitSlop={4} mode="text" onPress={() => setOpen(false)}>
                 {vi.cancel}
               </Button>
             </View>

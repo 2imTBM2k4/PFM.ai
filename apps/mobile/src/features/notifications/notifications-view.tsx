@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { monthKey, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { useCallback, useEffect, useState } from 'react';
@@ -43,7 +43,9 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
 
     // 1. Budget threshold notifications
     for (const budget of dashboard.budgets) {
-      const name = budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall;
+      const name = budget.category_name
+        ? displayCategoryName(budget.category_name)
+        : vi.budgetOverall;
       const percent =
         budget.amount > 0
           ? Math.round((budget.spent * 100) / budget.amount)
@@ -61,7 +63,10 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
         nextItems.push({
           id: `budget-warn-${budget.id}`,
           title: `${name}: ${vi.budgetWarning.replace('{percent}', String(budget.warn_percent))}`,
-          description: language === 'en' ? `Used ${percent}% of the monthly limit (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).` : `Đã sử dụng ${percent}% hạn mức tháng (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`,
+          description:
+            language === 'en'
+              ? `Used ${percent}% of the monthly limit (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`
+              : `Đã sử dụng ${percent}% hạn mức tháng (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`,
           tone: 'primary',
           icon: 'bell-ring-outline',
           badgeText: `${percent}%`,
@@ -88,7 +93,10 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
       nextItems.push({
         id: `goal-${firstGoal.id}`,
         title: `${vi.goals}: ${firstGoal.name}`,
-        description: language === 'en' ? `Target: ${formatVnd(firstGoal.target_amount)}. Keep saving regularly each month.` : `Mục tiêu: ${formatVnd(firstGoal.target_amount)}. Hãy duy trì tích lũy đều đặn mỗi tháng.`,
+        description:
+          language === 'en'
+            ? `Target: ${formatVnd(firstGoal.target_amount)}. Keep saving regularly each month.`
+            : `Mục tiêu: ${formatVnd(firstGoal.target_amount)}. Hãy duy trì tích lũy đều đặn mỗi tháng.`,
         tone: 'savings',
         icon: 'bullseye-arrow',
         badgeText: vi.goals,

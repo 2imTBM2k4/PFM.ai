@@ -16,6 +16,7 @@ export function DeleteDataControl() {
   if (!confirming)
     return (
       <Button
+        hitSlop={4}
         mode="outlined"
         icon="trash-can-outline"
         textColor={colors.error}
@@ -53,6 +54,7 @@ export function DeleteDataControl() {
         autoCorrect={false}
       />
       <Button
+        hitSlop={4}
         mode="contained"
         icon="trash-can-outline"
         buttonColor={colors.error}
@@ -71,6 +73,7 @@ export function DeleteDataControl() {
         {vi.deleteData}
       </Button>
       <Button
+        hitSlop={4}
         mode="outlined"
         contentStyle={styles.button}
         onPress={() => {

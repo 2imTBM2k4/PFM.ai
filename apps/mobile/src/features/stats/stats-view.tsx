@@ -1,14 +1,14 @@
+import SegmentedButtons from '@/components/ui/native-segmented-buttons';
 import { useFocusEffect } from 'expo-router';
 import { addMonths, monthKey, today } from '@pfm/domain';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { PieChart } from 'react-native-gifted-charts';
 import {
   ActivityIndicator,
   Button,
   IconButton,
   ProgressBar,
-  SegmentedButtons,
   Text,
 } from 'react-native-paper';
 import { Screen, styles } from '@/components/screen';
@@ -58,6 +58,7 @@ export function StatsView({
   onSwitchToBudgets?(): void;
   onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
 }) {
+  const { fontScale = 1 } = useWindowDimensions();
   const [anchorMonth, setAnchorMonth] = useState(() => monthKey(localToday()));
   const [rangeMonths, setRangeMonths] = useState<StatsRange>(6);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
@@ -248,7 +249,9 @@ export function StatsView({
           <Text accessibilityRole="alert" style={{ color: palette.danger }}>
             {vi.overviewLoadError}
           </Text>
-          <Button onPress={() => void load()}>{vi.retry}</Button>
+          <Button hitSlop={4} onPress={() => void load()}>
+            {vi.retry}
+          </Button>
         </GlassCard>
       )}
 
@@ -268,15 +271,18 @@ export function StatsView({
                 ? 'Daily income and expenses'
                 : 'Thu chi theo ngày'}
             </Text>
-            <View style={localStyles.calendarGrid}>
-              {(language === 'en'
-                ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-                : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
-              ).map((label) => (
-                <Text key={label} style={localStyles.calendarWeekday}>
-                  {label}
-                </Text>
-              ))}
+            <View
+              style={[localStyles.calendarGrid, fontScale > 1.3 && { gap: 8 }]}
+            >
+              {fontScale <= 1.3 &&
+                (language === 'en'
+                  ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                  : ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+                ).map((label) => (
+                  <Text key={label} style={localStyles.calendarWeekday}>
+                    {label}
+                  </Text>
+                ))}
               {calendar.map((day, index) =>
                 day ? (
                   <Pressable
@@ -296,6 +302,13 @@ export function StatsView({
                     onPress={() => setSelectedDay(day.date)}
                     style={[
                       localStyles.calendarCell,
+                      fontScale > 1.3 && {
+                        width: '100%',
+                        flexDirection: 'row',
+                        flexWrap: 'wrap',
+                        gap: 12,
+                        justifyContent: 'space-between',
+                      },
                       selectedDate === day.date &&
                         shouldShowDailyTotals(day.date, currentDate) && {
                           backgroundColor: theme.brand.primarySoft,
@@ -312,15 +325,13 @@ export function StatsView({
                         color: theme.text.primary,
                       }}
                     >
-                      {day.day}
+                      {fontScale > 1.3 ? formatDisplayDate(day.date) : day.day}
                     </Text>
                     {shouldShowDailyTotals(day.date, currentDate) && (
                       <>
                         <Text
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
                           style={{
-                            fontSize: 10,
+                            fontSize: 11,
                             color: theme.finance.incomeText,
                           }}
                         >
@@ -330,10 +341,8 @@ export function StatsView({
                           )}
                         </Text>
                         <Text
-                          numberOfLines={1}
-                          adjustsFontSizeToFit
                           style={{
-                            fontSize: 10,
+                            fontSize: 11,
                             color: theme.finance.expenseText,
                           }}
                         >
@@ -345,7 +354,7 @@ export function StatsView({
                       </>
                     )}
                   </Pressable>
-                ) : (
+                ) : fontScale > 1.3 ? null : (
                   <View
                     key={`empty-${index}`}
                     style={localStyles.calendarCell}
@@ -375,8 +384,7 @@ export function StatsView({
               <Pill label={vi.transactionIncome} tone="income" size="sm" />
               <Text
                 variant="titleMedium"
-                numberOfLines={1}
-                adjustsFontSizeToFit
+
                 style={[
                   styles.number,
                   { fontWeight: '800', color: theme.finance.incomeText },
@@ -395,8 +403,7 @@ export function StatsView({
               <Pill label={vi.transactionExpense} tone="expense" size="sm" />
               <Text
                 variant="titleMedium"
-                numberOfLines={1}
-                adjustsFontSizeToFit
+
                 style={[
                   styles.number,
                   { fontWeight: '800', color: theme.finance.expenseText },
@@ -419,8 +426,7 @@ export function StatsView({
               />
               <Text
                 variant="titleMedium"
-                numberOfLines={1}
-                adjustsFontSizeToFit
+
                 style={[
                   styles.number,
                   { fontWeight: '800', color: theme.text.primary },
@@ -621,15 +627,18 @@ const localStyles = StyleSheet.create({
   },
   rangePills: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: 6,
   },
   summaryGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   summaryCard: {
     flex: 1,
+    minWidth: 140,
     gap: 8,
   },
   legendRow: {

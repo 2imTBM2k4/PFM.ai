@@ -208,10 +208,10 @@ export function TimeField({
             {!!error && <HelperText type="error">{error}</HelperText>}
 
             <View style={styles.actions}>
-              <Button mode="text" onPress={() => setOpen(false)}>
+              <Button hitSlop={4} mode="text" onPress={() => setOpen(false)}>
                 {vi.cancel}
               </Button>
-              <Button mode="contained" onPress={handleConfirm}>
+              <Button hitSlop={4} mode="contained" onPress={handleConfirm}>
                 {vi.done}
               </Button>
             </View>

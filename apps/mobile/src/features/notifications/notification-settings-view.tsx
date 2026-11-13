@@ -1,14 +1,9 @@
+import { useFocusedBackHandler } from '@/hooks/use-focused-back-handler';
 import { useTransientState } from '@/hooks/use-transient-state';
 import * as Notifications from 'expo-notifications';
 import { IosAuthorizationStatus } from 'expo-notifications';
 import { useEffect, useState } from 'react';
-import {
-  BackHandler,
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Button, Divider, Icon, Switch, Text } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard, TimeField } from '@/components/ui';
@@ -73,20 +68,14 @@ export function NotificationSettingsView({ onClose }: { onClose(): void }) {
     (state) => state.setNotifyRecurring,
   );
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        if (subView !== 'main') {
-          setSubView('main');
-          return true;
-        }
-        onClose();
-        return true;
-      },
-    );
-    return () => subscription.remove();
-  }, [subView, onClose]);
+  useFocusedBackHandler(() => {
+    if (subView !== 'main') {
+      setSubView('main');
+      return true;
+    }
+    onClose();
+    return true;
+  });
 
   useEffect(() => {
     void Notifications.getPermissionsAsync()
@@ -182,6 +171,7 @@ export function NotificationSettingsView({ onClose }: { onClose(): void }) {
 
           <View style={localStyles.actionsRow}>
             <Button
+              hitSlop={4}
               mode="contained-tonal"
               compact
               icon="send-clock-outline"

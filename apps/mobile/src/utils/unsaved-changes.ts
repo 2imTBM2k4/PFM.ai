@@ -16,6 +16,27 @@ export interface UnsavedGuardEntry {
 }
 
 const activeGuards = new Map<string, UnsavedGuardEntry>();
+const guardListeners = new Set<() => void>();
+
+/** Subscribes native routes to changes in the existing draft guards. */
+export function subscribeUnsavedGuards(listener: () => void) {
+  guardListeners.add(listener);
+  return () => {
+    guardListeners.delete(listener);
+  };
+}
+
+/** Finds the most recent blocking draft owned by a route or modal. */
+export function getBlockingGuard(scope: UnsavedGuardScope, routeKey?: string) {
+  return [...activeGuards.values()]
+    .reverse()
+    .find(
+      (guard) =>
+        guard.scope === scope &&
+        (!routeKey || guard.routeKey === routeKey) &&
+        (guard.saving || (guard.dirty && !guard.saved)),
+    );
+}
 
 /** Normalize formatted money strings so equivalent edits like 50.000 and 50000 match. */
 export function normalizeMoneyCompare(
@@ -94,16 +115,19 @@ export function areEntryDraftsChanged(
 export function registerUnsavedGuard(entry: UnsavedGuardEntry): void {
   activeGuards.delete(entry.id);
   activeGuards.set(entry.id, entry);
+  guardListeners.forEach((listener) => listener());
 }
 
 /** Remove a form guard when the form unmounts or closes. */
 export function unregisterUnsavedGuard(id: string): void {
   activeGuards.delete(id);
+  guardListeners.forEach((listener) => listener());
 }
 
 /** Clear all registered guards (intended for test isolation). */
 export function resetUnsavedGuards(): void {
   activeGuards.clear();
+  guardListeners.forEach((listener) => listener());
 }
 
 /** Return true if any currently mounted form is mid-save. */
@@ -119,7 +143,9 @@ export function promptDiscardChanges(onConfirm: () => void): void {
   if (Platform.OS === 'web') {
     const confirmed =
       typeof window !== 'undefined' && typeof window.confirm === 'function'
-        ? window.confirm(`${vi.unsavedChangesTitle}\n\n${vi.unsavedChangesMessage}`)
+        ? window.confirm(
+            `${vi.unsavedChangesTitle}\n\n${vi.unsavedChangesMessage}`,
+          )
         : true;
     if (confirmed) onConfirm();
     return;
