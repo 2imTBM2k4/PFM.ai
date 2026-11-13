@@ -1,4 +1,8 @@
-import { FieldFeedback } from '@/components/field-feedback';
+import { useTransientState } from '@/hooks/use-transient-state';
+import {
+  FieldFeedback,
+  FocusAwareTextInput,
+} from '@/components/field-feedback';
 import { dateError, repaymentError } from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
@@ -87,7 +91,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [closed, setClosed] = useState(false),
-    [undo, setUndo] = useState<TransactionRow | null>(null);
+    [undo, setUndo] = useTransientState<TransactionRow | null>(null);
   const working = useRef(false),
     focused = useRef(false),
     request = useRef(0),
@@ -152,14 +156,14 @@ export function DebtManager({ onClose }: { onClose(): void }) {
         request.current++;
         setUndo(null);
       };
-    }, [load]),
+    }, [load, setUndo]),
   );
   const leaveEditForm = useCallback(() => {
     if (working.current) return;
     setError('');
     setUndo(null);
     setEditing(null);
-  }, []);
+  }, [setUndo]);
   const back = useCallback(() => {
     if (working.current) return;
     if (editing && typeof editing === 'object') {
@@ -174,7 +178,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
     setUndo(null);
     if (selected) setSelected(null);
     else onClose();
-  }, [editing, leaveEditForm, selected, onClose]);
+  }, [editing, leaveEditForm, selected, onClose, setUndo]);
   useFocusEffect(
     useCallback(() => {
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -1016,7 +1020,7 @@ function DebtForm({
                     onChangeText={field.onChange}
                   />
                 ) : (
-                  <TextInput
+                  <FocusAwareTextInput
                     error={!!fieldState.error}
                     mode="outlined"
                     label={item.label}

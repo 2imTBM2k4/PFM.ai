@@ -1,3 +1,10 @@
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+} from 'react-native-reanimated';
+import { FocusAwareTextInput } from '@/components/field-feedback';
+import { useTransientState } from '@/hooks/use-transient-state';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
@@ -12,6 +19,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   BackHandler,
+  Keyboard,
   FlatList,
   Pressable,
   ScrollView,
@@ -54,7 +62,11 @@ import {
 } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
-import { listCategories, orderCategoriesByParent, type CategoryRow } from '@/data/categories';
+import {
+  listCategories,
+  orderCategoriesByParent,
+  type CategoryRow,
+} from '@/data/categories';
 import { readQuickEntryContext, saveParsedEntries } from '@/data/quick-entry';
 import { listWallets, type WalletRow } from '@/data/repository';
 import { foldSearchText } from '@/data/search-text';
@@ -76,7 +88,10 @@ import {
 } from '@/features/quick-entry/draft';
 import { EntryConfirmation } from '@/features/quick-entry/confirmation';
 import { useApp } from '@/state/app';
-import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
+import {
+  createTabBarScrollHandler,
+  useTabBarScroll,
+} from '@/hooks/use-tab-bar-scroll';
 import {
   formatTransactionCurrencyAmount,
   usePreferences,
@@ -125,6 +140,17 @@ export function TransactionManager({
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [quickQuery, setQuickQuery] = useState('');
   const [quickKind, setQuickKind] = useState<string>('all');
+  const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const controlsScroll = useMemo(
+    () =>
+      createTabBarScrollHandler((expanded) => setControlsCollapsed(!expanded), {
+        showAtBottom: false,
+      }),
+    [],
+  );
+  useEffect(() => {
+    if (controlsCollapsed) Keyboard.dismiss();
+  }, [controlsCollapsed]);
   const filtersRef = useRef<TransactionFilters>({});
   const hasFilters = Object.values(filters).some(
     (value) => value !== undefined && value !== '',
@@ -136,8 +162,8 @@ export function TransactionManager({
   const [busy, setBusy] = useState(false);
   const [more, setMore] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [undo, setUndo] = useState<TransactionRow | null>(null);
+  const [notice, setNotice] = useTransientState('');
+  const [undo, setUndo] = useTransientState<TransactionRow | null>(null);
   const working = useRef(false);
   const focused = useRef(false);
   const hasLoadedOnce = useRef(false);
@@ -223,7 +249,7 @@ export function TransactionManager({
       setNotice('');
     });
     return () => cancelAnimationFrame(frame);
-  }, [consumeAddTransaction, pendingTransactionEntry]);
+  }, [consumeAddTransaction, pendingTransactionEntry, setNotice]);
 
   const leaveSubView = useCallback(() => {
     if (working.current) return;
@@ -335,23 +361,32 @@ export function TransactionManager({
     }
   };
 
-  const viewDetail = useCallback((row: TransactionHistoryRow) => {
-    setMode({ type: 'detail', row });
-    setError('');
-    setNotice('');
-  }, []);
+  const viewDetail = useCallback(
+    (row: TransactionHistoryRow) => {
+      setMode({ type: 'detail', row });
+      setError('');
+      setNotice('');
+    },
+    [setNotice],
+  );
 
-  const edit = useCallback((row: TransactionRow) => {
-    setMode({ type: 'form', row, id: row.id });
-    setError('');
-    setNotice('');
-  }, []);
+  const edit = useCallback(
+    (row: TransactionRow) => {
+      setMode({ type: 'form', row, id: row.id });
+      setError('');
+      setNotice('');
+    },
+    [setNotice],
+  );
 
-  const remove = useCallback((row: TransactionRow) => {
-    setMode({ type: 'delete', row });
-    setError('');
-    setNotice('');
-  }, []);
+  const remove = useCallback(
+    (row: TransactionRow) => {
+      setMode({ type: 'delete', row });
+      setError('');
+      setNotice('');
+    },
+    [setNotice],
+  );
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = foldSearchText(quickQuery.trim());
@@ -612,136 +647,135 @@ export function TransactionManager({
     );
 
   return (
-    <Screen
-      title={vi.transactions}
-      scroll={false}
-      headerRight={
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={vi.addTransaction}
-          hitSlop={6}
-          onPress={() => usePreferences.getState().openAddTransaction()}
-          style={({ pressed }) => [
-            localStyles.headerAddBtn,
-            createSoftShadow(theme.mode, 'sm'),
-            {
-              backgroundColor: pressed
-                ? theme.brand.primarySoft
-                : theme.card.surfaceElevated,
-              borderColor: theme.card.border,
-            },
-          ]}
-        >
-          <MaterialCommunityIcons
-            name="plus"
-            size={20}
-            color={theme.text.primary}
-          />
-        </Pressable>
-      }
-    >
-      {/* Instant Search Input Bar */}
-      <View
-        style={[
-          localStyles.searchBar,
-          {
-            backgroundColor: theme.card.surfaceElevated,
-            borderColor: theme.card.border,
-          },
-        ]}
+    <Screen title={vi.transactions} scroll={false}>
+      <Animated.View
+        layout={LinearTransition.duration(220)}
+        style={{ gap: controlsCollapsed ? 2 : 10 }}
       >
-        <MaterialCommunityIcons
-          name="magnify"
-          size={20}
-          color={theme.text.muted}
-        />
-        <RNTextInput
-          accessibilityLabel={vi.txSearchPlaceholder}
-          placeholder={vi.txSearchPlaceholder}
-          placeholderTextColor={theme.text.muted}
-          value={quickQuery}
-          onChangeText={setQuickQuery}
-          style={[localStyles.searchInput, { color: theme.text.primary }]}
-        />
-        {!!quickQuery && (
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setQuickQuery('')}
+        {/* Instant Search Input Bar */}
+        {!controlsCollapsed && (
+          <Animated.View
+            entering={FadeIn.duration(140)}
+            exiting={FadeOut.duration(100)}
+            style={[
+              localStyles.searchBar,
+              {
+                backgroundColor: theme.card.surfaceElevated,
+                borderColor: theme.card.border,
+              },
+            ]}
           >
             <MaterialCommunityIcons
-              name="close-circle"
-              size={18}
+              name="magnify"
+              size={20}
               color={theme.text.muted}
             />
-          </Pressable>
+            <RNTextInput
+              accessibilityLabel={vi.txSearchPlaceholder}
+              placeholder={vi.txSearchPlaceholder}
+              placeholderTextColor={theme.text.muted}
+              value={quickQuery}
+              onChangeText={setQuickQuery}
+              style={[localStyles.searchInput, { color: theme.text.primary }]}
+            />
+            {!!quickQuery && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setQuickQuery('')}
+              >
+                <MaterialCommunityIcons
+                  name="close-circle"
+                  size={18}
+                  color={theme.text.muted}
+                />
+              </Pressable>
+            )}
+          </Animated.View>
         )}
-      </View>
 
-      {/* Kind Filter Pills + Add Transaction CTA */}
-      <View style={localStyles.filterPillsRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8 }}
+        {/* Kind Filter Pills + Add Transaction CTA */}
+        <Animated.View
+          layout={LinearTransition.duration(220)}
+          style={localStyles.filterPillsRow}
         >
-          <Pill
-            label={vi.txFilterAll}
-            tone="primary"
-            selected={quickKind === 'all'}
-            size="sm"
-            onPress={() => setQuickKind('all')}
-          />
-          <Pill
-            label={vi.transactionExpense}
-            tone="expense"
-            selected={quickKind === 'expense'}
-            size="sm"
-            onPress={() => setQuickKind('expense')}
-          />
-          <Pill
-            label={vi.transactionIncome}
-            tone="income"
-            selected={quickKind === 'income'}
-            size="sm"
-            onPress={() => setQuickKind('income')}
-          />
-          <Pill
-            label={vi.transactionTransfer}
-            tone="neutral"
-            selected={quickKind === 'transfer'}
-            size="sm"
-            onPress={() => setQuickKind('transfer')}
-          />
-        </ScrollView>
-      </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8 }}
+          >
+            <Pill
+              label={vi.txFilterAll}
+              icon={controlsCollapsed ? 'view-grid-outline' : undefined}
+              compact={controlsCollapsed}
+              tone="primary"
+              selected={quickKind === 'all'}
+              size="sm"
+              onPress={() => setQuickKind('all')}
+            />
+            <Pill
+              label={vi.transactionExpense}
+              icon={controlsCollapsed ? 'arrow-top-right' : undefined}
+              compact={controlsCollapsed}
+              tone="expense"
+              selected={quickKind === 'expense'}
+              size="sm"
+              onPress={() => setQuickKind('expense')}
+            />
+            <Pill
+              label={vi.transactionIncome}
+              icon={controlsCollapsed ? 'arrow-bottom-left' : undefined}
+              compact={controlsCollapsed}
+              tone="income"
+              selected={quickKind === 'income'}
+              size="sm"
+              onPress={() => setQuickKind('income')}
+            />
+            <Pill
+              label={vi.transactionTransfer}
+              icon={controlsCollapsed ? 'swap-horizontal' : undefined}
+              compact={controlsCollapsed}
+              tone="neutral"
+              selected={quickKind === 'transfer'}
+              size="sm"
+              onPress={() => setQuickKind('transfer')}
+            />
+          </ScrollView>
+        </Animated.View>
 
-      {/* Quick Navigation Row for Advanced Filters, Recurring, Debts */}
-      <View style={localStyles.quickRow}>
-        <QuickTile
-          icon="tune-variant"
-          label={vi.filterAdvanced}
-          bg={hasFilters ? palette.warningSoft : palette.primarySoft}
-          fg={hasFilters ? palette.warningInk : palette.primaryInk}
-          disabled={busy || loading}
-          onPress={() => setMode({ type: 'filters' })}
-        />
-        <QuickTile
-          icon="calendar-sync-outline"
-          label={vi.recurringTitle}
-          bg={palette.tealSoft}
-          fg={palette.tealInk}
-          disabled={busy || loading}
-          onPress={onManageRecurring}
-        />
-        <QuickTile
-          icon="handshake-outline"
-          label={vi.debtsTitle}
-          bg={palette.purpleSoft}
-          fg={palette.purpleInk}
-          disabled={busy || loading}
-          onPress={onManageDebts}
-        />
-      </View>
+        {/* Quick Navigation Row for Advanced Filters, Recurring, Debts */}
+        <Animated.View
+          layout={LinearTransition.duration(220)}
+          style={localStyles.quickRow}
+        >
+          <QuickTile
+            compact={controlsCollapsed}
+            icon="tune-variant"
+            label={vi.filterAdvanced}
+            bg={hasFilters ? palette.warningSoft : palette.primarySoft}
+            fg={hasFilters ? palette.warningInk : palette.primaryInk}
+            disabled={busy || loading}
+            onPress={() => setMode({ type: 'filters' })}
+          />
+          <QuickTile
+            icon="calendar-sync-outline"
+            compact={controlsCollapsed}
+            label={vi.recurringTitle}
+            bg={palette.tealSoft}
+            fg={palette.tealInk}
+            disabled={busy || loading}
+            onPress={onManageRecurring}
+          />
+          <QuickTile
+            icon="handshake-outline"
+            compact={controlsCollapsed}
+            label={vi.debtsTitle}
+            bg={palette.purpleSoft}
+            fg={palette.purpleInk}
+            disabled={busy || loading}
+            onPress={onManageDebts}
+          />
+        </Animated.View>
+      </Animated.View>
 
       {hasFilters && (
         <StatusPill
@@ -834,43 +868,51 @@ export function TransactionManager({
           <ActivityIndicator size="large" accessibilityLabel={vi.loading} />
         </View>
       ) : (
-        <FlatList
+        <Animated.View
+          layout={LinearTransition.duration(220)}
           style={styles.fill}
-          contentInsetAdjustmentBehavior="automatic"
-          showsVerticalScrollIndicator={false}
-          onScroll={tabBarScroll.onScroll}
-          scrollEventThrottle={tabBarScroll.scrollEventThrottle}
-          data={filteredRows}
-          keyExtractor={(row) => row.id}
-          renderItem={renderItem}
-          contentContainerStyle={{
-            gap: 12,
-            paddingBottom: DesignSpacing.bottomTabClearance,
-          }}
-          ListEmptyComponent={
-            <EmptyStateCard
-              icon="receipt-text-outline"
-              message={
-                hasFilters || quickQuery || quickKind !== 'all'
-                  ? vi.filterEmpty
-                  : vi.transactionsEmpty
-              }
-            />
-          }
-          ListFooterComponent={
-            more ? (
-              <Button
-                mode="outlined"
-                contentStyle={styles.button}
-                disabled={busy}
-                loading={busy}
-                onPress={loadMore}
-              >
-                {vi.transactionMore}
-              </Button>
-            ) : undefined
-          }
-        />
+        >
+          <FlatList
+            style={styles.fill}
+            contentInsetAdjustmentBehavior="automatic"
+            showsVerticalScrollIndicator={false}
+            onScroll={(event) => {
+              tabBarScroll.onScroll(event);
+              controlsScroll(event);
+            }}
+            scrollEventThrottle={tabBarScroll.scrollEventThrottle}
+            data={filteredRows}
+            keyExtractor={(row) => row.id}
+            renderItem={renderItem}
+            contentContainerStyle={{
+              gap: 12,
+              paddingBottom: DesignSpacing.bottomTabClearance,
+            }}
+            ListEmptyComponent={
+              <EmptyStateCard
+                icon="receipt-text-outline"
+                message={
+                  hasFilters || quickQuery || quickKind !== 'all'
+                    ? vi.filterEmpty
+                    : vi.transactionsEmpty
+                }
+              />
+            }
+            ListFooterComponent={
+              more ? (
+                <Button
+                  mode="outlined"
+                  contentStyle={styles.button}
+                  disabled={busy}
+                  loading={busy}
+                  onPress={loadMore}
+                >
+                  {vi.transactionMore}
+                </Button>
+              ) : undefined
+            }
+          />
+        </Animated.View>
       )}
     </Screen>
   );
@@ -1134,9 +1176,7 @@ export function TransactionForm({
 
   const [initialValues] = useState<Fields>(() => ({
     kind:
-      row?.kind === 'income' || row?.kind === 'transfer'
-        ? row.kind
-        : 'expense',
+      row?.kind === 'income' || row?.kind === 'transfer' ? row.kind : 'expense',
     amount: row
       ? currency === 'USD'
         ? (originalAmount / 100).toFixed(2)
@@ -1393,30 +1433,32 @@ export function TransactionForm({
           void handleSubmit((values) =>
             runGuardedSave(() =>
               onSave({
-              kind: row?.debt_id ? row.kind : values.kind,
-              debtId: row?.debt_id ?? null,
-              amount: parseAmountInput(values.amount, currency),
-              currency,
-              vndPerUsd:
-                currency === 'USD'
-                  ? row?.original_currency === 'USD' &&
-                    parseAmountInput(values.amount, currency) === originalAmount
-                    ? row.booking_rate
-                    : currentRate
-                  : null,
-              walletId: values.walletId,
-              toWalletId: values.kind === 'transfer' ? values.toWalletId : null,
-              categoryId:
-                row?.debt_id || values.kind === 'transfer'
-                  ? null
-                  : values.categoryId || null,
-              occurredOn: values.date,
-              occurredAt:
-                row && values.date === row.occurred_on
-                  ? row.occurred_at
-                  : manualOccurredAt(values.date, new Date()),
-              note: values.note,
-            }),
+                kind: row?.debt_id ? row.kind : values.kind,
+                debtId: row?.debt_id ?? null,
+                amount: parseAmountInput(values.amount, currency),
+                currency,
+                vndPerUsd:
+                  currency === 'USD'
+                    ? row?.original_currency === 'USD' &&
+                      parseAmountInput(values.amount, currency) ===
+                        originalAmount
+                      ? row.booking_rate
+                      : currentRate
+                    : null,
+                walletId: values.walletId,
+                toWalletId:
+                  values.kind === 'transfer' ? values.toWalletId : null,
+                categoryId:
+                  row?.debt_id || values.kind === 'transfer'
+                    ? null
+                    : values.categoryId || null,
+                occurredOn: values.date,
+                occurredAt:
+                  row && values.date === row.occurred_on
+                    ? row.occurred_at
+                    : manualOccurredAt(values.date, new Date()),
+                note: values.note,
+              }),
             ),
           )();
         }}
@@ -1786,7 +1828,7 @@ export function TransactionForm({
           control={control}
           name="note"
           render={({ field }) => (
-            <TextInput
+            <FocusAwareTextInput
               mode="outlined"
               label={vi.transactionNote}
               accessibilityLabel={vi.transactionNote}
@@ -1800,8 +1842,6 @@ export function TransactionForm({
           )}
         />
       </GlassCard>
-
-
     </Screen>
   );
 }
@@ -1815,14 +1855,6 @@ const localStyles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: DesignRadius.lg,
     borderWidth: 1,
-  },
-  headerAddBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   searchBar: {
     flexDirection: 'row',

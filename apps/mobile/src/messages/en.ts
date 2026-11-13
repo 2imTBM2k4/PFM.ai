@@ -1,15 +1,24 @@
 import type { viMessages } from './vi';
 
 export const en: Record<keyof typeof viMessages, string> = {
+  budgetDailyAmount: 'Daily limit (₫)',
+  budgetDailySpent: 'Spent today',
+  budgetDailyLimit: 'Daily limit',
+  budgetDailyResetHint:
+    'Counts each day separately and resets to zero at the start of the next day.',
+  pinWallet: 'Pin wallet',
+  unpinWallet: 'Unpin wallet',
   formRequired: 'Please fill in this field.',
-  formDestinationInvalid: 'Choose a destination wallet different from the source.',
+  formDestinationInvalid:
+    'Choose a destination wallet different from the source.',
   formRepaymentTooLarge: 'The repayment must not exceed the outstanding debt.',
   formNonnegativeAmount: 'Enter a whole VND amount between 0 and 100 billion.',
   formEndBeforeStart: 'The end date must be on or after the start date.',
   formMonthInvalid: 'Please select a valid month.',
   formEndMonthBeforeStart: 'The end month must be on or after the start month.',
   formPercentInvalid: 'Enter a whole percentage between 1 and 100.',
-  formAmountRangeInvalid: 'The maximum amount must be at least the minimum amount.',
+  formAmountRangeInvalid:
+    'The maximum amount must be at least the minimum amount.',
   moneyInputFormatVnd:
     'Enter a whole VND amount, such as 30000 or 30,000. Do not include letters, currency symbols, or shorthand such as 30k/1tr.',
   moneyInputFormatUsd:
@@ -86,6 +95,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   budgetPeriodCustom: 'By date range',
   budgetStartDate: 'Start date',
   budgetEndDate: 'End date',
+  budgetNoEndDate: 'No end date',
   budgetMonthlyHint: 'Automatically resets to 0 at the start of each month.',
   budgetCustomHint: 'Track spending during a specific date range.',
   budgetRecurringMonthly: 'Monthly recurring (auto-reset)',
@@ -96,7 +106,8 @@ export const en: Record<keyof typeof viMessages, string> = {
   aiBudgetLimitLabel: 'Limit',
   aiBudgetPeriodLabel: 'Period',
   aiBudgetWarnAtLabel: 'Alert threshold',
-  aiBudgetAskDetails: 'How much budget would you like to set up and for which category? For example: "Set up 2M dining budget each month".',
+  aiBudgetAskDetails:
+    'How much budget would you like to set up and for which category? For example: "Set up 2M dining budget each month".',
   txNaturalToggle: '✨ Quick entry with command',
   budgetPause: 'Pause',
   budgetResume: 'Resume',
@@ -707,8 +718,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   aiMockBudgetSavingsLabel: 'Savings (20%)',
   aiMockGoalReply:
     'Your available balance is {balance}. This month net cash flow is {net} (~{savingsRate}% savings rate). You are tracking {goalsCount} savings goals and {budgetsCount} budgets.',
-  aiMockGoalSampleChartTitle:
-    'Sample spending breakdown to optimize goals (%)',
+  aiMockGoalSampleChartTitle: 'Sample spending breakdown to optimize goals (%)',
   aiMockGoalActualChartTitle: 'Current spending share by category (%)',
   aiMockSpendingReplyWithExpense:
     'This month, your total income is {income} and total spending is {expense} (remaining {net}). Here is the percentage breakdown of your top spending categories:',
@@ -751,8 +761,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   backupRestoreConfirmPrompt: 'Type RESTORE to confirm overwriting local data',
   backupRestoreConfirmWord: 'RESTORE',
   backupRestoreConfirmButton: 'Confirm data restore',
-  backupRestoreSuccessNotice:
-    'Successfully restored data from Google Drive.',
+  backupRestoreSuccessNotice: 'Successfully restored data from Google Drive.',
   backupDisconnectButton: 'Disconnect Google Drive',
   backupDisconnectKeepRemoteButton: 'Disconnect (keep file on Drive)',
   backupDisconnectDeleteRemoteButton: 'Disconnect and delete file on Drive',

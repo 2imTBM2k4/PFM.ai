@@ -1,6 +1,9 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { SymbolView } from 'expo-symbols';
+import { toSfSymbol } from '@/utils/sf-symbols';
 import {
   Pressable,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -11,6 +14,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  LinearTransition,
 } from 'react-native-reanimated';
 import {
   DesignRadius,
@@ -31,6 +35,7 @@ export interface PillProps {
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  compact?: boolean;
 }
 
 /**
@@ -46,6 +51,7 @@ export function Pill({
   onPress,
   style,
   accessibilityLabel,
+  compact = false,
 }: PillProps) {
   const theme = useDesignTheme();
   const scale = useSharedValue(1);
@@ -111,31 +117,50 @@ export function Pill({
       borderColor: colors.border,
     },
     style,
+    compact && {
+      width: 32,
+      height: 32,
+      minWidth: 32,
+      minHeight: 32,
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      justifyContent: 'center',
+    },
   ];
 
   const content = (
     <>
       {icon ? (
-        <MaterialCommunityIcons
-          name={icon as never}
-          size={isSmall ? 13 : 16}
-          color={colors.fg}
-        />
+        compact && Platform.OS === 'ios' ? (
+          <SymbolView
+            name={toSfSymbol(icon)!}
+            size={18}
+            tintColor={colors.fg}
+          />
+        ) : (
+          <MaterialCommunityIcons
+            name={icon as never}
+            size={compact ? 18 : isSmall ? 13 : 16}
+            color={colors.fg}
+          />
+        )
       ) : null}
-      <Text
-        numberOfLines={1}
-        style={[
-          styles.label,
-          {
-            color: colors.fg,
-            fontSize: isSmall
-              ? DesignTypography.size.caption
-              : DesignTypography.size.small,
-          },
-        ]}
-      >
-        {label}
-      </Text>
+      {!compact && (
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.label,
+            {
+              color: colors.fg,
+              fontSize: isSmall
+                ? DesignTypography.size.caption
+                : DesignTypography.size.small,
+            },
+          ]}
+        >
+          {label}
+        </Text>
+      )}
     </>
   );
 
@@ -151,9 +176,13 @@ export function Pill({
   }
 
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View
+      layout={LinearTransition.duration(220)}
+      style={[animatedStyle, compact && { padding: 6 }]}
+    >
       <Pressable
         accessibilityRole="button"
+        accessibilityState={{ selected }}
         accessibilityLabel={accessibilityLabel ?? label}
         hitSlop={10}
         onPress={onPress}

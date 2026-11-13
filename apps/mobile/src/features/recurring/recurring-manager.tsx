@@ -1,4 +1,7 @@
-import { FieldFeedback } from '@/components/field-feedback';
+import {
+  FieldFeedback,
+  FocusAwareTextInput,
+} from '@/components/field-feedback';
 import { amountError, dateError, endDateError } from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
@@ -41,7 +44,11 @@ import {
   type RecurringRow,
 } from '@/data/recurring';
 import { listWallets, type WalletRow } from '@/data/repository';
-import { listCategories, orderCategoriesByParent, type CategoryRow } from '@/data/categories';
+import {
+  listCategories,
+  orderCategoriesByParent,
+  type CategoryRow,
+} from '@/data/categories';
 import type { Database } from '@/data/migrate';
 import {
   formatAmountInput,
@@ -476,8 +483,26 @@ function RecurringForm({
   const disabled = busy || isSubmitting;
   const relevantKeys: (keyof Fields)[] =
     kind === 'transfer'
-      ? ['kind', 'amount', 'wallet', 'destination', 'note', 'start', 'end', 'frequency']
-      : ['kind', 'amount', 'wallet', 'category', 'note', 'start', 'end', 'frequency'];
+      ? [
+          'kind',
+          'amount',
+          'wallet',
+          'destination',
+          'note',
+          'start',
+          'end',
+          'frequency',
+        ]
+      : [
+          'kind',
+          'amount',
+          'wallet',
+          'category',
+          'note',
+          'start',
+          'end',
+          'frequency',
+        ];
   const dirty = haveFieldsChanged(initialValues, currentValues, {
     moneyKeys: ['amount'],
     keys: relevantKeys,
@@ -545,20 +570,20 @@ function RecurringForm({
             c.kind === kind && (!c.is_archived || c.id === row?.category_id),
         ),
       ).map((c) => {
-          const isExpense = c.kind === 'expense';
-          const parent = c.parent_id
-            ? categories.find((p) => p.id === c.parent_id)
-            : null;
-          return {
-            value: c.id,
-            label: displayCategoryName(c.name),
-            icon: c.icon || 'tag-outline',
-            iconBg: isExpense ? palette.expenseSoft : palette.incomeSoft,
-            iconColor:
-              c.color || (isExpense ? palette.expenseInk : palette.incomeInk),
-            subtitle: parent ? displayCategoryName(parent.name) : undefined,
-          };
-        }),
+        const isExpense = c.kind === 'expense';
+        const parent = c.parent_id
+          ? categories.find((p) => p.id === c.parent_id)
+          : null;
+        return {
+          value: c.id,
+          label: displayCategoryName(c.name),
+          icon: c.icon || 'tag-outline',
+          iconBg: isExpense ? palette.expenseSoft : palette.incomeSoft,
+          iconColor:
+            c.color || (isExpense ? palette.expenseInk : palette.incomeInk),
+          subtitle: parent ? displayCategoryName(parent.name) : undefined,
+        };
+      }),
     ],
     [categories, kind, row?.category_id, palette],
   );
@@ -573,11 +598,7 @@ function RecurringForm({
       })),
     [palette],
   );
-  const footer = (
-    <>
-
-    </>
-  );
+  const footer = <></>;
   return (
     <Screen
       title={row ? vi.recurringEdit : vi.recurringAdd}
@@ -754,7 +775,7 @@ function RecurringForm({
                     onChangeText={field.onChange}
                   />
                 ) : (
-                  <TextInput
+                  <FocusAwareTextInput
                     error={!!fieldState.error}
                     mode="outlined"
                     label={item.label}

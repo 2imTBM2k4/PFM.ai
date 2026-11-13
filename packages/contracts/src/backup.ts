@@ -8,6 +8,7 @@ export const BACKUP_LATEST_SCHEMA_VERSION = 5 as const;
 export const BACKUP_ALLOWED_SETTINGS_KEYS = [
   'onboarding_complete',
   'budget_banner_dismissed_v1',
+  'pinned_wallet_ids_v1',
 ] as const;
 
 export type BackupAllowedSettingKey =
@@ -22,12 +23,7 @@ const SignedAmountSchema = z
   .safe()
   .min(-MAX_AMOUNT_VND * 10)
   .max(MAX_AMOUNT_VND * 10);
-const PositiveAmountSchema = z
-  .number()
-  .int()
-  .safe()
-  .min(1)
-  .max(MAX_AMOUNT_VND);
+const PositiveAmountSchema = z.number().int().safe().min(1).max(MAX_AMOUNT_VND);
 const NonNegativeAmountSchema = z
   .number()
   .int()

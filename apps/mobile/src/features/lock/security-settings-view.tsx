@@ -1,3 +1,4 @@
+import { useTransientState } from '@/hooks/use-transient-state';
 import { useEffect, useState } from 'react';
 import { BackHandler, View } from 'react-native';
 import { Button, Divider, Icon, Text } from 'react-native-paper';
@@ -18,7 +19,7 @@ import { requestGuardLeave } from '@/utils/unsaved-changes';
 
 export function SecuritySettingsView({ onClose }: { onClose(): void }) {
   const [subView, setSubView] = useState<'menu' | 'pin' | 'data'>('menu');
-  const [receiptConsentNotice, setReceiptConsentNotice] = useState('');
+  const [receiptConsentNotice, setReceiptConsentNotice] = useTransientState('');
   const theme = useDesignTheme();
   const palette = useFinancePalette();
   const pinEnabled = useLockSession((state) => state.enabled);

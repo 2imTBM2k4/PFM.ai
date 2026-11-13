@@ -10,7 +10,8 @@ export const viMessages = {
   formMonthInvalid: 'Vui lòng chọn tháng hợp lệ.',
   formEndMonthBeforeStart: 'Tháng kết thúc phải từ tháng bắt đầu trở đi.',
   formPercentInvalid: 'Nhập phần trăm nguyên từ 1 đến 100.',
-  formAmountRangeInvalid: 'Số tiền tối đa phải lớn hơn hoặc bằng số tiền tối thiểu.',
+  formAmountRangeInvalid:
+    'Số tiền tối đa phải lớn hơn hoặc bằng số tiền tối thiểu.',
   moneyInputFormatVnd:
     'Nhập số tiền nguyên đồng, ví dụ 30000 hoặc 30.000. Không dùng chữ, đơn vị hoặc cách viết 30k/1tr.',
   moneyInputFormatUsd:
@@ -82,6 +83,13 @@ export const viMessages = {
   saveBudget: 'Lưu ngân sách',
   budgetOverall: 'Ngân sách tổng',
   budgetAmount: 'Hạn mức tháng (₫)',
+  budgetDailyAmount: 'Hạn mức mỗi ngày (₫)',
+  budgetDailySpent: 'Đã chi hôm nay',
+  budgetDailyLimit: 'Hạn mức mỗi ngày',
+  budgetDailyResetHint:
+    'Chỉ tính chi tiêu trong từng ngày; tự tính lại từ 0 khi sang ngày mới.',
+  pinWallet: 'Ghim ví',
+  unpinWallet: 'Bỏ ghim ví',
   budgetWarnPercent: 'Ngưỡng cảnh báo (%)',
   budgetStart: 'Từ tháng',
   budgetEnd: 'Đến tháng (để trống nếu tiếp tục)',
@@ -90,17 +98,20 @@ export const viMessages = {
   budgetPeriodCustom: 'Theo ngày (khoảng ngày)',
   budgetStartDate: 'Từ ngày',
   budgetEndDate: 'Đến ngày',
+  budgetNoEndDate: 'Không có ngày kết thúc',
   budgetMonthlyHint: 'Tự động tính lại từ 0 khi sang tháng mới.',
   budgetCustomHint: 'Theo dõi chi tiêu trong khoảng ngày cụ thể.',
   budgetRecurringMonthly: 'Lặp lại hàng tháng (tự động reset)',
   budgetDateRangeInvalid: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.',
-  aiBudgetSetupSuccess: 'Tôi đã tự động thiết lập ngân sách theo yêu cầu của bạn:',
+  aiBudgetSetupSuccess:
+    'Tôi đã tự động thiết lập ngân sách theo yêu cầu của bạn:',
   aiBudgetViewAction: 'Xem ngân sách',
   aiBudgetCategoryLabel: 'Danh mục',
   aiBudgetLimitLabel: 'Hạn mức',
   aiBudgetPeriodLabel: 'Chu kỳ',
   aiBudgetWarnAtLabel: 'Cảnh báo khi đạt',
-  aiBudgetAskDetails: 'Bạn muốn thiết lập ngân sách bao nhiêu và cho danh mục nào? Ví dụ: "Thiết lập ngân sách ăn uống 2 triệu mỗi tháng".',
+  aiBudgetAskDetails:
+    'Bạn muốn thiết lập ngân sách bao nhiêu và cho danh mục nào? Ví dụ: "Thiết lập ngân sách ăn uống 2 triệu mỗi tháng".',
   txNaturalToggle: '✨ Nhập nhanh bằng câu lệnh',
   budgetPause: 'Tạm dừng',
   budgetResume: 'Bật lại',
@@ -380,7 +391,8 @@ export const viMessages = {
   welcomeDescription:
     'Ví Tiền mặt và các danh mục thu chi đã sẵn sàng. Bạn có thể nhập số dư ban đầu hoặc bỏ qua.',
   startingBalance: 'Số dư Tiền mặt ban đầu (₫)',
-  balanceHint: 'Nhập số nguyên, tự động phân cách hàng nghìn. Ví dụ: 1.500.000.',
+  balanceHint:
+    'Nhập số nguyên, tự động phân cách hàng nghìn. Ví dụ: 1.500.000.',
   invalidAmount: 'Nhập số nguyên từ 0 đến 100.000.000.000 ₫.',
   start: 'Bắt đầu',
   skip: 'Bỏ qua, bắt đầu từ 0 ₫',
@@ -693,8 +705,7 @@ export const viMessages = {
   txTimeToday: 'Hôm nay',
   txTimeYesterday: 'Hôm qua',
   settingsSecurityTitle: 'Bảo mật',
-  settingsSecuritySubtitle:
-    'Mã PIN và quản lý dữ liệu (xóa toàn bộ dữ liệu).',
+  settingsSecuritySubtitle: 'Mã PIN và quản lý dữ liệu (xóa toàn bộ dữ liệu).',
   securityPinMenuTitle: 'Mã PIN',
   securityDataMenuTitle: 'Quản lý dữ liệu',
   securityDataMenuSubtitle:

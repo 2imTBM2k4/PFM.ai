@@ -27,6 +27,25 @@ beforeEach(() => {
   });
 });
 
+it('keeps navigation hidden while a form owns it despite scroll requests', () => {
+  const release = usePreferences.getState().holdTabBarHidden();
+  usePreferences.getState().setTabBarVisible(true);
+  expect(usePreferences.getState().isTabBarVisible).toBe(false);
+  release();
+  expect(usePreferences.getState().isTabBarVisible).toBe(true);
+});
+
+it('waits for all forms to close and safely ignores repeated releases', () => {
+  const releaseFirst = usePreferences.getState().holdTabBarHidden();
+  const releaseSecond = usePreferences.getState().holdTabBarHidden();
+  releaseFirst();
+  releaseFirst();
+  usePreferences.getState().setTabBarVisible(true);
+  expect(usePreferences.getState().isTabBarVisible).toBe(false);
+  releaseSecond();
+  expect(usePreferences.getState().isTabBarVisible).toBe(true);
+});
+
 it('consumes a requested chat camera action exactly once', () => {
   usePreferences.getState().requestChatCamera();
   expect(usePreferences.getState().consumeChatAction()).toBe('camera');
@@ -34,9 +53,11 @@ it('consumes a requested chat camera action exactly once', () => {
 });
 
 it('handles openChatWithReceipt and consumes receipt asset exactly once', () => {
-  usePreferences
-    .getState()
-    .openChatWithReceipt({ uri: 'file://receipt.jpg', width: 800, height: 600 });
+  usePreferences.getState().openChatWithReceipt({
+    uri: 'file://receipt.jpg',
+    width: 800,
+    height: 600,
+  });
   expect(usePreferences.getState().isChatOpen).toBe(true);
   expect(usePreferences.getState().consumeReceiptAsset()).toEqual({
     uri: 'file://receipt.jpg',
@@ -138,5 +159,3 @@ it('hides dev seed tools and forces seedEnabled to false outside __DEV__ without
   await usePreferences.getState().hydratePreferences();
   expect(usePreferences.getState().seedEnabled).toBe(true);
 });
-
-

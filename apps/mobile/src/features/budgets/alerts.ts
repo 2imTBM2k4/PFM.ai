@@ -15,10 +15,12 @@ export async function processBudgetAlerts(
   db: Database,
   month: string,
   port: BudgetAlertPort,
+  referenceDate?: string,
 ) {
   if (!(await port.hasPermission())) return;
-  const rows = await readBudgetMonth(db, month);
+  const rows = await readBudgetMonth(db, month, undefined, referenceDate);
   for (const budget of rows.filter((row) => row.is_active && row.in_period)) {
+    const period = budget.period_key ?? month;
     for (const threshold of budgetThresholds(
       budget.spent,
       budget.amount,
@@ -28,7 +30,7 @@ export async function processBudgetAlerts(
         !(await claimBudgetAlert(
           db,
           budget.id,
-          month,
+          period,
           threshold,
           new Date().toISOString(),
         ))
@@ -36,9 +38,9 @@ export async function processBudgetAlerts(
         continue;
       try {
         // shortcut: claim-before-send avoids duplicates after a crash but can miss a crash-window alert; reconcile native delivery before release.
-        await port.send(budget.id, month, threshold);
+        await port.send(budget.id, period, threshold);
       } catch (error) {
-        await releaseBudgetAlert(db, budget.id, month, threshold);
+        await releaseBudgetAlert(db, budget.id, period, threshold);
         throw error;
       }
     }

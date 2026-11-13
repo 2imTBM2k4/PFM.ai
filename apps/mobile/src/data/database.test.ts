@@ -57,6 +57,9 @@ import {
   setWalletArchived,
   reorderWallets,
   requireActiveWallet,
+  readPinnedWalletIds,
+  setWalletPinned,
+  prioritizePinnedWallets,
 } from './wallets';
 import {
   recordParseLearning,
@@ -85,6 +88,167 @@ import {
 let sqlite: DatabaseSync;
 let db: Database;
 let temporaryFile: string | undefined;
+
+it('keeps an unlimited daily budget active across months and resets its spending each day', async () => {
+  await migrate(db);
+  await seed(db, '2026-11-01');
+  const input = {
+    amount: 100000,
+    periodType: 'custom',
+    startDate: '2026-11-30',
+    endDate: null,
+  } as const;
+  await createBudget(db, 'daily-unlimited', input, '2026-11-01');
+  for (const date of ['2026-11-30', '2026-12-01']) {
+    await createTransaction(
+      db,
+      randomUUID(),
+      {
+        kind: 'expense',
+        amount: 150000,
+        walletId: DEFAULT_WALLET_ID,
+        occurredOn: date,
+        occurredAt: `${date}T10:00:00+07:00`,
+      },
+      'now',
+    );
+  }
+  const day = async (date: string) =>
+    (await readBudgetMonth(db, date.slice(0, 7), 'daily-unlimited', date))[0];
+  expect(await day('2026-11-29')).toMatchObject({ in_period: 0, spent: 0 });
+  expect(await day('2026-11-30')).toMatchObject({
+    in_period: 1,
+    spent: 150000,
+    end_date: null,
+  });
+  expect(await day('2026-12-01')).toMatchObject({
+    in_period: 1,
+    spent: 150000,
+  });
+  expect(await day('2027-01-01')).toMatchObject({ in_period: 1, spent: 0 });
+  await updateBudget(
+    db,
+    'daily-unlimited',
+    { ...input, endDate: '2026-12-01' },
+    'now',
+  );
+  expect(await day('2026-12-02')).toMatchObject({ in_period: 0 });
+  await updateBudget(db, 'daily-unlimited', input, 'now');
+  expect(await day('2026-12-02')).toMatchObject({
+    in_period: 1,
+    end_date: null,
+    end_month: null,
+  });
+});
+
+it('resets daily budget spending and alert delivery each day within its date range', async () => {
+  await migrate(db);
+  await seed(db, '2026-11-01');
+  await createBudget(
+    db,
+    'daily-reset',
+    {
+      amount: 100000,
+      warnPercent: 80,
+      periodType: 'custom',
+      startDate: '2026-11-10',
+      endDate: '2026-11-12',
+      categoryId: null,
+    },
+    '2026-11-01',
+  );
+  for (const date of ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-13']) {
+    await createTransaction(
+      db,
+      randomUUID(),
+      {
+        kind: 'expense',
+        amount: 150000,
+        walletId: DEFAULT_WALLET_ID,
+        occurredOn: date,
+        occurredAt: `${date}T10:00:00+07:00`,
+      },
+      'now',
+    );
+  }
+  const day = async (date: string) =>
+    (await readBudgetMonth(db, '2026-11', 'daily-reset', date))[0];
+  expect(await day('2026-11-10')).toMatchObject({
+    amount: 100000,
+    spent: 150000,
+    in_period: 1,
+  });
+  expect(await day('2026-11-11')).toMatchObject({
+    spent: 150000,
+    in_period: 1,
+  });
+  expect(await day('2026-11-12')).toMatchObject({ spent: 0, in_period: 1 });
+  expect(await day('2026-11-09')).toMatchObject({ spent: 0, in_period: 0 });
+  expect(await day('2026-11-13')).toMatchObject({ spent: 0, in_period: 0 });
+  const sent: string[] = [];
+  const port = {
+    hasPermission: async () => true,
+    send: async (_id: string, period: string, threshold: number) => {
+      sent.push(`${period}:${threshold}`);
+    },
+  };
+  await processBudgetAlerts(db, '2026-11', port, '2026-11-10');
+  await processBudgetAlerts(db, '2026-11', port, '2026-11-10');
+  await processBudgetAlerts(db, '2026-11', port, '2026-11-11');
+  await processBudgetAlerts(db, '2026-11', port, '2026-11-12');
+  expect(sent).toEqual([
+    '2026-11-10:80',
+    '2026-11-10:100',
+    '2026-11-11:80',
+    '2026-11-11:100',
+  ]);
+});
+
+it('pins multiple Overview wallets without changing transaction wallet ordering', async () => {
+  await migrate(db);
+  await seed(db, '2026-11-01');
+  await createWallet(
+    db,
+    'bank-pin',
+    { name: 'Bank', kind: 'bank', initialBalance: 0 },
+    '2026-11-02',
+  );
+  await createWallet(
+    db,
+    'cash-pin',
+    { name: 'Cash', kind: 'cash', initialBalance: 0 },
+    '2026-11-03',
+  );
+  const order = (await listWallets(db)).map((wallet) => wallet.id);
+  await setWalletPinned(db, 'bank-pin', true);
+  await setWalletPinned(db, DEFAULT_WALLET_ID, true);
+  await setWalletPinned(db, 'bank-pin', true);
+  expect(await readPinnedWalletIds(db)).toEqual([
+    'bank-pin',
+    DEFAULT_WALLET_ID,
+  ]);
+  const dashboard = await readDashboard(db, '2026-11');
+  expect(
+    prioritizePinnedWallets(dashboard.wallets, dashboard.pinnedWalletIds)
+      .slice(0, 2)
+      .map((wallet) => wallet.id),
+  ).toEqual(['bank-pin', DEFAULT_WALLET_ID]);
+  expect((await listWallets(db)).map((wallet) => wallet.id)).toEqual(order);
+  await setWalletPinned(db, 'bank-pin', false);
+  expect(await readPinnedWalletIds(db)).toEqual([DEFAULT_WALLET_ID]);
+  await setWalletArchived(db, DEFAULT_WALLET_ID, true, '2026-11-04');
+  expect(
+    (await readDashboard(db, '2026-11')).wallets
+      .filter((wallet) => !wallet.is_archived)
+      .map((wallet) => wallet.id),
+  ).not.toContain(DEFAULT_WALLET_ID);
+  await expect(setWalletPinned(db, 'missing', true)).rejects.toThrow(
+    'WALLET_NOT_FOUND',
+  );
+  await expect(setWalletPinned(db, DEFAULT_WALLET_ID, true)).rejects.toThrow(
+    'WALLET_ARCHIVED',
+  );
+});
 
 const entryNow = new Date('2026-10-23T09:00:00+07:00');
 
@@ -3972,13 +4136,25 @@ it('orders wallets by most recent transaction activity', async () => {
   await createWallet(
     db,
     wallet1,
-    { name: 'Wallet One', kind: 'cash', initialBalance: 0, isGoalFunding: false, sortOrder: 0 },
+    {
+      name: 'Wallet One',
+      kind: 'cash',
+      initialBalance: 0,
+      isGoalFunding: false,
+      sortOrder: 0,
+    },
     '2026-10-26T01:00:00Z',
   );
   await createWallet(
     db,
     wallet2,
-    { name: 'Wallet Two', kind: 'bank', initialBalance: 0, isGoalFunding: false, sortOrder: 1 },
+    {
+      name: 'Wallet Two',
+      kind: 'bank',
+      initialBalance: 0,
+      isGoalFunding: false,
+      sortOrder: 1,
+    },
     '2026-10-26T02:00:00Z',
   );
 
@@ -4131,7 +4307,12 @@ it('calculates spent correctly for custom date range budgets and monthly reset b
   );
 
   // Query November budgets
-  const novBudgets = await readBudgetMonth(db, '2026-11');
+  const novBudgets = await readBudgetMonth(
+    db,
+    '2026-11',
+    undefined,
+    '2026-11-10',
+  );
   const customNov = novBudgets.find((b) => b.id === customBudgetId);
   const monthlyNov = novBudgets.find((b) => b.id === monthlyBudgetId);
 
@@ -4144,7 +4325,12 @@ it('calculates spent correctly for custom date range budgets and monthly reset b
   expect(Boolean(monthlyNov?.in_period)).toBe(true);
 
   // Query December budgets
-  const decBudgets = await readBudgetMonth(db, '2026-12');
+  const decBudgets = await readBudgetMonth(
+    db,
+    '2026-12',
+    undefined,
+    '2026-12-05',
+  );
   const customDec = decBudgets.find((b) => b.id === customBudgetId);
   const monthlyDec = decBudgets.find((b) => b.id === monthlyBudgetId);
 

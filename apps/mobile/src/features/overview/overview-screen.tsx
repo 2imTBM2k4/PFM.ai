@@ -1,6 +1,6 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { budgetBannerItems, monthKey, today } from '@pfm/domain';
+import { budgetBannerItems, monthKey } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import type { TransactionInput } from '@pfm/contracts';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -18,12 +18,7 @@ import {
   ProgressBar,
   Text,
 } from 'react-native-paper';
-import {
-  EmptyStateCard,
-  IconBadge,
-  Screen,
-  styles,
-} from '@/components/screen';
+import { EmptyStateCard, IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard, Pill } from '@/components/ui';
 import {
   createSoftShadow,
@@ -41,17 +36,16 @@ import {
   filterVisibleBudgetBannerItems,
 } from '@/data/budgets';
 import { readDashboard, type Dashboard } from '@/data/dashboard';
+import { prioritizePinnedWallets } from '@/data/wallets';
 import { DEBT_KIND_LABELS } from '@/features/debts/labels';
 import { NotificationsView } from '@/features/notifications/notifications-view';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
+import { useCurrentDate } from '@/hooks/use-current-date';
 import { BudgetBanner } from './budget-banner';
 import { formatRecentTransactionTime } from './transaction-time';
-
-const localToday = () =>
-  today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
 
 /**
  * Converts integer basis points into a localized percentage delta label.
@@ -77,7 +71,7 @@ export function OverviewScreen({
   onWallets(): void;
   onGoals?(): void;
 }) {
-  const [date, setDate] = useState(localToday);
+  const date = useCurrentDate();
   const [data, setData] = useState<Dashboard | null>(null);
   const [dismissedBannerKeys, setDismissedBannerKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,29 +85,33 @@ export function OverviewScreen({
   const { isDuoClosedPortrait } = useResponsiveLayout();
   const router = useRouter();
 
-  const load = useCallback(async (showSpinner = false) => {
-    const id = ++request.current;
-    if (showSpinner || !hasLoadedOnce.current) {
-      setLoading(true);
-    }
-    setError(false);
-    try {
-      const currentMonth = monthKey(localToday());
-      const next = await withDatabase((db) => readDashboard(db, currentMonth));
-      if (id !== request.current) return;
-      hasLoadedOnce.current = true;
-      setDate(localToday());
-      setData(next);
-      setDismissedBannerKeys(next.dismissedBudgetBannerKeys);
-      useApp.setState({
-        wallets: next.wallets.filter((wallet) => !wallet.is_archived),
-      });
-    } catch {
-      if (id === request.current) setError(true);
-    } finally {
-      if (id === request.current) setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (showSpinner = false) => {
+      const id = ++request.current;
+      if (showSpinner || !hasLoadedOnce.current) {
+        setLoading(true);
+      }
+      setError(false);
+      try {
+        const currentMonth = monthKey(date);
+        const next = await withDatabase((db) =>
+          readDashboard(db, currentMonth),
+        );
+        if (id !== request.current) return;
+        hasLoadedOnce.current = true;
+        setData(next);
+        setDismissedBannerKeys(next.dismissedBudgetBannerKeys);
+        useApp.setState({
+          wallets: next.wallets.filter((wallet) => !wallet.is_archived),
+        });
+      } catch {
+        if (id === request.current) setError(true);
+      } finally {
+        if (id === request.current) setLoading(false);
+      }
+    },
+    [date],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -135,8 +133,12 @@ export function OverviewScreen({
   const hideBalance = usePreferences((state) => state.hideBalance);
   const toggleHideBalance = usePreferences((state) => state.toggleHideBalance);
 
-  const activeWallets =
-    data?.wallets.filter((wallet) => !wallet.is_archived) ?? [];
+  const activeWallets = data
+    ? prioritizePinnedWallets(
+        data.wallets.filter((wallet) => !wallet.is_archived),
+        data.pinnedWalletIds,
+      )
+    : [];
   const goals = data?.goals;
   const topGoal = useMemo(() => {
     if (!goals?.length) return null;
@@ -283,7 +285,11 @@ export function OverviewScreen({
             onDismiss={() => {
               const currentMonth = data.current.month;
               const newKeys = visibleBannerItems.map((item) =>
-                budgetBannerDismissKey(item.budgetId, currentMonth, item.level),
+                budgetBannerDismissKey(
+                  item.budgetId,
+                  item.periodKey ?? currentMonth,
+                  item.level,
+                ),
               );
               setDismissedBannerKeys((prev) => [
                 ...new Set([...prev, ...newKeys]),

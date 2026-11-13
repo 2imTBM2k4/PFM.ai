@@ -2,6 +2,60 @@ import { WalletInputSchema, type WalletInput } from '@pfm/contracts';
 import type { Database, Queries } from './migrate';
 import type { WalletRow } from './repository';
 
+export const PINNED_WALLETS_SETTING_KEY = 'pinned_wallet_ids_v1';
+
+/** Prioritizes pins while preserving the existing order within both groups. */
+export function prioritizePinnedWallets<T extends { id: string }>(
+  wallets: readonly T[],
+  ids: readonly string[],
+): T[] {
+  const pinned = new Set(ids);
+  return [...wallets].sort(
+    (a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)),
+  );
+}
+
+/** Reads persisted wallet pins while ignoring malformed settings. */
+export async function readPinnedWalletIds(db: Queries): Promise<string[]> {
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM settings WHERE key = ?',
+    PINNED_WALLETS_SETTING_KEY,
+  );
+  try {
+    const value: unknown = JSON.parse(row?.value ?? '[]');
+    return Array.isArray(value)
+      ? [
+          ...new Set(
+            value.filter(
+              (id): id is string => typeof id === 'string' && id.length > 0,
+            ),
+          ),
+        ]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Pins or unpins an active wallet without changing its transaction order. */
+export async function setWalletPinned(
+  db: Database,
+  id: string,
+  pinned: boolean,
+) {
+  await db.transaction(async (tx) => {
+    await requireActiveWallet(tx, id);
+    const ids = new Set(await readPinnedWalletIds(tx));
+    if (pinned) ids.add(id);
+    else ids.delete(id);
+    await tx.runAsync(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      PINNED_WALLETS_SETTING_KEY,
+      JSON.stringify([...ids]),
+    );
+  });
+}
+
 export async function requireActiveWallet(
   db: Queries,
   id: string,

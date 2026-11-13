@@ -1,13 +1,9 @@
+import { LocalTransferSettings } from './local-transfer-settings';
+import { useTransientState } from '@/hooks/use-transient-state';
 import { isRunningInExpoGo } from 'expo';
 import { useEffect, useState } from 'react';
 import { BackHandler, StyleSheet, View } from 'react-native';
-import {
-  Button,
-  Divider,
-  Switch,
-  Text,
-  TextInput,
-} from 'react-native-paper';
+import { Button, Divider, Switch, Text, TextInput } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard } from '@/components/ui';
 import {
@@ -91,7 +87,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
   const isConnected = Boolean(state.accountEmail);
 
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useTransientState('');
   const [actionError, setActionError] = useState<BackupOperationError | null>(
     null,
   );
@@ -648,6 +644,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
           )}
         </GlassCard>
       )}
+      <LocalTransferSettings />
     </Screen>
   );
 }

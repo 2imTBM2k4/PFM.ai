@@ -239,6 +239,25 @@ describe('core application input contracts', () => {
     ).toBe(false);
   });
 
+  it('accepts unlimited daily budgets but rejects invalid or reversed end dates', () => {
+    const daily = {
+      amount: 100000,
+      periodType: 'custom',
+      startDate: '2026-11-30',
+      endDate: null,
+    };
+    expect(BudgetInputSchema.parse(daily).endDate).toBeNull();
+    expect(
+      BudgetInputSchema.safeParse({ ...daily, endDate: '2026-12-01' }).success,
+    ).toBe(true);
+    expect(
+      BudgetInputSchema.safeParse({ ...daily, endDate: '2026-11-29' }).success,
+    ).toBe(false);
+    expect(
+      BudgetInputSchema.safeParse({ ...daily, endDate: '2026-02-30' }).success,
+    ).toBe(false);
+  });
+
   it('allows goals without a deadline and rejects invalid target amounts', () => {
     expect(
       GoalInputSchema.parse({ name: 'Máy tính', targetAmount: 10_000_000 })

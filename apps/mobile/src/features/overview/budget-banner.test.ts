@@ -104,9 +104,9 @@ describe('budget banner dismissal & persistence', () => {
   it('prunes old months and ignores corrupted JSON in parseDismissedBudgetBannerKeys', () => {
     expect(parseDismissedBudgetBannerKeys(null, '2026-11')).toEqual([]);
     expect(parseDismissedBudgetBannerKeys('{corrupted', '2026-11')).toEqual([]);
-    expect(parseDismissedBudgetBannerKeys('{"not":"array"}', '2026-11')).toEqual(
-      [],
-    );
+    expect(
+      parseDismissedBudgetBannerKeys('{"not":"array"}', '2026-11'),
+    ).toEqual([]);
 
     const raw = JSON.stringify([
       'b1|2026-10|warn',
@@ -120,6 +120,26 @@ describe('budget banner dismissal & persistence', () => {
       'b1|2026-11|warn',
       'b2|2026-11|over',
     ]);
+  });
+
+  it('does not carry a dismissed daily banner into the next day', async () => {
+    const row = {
+      id: 'daily',
+      amount: 100000,
+      spent: 150000,
+      warn_percent: 80,
+      period_key: '2026-11-10',
+    };
+    const first = budgetBannerItems([row]);
+    const dismissed = await dismissBudgetBannerItems(db, '2026-11', first);
+    expect(dismissed).toContain('daily|2026-11-10|over');
+    expect(filterVisibleBudgetBannerItems(first, '2026-11', dismissed)).toEqual(
+      [],
+    );
+    const next = budgetBannerItems([{ ...row, period_key: '2026-11-11' }]);
+    expect(
+      filterVisibleBudgetBannerItems(next, '2026-11', dismissed),
+    ).toHaveLength(1);
   });
 
   it('tracks warn and over dismissal independently across transactions and months on real SQLite', async () => {

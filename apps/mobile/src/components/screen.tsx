@@ -8,7 +8,9 @@ import {
   type ReactNode,
 } from 'react';
 import { RevealFieldContext } from './field-feedback';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { SymbolView } from 'expo-symbols';
+import { toSfSymbol } from '@/utils/sf-symbols';
+import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -44,7 +46,18 @@ import { vi } from '@/messages/vi';
 import { useTabBarScroll } from '@/hooks/use-tab-bar-scroll';
 import { usePreferences } from '@/state/preferences';
 
-let hiddenTabBarOwners = 0;
+/** Scrolls the focused field into view, favoring the last lines of tall notes. */
+export function getFieldScrollOffset(
+  y: number,
+  height: number,
+  viewportHeight: number,
+) {
+  return Math.max(
+    0,
+    y - 16,
+    viewportHeight > 0 ? y + height - viewportHeight + 16 : 0,
+  );
+}
 
 /**
  * Shared screen wrapper with safe area handling, keyboard avoidance, and glassmorphic header.
@@ -84,16 +97,26 @@ export function Screen({
   const palette = useFinancePalette();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const contentRef = useRef<ComponentRef<typeof View>>(null);
-  const revealField = useCallback((target: ComponentRef<typeof View>) => {
-    if (!contentRef.current) return;
-    target.measureLayout(
-      contentRef.current,
-      (_x, y) => {
-        scrollRef.current?.scrollTo({ y: Math.max(0, y - 16), animated: true });
-      },
-      () => {},
-    );
-  }, []);
+  const focusedField = useRef<ComponentRef<typeof View> | null>(null);
+  const viewportHeight = useRef(0);
+  const revealField = useCallback(
+    (target: ComponentRef<typeof View> | null) => {
+      focusedField.current = target;
+      if (!target || !contentRef.current) return;
+      target.measureLayout(
+        contentRef.current,
+        (_x, y, _width, height) => {
+          if (focusedField.current !== target) return;
+          scrollRef.current?.scrollTo({
+            y: getFieldScrollOffset(y, height, viewportHeight.current),
+            animated: true,
+          });
+        },
+        () => {},
+      );
+    },
+    [],
+  );
   const designTheme = useDesignTheme();
   const insets = useSafeAreaInsets();
   const { width, height, isDuoClosedPortrait } = useResponsiveLayout();
@@ -113,22 +136,23 @@ export function Screen({
     const hideSub = Keyboard.addListener(hideEvent, () =>
       setKeyboardVisible(false),
     );
+    const revealSub = Keyboard.addListener('keyboardDidShow', () =>
+      revealField(focusedField.current),
+    );
+    const frameSub = Keyboard.addListener('keyboardDidChangeFrame', () =>
+      revealField(focusedField.current),
+    );
     return () => {
       showSub.remove();
       hideSub.remove();
+      revealSub.remove();
+      frameSub.remove();
     };
-  }, []);
+  }, [revealField]);
 
   useEffect(() => {
     if (!shouldHideTabBar) return;
-    hiddenTabBarOwners += 1;
-    usePreferences.getState().setTabBarVisible(false);
-    return () => {
-      hiddenTabBarOwners = Math.max(0, hiddenTabBarOwners - 1);
-      if (hiddenTabBarOwners === 0) {
-        usePreferences.getState().setTabBarVisible(true);
-      }
-    };
+    return usePreferences.getState().holdTabBarHidden();
   }, [shouldHideTabBar]);
 
   const tabBarScroll = useTabBarScroll({
@@ -238,12 +262,18 @@ export function Screen({
       <View style={[styles.fill, { backgroundColor: 'transparent' }]}>
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined}
+          behavior={
+            Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined
+          }
           keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
         >
           {scroll ? (
             <ScrollView
               ref={scrollRef}
+              onLayout={(event) => {
+                viewportHeight.current = event.nativeEvent.layout.height;
+                revealField(focusedField.current);
+              }}
               style={styles.fill}
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
@@ -306,12 +336,18 @@ export function Screen({
       <SafeAreaView edges={['top', 'left', 'right']} style={styles.fill}>
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined}
+          behavior={
+            Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined
+          }
           keyboardVerticalOffset={0}
         >
           {scroll ? (
             <ScrollView
               ref={scrollRef}
+              onLayout={(event) => {
+                viewportHeight.current = event.nativeEvent.layout.height;
+                revealField(focusedField.current);
+              }}
               style={styles.fill}
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
@@ -457,6 +493,7 @@ export function QuickTile({
   disabled,
   onPress,
   style,
+  compact = false,
 }: {
   icon: string;
   label: string;
@@ -465,41 +502,75 @@ export function QuickTile({
   disabled?: boolean;
   onPress(): void;
   style?: StyleProp<ViewStyle>;
+  compact?: boolean;
 }) {
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.quickTile,
-        createSoftShadow(designTheme.mode, 'sm'),
-        {
-          backgroundColor: designTheme.card.surface,
-          borderColor: designTheme.card.border,
-          opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-          transform: [{ scale: pressed ? 0.97 : 1 }],
-        },
-        style,
-      ]}
+    <Animated.View
+      layout={LinearTransition.duration(220)}
+      style={
+        compact
+          ? { width: 44, minHeight: 44, justifyContent: 'center' }
+          : { flex: 1 }
+      }
     >
-      <IconBadge icon={icon} bg={bg} fg={fg} size={40} iconSize={20} />
-      <Text
-        variant="labelMedium"
-        numberOfLines={2}
-        style={{
-          color: palette.text,
-          fontWeight: '600',
-          textAlign: 'center',
-          lineHeight: 16,
-        }}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityState={{ disabled: Boolean(disabled) }}
+        disabled={disabled}
+        hitSlop={compact ? 6 : undefined}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.quickTile,
+          createSoftShadow(designTheme.mode, 'sm'),
+          {
+            backgroundColor: designTheme.card.surface,
+            borderColor: designTheme.card.border,
+            opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
+            transform: [{ scale: pressed ? 0.97 : 1 }],
+          },
+          style,
+          compact && {
+            flex: 0,
+            width: 32,
+            minWidth: 32,
+            height: 32,
+            paddingVertical: 0,
+            paddingHorizontal: 0,
+            alignSelf: 'center',
+            borderRadius: DesignRadius.sm,
+          },
+        ]}
       >
-        {label}
-      </Text>
-    </Pressable>
+        {compact && Platform.OS === 'ios' ? (
+          <SymbolView name={toSfSymbol(icon)!} size={18} tintColor={fg} />
+        ) : (
+          <IconBadge
+            icon={icon}
+            bg={bg}
+            fg={fg}
+            size={compact ? 28 : 40}
+            iconSize={compact ? 18 : 20}
+          />
+        )}
+        {!compact && (
+          <Text
+            variant="labelMedium"
+            numberOfLines={2}
+            style={{
+              color: palette.text,
+              fontWeight: '600',
+              textAlign: 'center',
+              lineHeight: 16,
+            }}
+          >
+            {label}
+          </Text>
+        )}
+      </Pressable>
+    </Animated.View>
   );
 }
 

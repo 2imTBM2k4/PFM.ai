@@ -3,7 +3,8 @@ import type { Queries } from './migrate';
 import { readBudgetMonth, readDismissedBudgetBannerKeys } from './budgets';
 import { listGoals } from './goals';
 import { listTransactions } from './transactions';
-import { listWallets, listWalletsByRecentActivity } from './repository';
+import { listWalletsByRecentActivity } from './repository';
+import { readPinnedWalletIds } from './wallets';
 
 interface MonthTotals {
   month: string;
@@ -23,7 +24,10 @@ export interface DailyTotals {
   expense: number;
 }
 
-export async function readDailyTotals(db: Queries, month: string): Promise<DailyTotals[]> {
+export async function readDailyTotals(
+  db: Queries,
+  month: string,
+): Promise<DailyTotals[]> {
   monthKey(`${month}-01`);
   const [year, number] = month.split('-').map(Number);
   const end = `${month}-${String(daysInMonth(year, number)).padStart(2, '0')}`;
@@ -36,7 +40,12 @@ export async function readDailyTotals(db: Queries, month: string): Promise<Daily
     `${month}-01`,
     end,
   );
-  if (rows.some((row) => !Number.isSafeInteger(row.income) || !Number.isSafeInteger(row.expense)))
+  if (
+    rows.some(
+      (row) =>
+        !Number.isSafeInteger(row.income) || !Number.isSafeInteger(row.expense),
+    )
+  )
     throw new Error('DAILY_TOTAL_UNSAFE');
   return rows;
 }
@@ -87,6 +96,7 @@ export async function readDashboard(db: Queries, month: string) {
     .slice(6)
     .reduce((sum, row) => sum + row.amount, 0);
   const wallets = await listWalletsByRecentActivity(db, true);
+  const pinnedWalletIds = await readPinnedWalletIds(db);
   if (wallets.some((wallet) => !Number.isSafeInteger(wallet.balance)))
     throw new Error('DASHBOARD_TOTAL_UNSAFE');
   const balance = wallets
@@ -95,6 +105,7 @@ export async function readDashboard(db: Queries, month: string) {
   if (!Number.isSafeInteger(balance)) throw new Error('DASHBOARD_TOTAL_UNSAFE');
   return {
     wallets,
+    pinnedWalletIds,
     balance,
     current,
     months,

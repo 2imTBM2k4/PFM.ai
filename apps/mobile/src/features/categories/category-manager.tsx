@@ -1,3 +1,4 @@
+import { useTransientState } from '@/hooks/use-transient-state';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import type { CategoryInput } from '@pfm/contracts';
@@ -60,7 +61,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useTransientState(false);
   const [archived, setArchived] = useState(false);
   const [mode, setMode] = useState<Mode>({ type: 'list' });
   const working = useRef(false);
@@ -185,28 +186,37 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
     }
   };
 
-  const edit = useCallback((category: CategoryRow) => {
-    setMode({
-      type: 'form',
-      category,
-      id: category.id,
-      defaultParentId: category.parent_id ?? undefined,
-    });
-    setError('');
-    setSaved(false);
-  }, []);
+  const edit = useCallback(
+    (category: CategoryRow) => {
+      setMode({
+        type: 'form',
+        category,
+        id: category.id,
+        defaultParentId: category.parent_id ?? undefined,
+      });
+      setError('');
+      setSaved(false);
+    },
+    [setSaved],
+  );
 
-  const archive = useCallback((category: CategoryRow) => {
-    setMode({ type: 'archive', category });
-    setError('');
-    setSaved(false);
-  }, []);
+  const archive = useCallback(
+    (category: CategoryRow) => {
+      setMode({ type: 'archive', category });
+      setError('');
+      setSaved(false);
+    },
+    [setSaved],
+  );
 
-  const openSubcategories = useCallback((parent: CategoryRow) => {
-    setMode({ type: 'subcategories', parent });
-    setError('');
-    setSaved(false);
-  }, []);
+  const openSubcategories = useCallback(
+    (parent: CategoryRow) => {
+      setMode({ type: 'subcategories', parent });
+      setError('');
+      setSaved(false);
+    },
+    [setSaved],
+  );
 
   // 1. Subcategory Management Screen
   if (mode.type === 'subcategories') {
@@ -1149,7 +1159,11 @@ function ArchiveForm({
   );
 
   return (
-    <Screen title={vi.archiveCategory} onBack={requestLeave} backDisabled={busy}>
+    <Screen
+      title={vi.archiveCategory}
+      onBack={requestLeave}
+      backDisabled={busy}
+    >
       <View
         style={[
           styles.panel,

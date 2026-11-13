@@ -6,6 +6,7 @@ export interface UseTabBarScrollOptions {
   enabled?: boolean;
   threshold?: number;
   topClearance?: number;
+  showAtBottom?: boolean;
 }
 
 /**
@@ -16,29 +17,65 @@ export function createTabBarScrollHandler(
   options: UseTabBarScrollOptions = {},
 ) {
   let lastScrollY = 0;
-  const { enabled = true, threshold = 10, topClearance = 24 } = options;
+  let scrollDistance = 0;
+  let lastViewportHeight: number | undefined;
+  let lastContentHeight: number | undefined;
+  const {
+    enabled = true,
+    threshold = 10,
+    topClearance = 24,
+    showAtBottom = true,
+  } = options;
 
   return (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (!enabled) return;
-    const { contentOffset, layoutMeasurement, contentSize } =
-      event.nativeEvent;
-    const currentY = contentOffset.y;
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    const currentY = Math.max(
+      0,
+      Math.min(
+        contentOffset.y,
+        Math.max(0, contentSize.height - layoutMeasurement.height),
+      ),
+    );
     const diff = currentY - lastScrollY;
+    const resized =
+      lastViewportHeight !== undefined &&
+      (lastViewportHeight !== layoutMeasurement.height ||
+        lastContentHeight !== contentSize.height);
+    lastViewportHeight = layoutMeasurement.height;
+    lastContentHeight = contentSize.height;
+    if (resized) {
+      if (currentY <= topClearance) setTabBarVisible(true);
+      lastScrollY = currentY;
+      scrollDistance = 0;
+      return;
+    }
+    if (diff !== 0) {
+      scrollDistance =
+        Math.sign(diff) === Math.sign(scrollDistance)
+          ? scrollDistance + diff
+          : diff;
+    }
 
     // Always show near top or at the very bottom of the scroll container
     if (currentY <= topClearance) {
       setTabBarVisible(true);
+      scrollDistance = 0;
     } else if (
+      showAtBottom &&
       contentSize.height > 0 &&
       currentY + layoutMeasurement.height >= contentSize.height - 24
     ) {
       setTabBarVisible(true);
-    } else if (diff > threshold && currentY > 50) {
+      scrollDistance = 0;
+    } else if (scrollDistance > threshold && currentY > 50) {
       // Scrolling down past top clearance -> hide navbar
       setTabBarVisible(false);
-    } else if (diff < -threshold) {
+      scrollDistance = 0;
+    } else if (scrollDistance < -threshold) {
       // Scrolling up -> show navbar
       setTabBarVisible(true);
+      scrollDistance = 0;
     }
 
     lastScrollY = currentY;

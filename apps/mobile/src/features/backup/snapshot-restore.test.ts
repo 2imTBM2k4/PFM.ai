@@ -17,6 +17,7 @@ import {
   validateAndPrepareSnapshot,
 } from './restore';
 import { buildSnapshot, computeBackupTablesChecksum } from './snapshot';
+import { readPinnedWalletIds, setWalletPinned } from '@/data/wallets';
 
 function wrapSqlite(sqlite: DatabaseSync): Database {
   sqlite.exec('PRAGMA foreign_keys = ON');
@@ -465,6 +466,20 @@ describe('Snapshot & Restore (B1 & B2)', () => {
   let targetSqlite: DatabaseSync;
   let targetDb: Database;
 
+  it('preserves wallet pins in backups and clears stale pins when restoring an older backup', async () => {
+    await seed(sourceDb, '2026-11-01');
+    await setWalletPinned(sourceDb, DEFAULT_WALLET_ID, true);
+    const snapshot = await buildSnapshot(sourceDb);
+    await applySnapshot(targetDb, snapshot);
+    expect(await readPinnedWalletIds(targetDb)).toEqual([DEFAULT_WALLET_ID]);
+    await setWalletPinned(sourceDb, DEFAULT_WALLET_ID, false);
+    await sourceDb.runAsync(
+      "DELETE FROM settings WHERE key = 'pinned_wallet_ids_v1'",
+    );
+    await applySnapshot(targetDb, await buildSnapshot(sourceDb));
+    expect(await readPinnedWalletIds(targetDb)).toEqual([]);
+  });
+
   beforeEach(async () => {
     sourceSqlite = new DatabaseSync(':memory:');
     sourceDb = wrapSqlite(sourceSqlite);
@@ -503,6 +518,33 @@ describe('Snapshot & Restore (B1 & B2)', () => {
         'BACKUP_CHECKSUM_MISMATCH',
       );
     }
+  });
+
+  it('restores daily budgets with no end date without converting them to monthly budgets', async () => {
+    await populateComprehensiveDatabase(sourceDb);
+    await sourceDb.runAsync(
+      "UPDATE budgets SET period_type = 'custom', start_date = '2026-06-10', end_date = NULL, end_month = NULL",
+    );
+    const snapshot = await buildSnapshot(sourceDb);
+    await applySnapshot(targetDb, snapshot);
+    expect((await buildSnapshot(targetDb)).tables.budgets).toEqual(
+      snapshot.tables.budgets,
+    );
+    const { readBudgetMonth } = await import('@/data/budgets');
+    const future = await readBudgetMonth(
+      targetDb,
+      '2027-01',
+      undefined,
+      '2027-01-01',
+    );
+    expect(future).toHaveLength(2);
+    for (const budget of future)
+      expect(budget).toMatchObject({
+        in_period: 1,
+        period_type: 'custom',
+        end_date: null,
+        spent: 0,
+      });
   });
 
   it('accepts historical budget checksums with missing or default periods, but rejects unauthenticated custom periods', async () => {

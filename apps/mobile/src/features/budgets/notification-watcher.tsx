@@ -9,9 +9,11 @@ import {
 } from '@/features/notifications/notification-settings-service';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
+import { useCurrentDate } from '@/hooks/use-current-date';
 import { BUDGET_NOTIFICATION_PREFIX, checkBudgetAlerts } from './mobile';
 
 export function BudgetNotificationWatcher() {
+  const date = useCurrentDate();
   const ready = useApp((state) => state.status === 'ready' && state.onboarded);
   const wallets = useApp((state) => state.wallets);
   const router = useRouter();
@@ -20,7 +22,7 @@ export function BudgetNotificationWatcher() {
       void checkBudgetAlerts();
       void syncDailyExpenseReminder();
     }
-  }, [ready, wallets]);
+  }, [ready, wallets, date]);
   useEffect(() => {
     if (!ready) return;
     const active = AppState.addEventListener('change', (state) => {

@@ -28,6 +28,15 @@ const MATERIAL_TO_SF_SYMBOL: Record<string, SFSymbol> = {
   calendar: 'calendar',
   'clock-outline': 'clock',
   repeat: 'repeat',
+  'view-grid-outline': 'square.grid.2x2',
+  'arrow-top-right': 'arrow.up.right',
+  'arrow-bottom-left': 'arrow.down.left',
+  'swap-horizontal': 'arrow.left.arrow.right',
+  'tune-variant': 'slider.horizontal.3',
+  'calendar-sync-outline': 'calendar.badge.clock',
+  'handshake-outline': 'person.2',
+  'pin-outline': 'pin',
+  'pin-off-outline': 'pin.slash',
   'chart-donut': 'chart.pie',
 };
 

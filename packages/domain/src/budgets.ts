@@ -12,6 +12,7 @@ export interface BudgetBannerRowInput {
   isActive?: number | boolean;
   in_period?: number | boolean;
   inPeriod?: number | boolean;
+  period_key?: string;
 }
 
 export interface BudgetBannerItem {
@@ -22,6 +23,7 @@ export interface BudgetBannerItem {
   amount: number;
   percent: number;
   overBy: number;
+  periodKey?: string;
 }
 
 function assertValidBudgetNumbers(
@@ -98,6 +100,7 @@ export function budgetBannerItems(
       null;
 
     items.push({
+      ...(row.period_key ? { periodKey: row.period_key } : {}),
       budgetId: row.id,
       categoryName,
       level,

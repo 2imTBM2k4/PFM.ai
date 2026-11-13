@@ -1,4 +1,6 @@
+import { useTransientState } from '@/hooks/use-transient-state';
 import { uuid } from 'expo';
+import { SymbolView } from 'expo-symbols';
 import { useFocusEffect } from 'expo-router';
 import { MAX_AMOUNT_VND } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
@@ -7,7 +9,7 @@ import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { BackHandler, FlatList, View } from 'react-native';
+import { BackHandler, FlatList, Platform, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -35,6 +37,8 @@ import {
   createWallet,
   updateWallet,
   setWalletArchived,
+  readPinnedWalletIds,
+  setWalletPinned,
 } from '@/data/wallets';
 import { vi } from '@/messages/vi';
 import { displayWalletName } from '@/messages/seed-labels';
@@ -49,11 +53,19 @@ const KINDS = [
   { value: 'other', label: vi.walletOther },
 ] as const;
 
+async function readWalletManagerData(db: Database) {
+  return {
+    rows: await listWallets(db, true),
+    pinnedIds: await readPinnedWalletIds(db),
+  };
+}
+
 export function WalletManager({ onClose }: { onClose(): void }) {
   const [rows, setRows] = useState<WalletRow[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useTransientState(false);
   const [busy, setBusy] = useState(false);
   const [archived, setArchived] = useState(false);
   const [editing, setEditing] = useState<WalletRow | null | undefined>(
@@ -64,14 +76,20 @@ export function WalletManager({ onClose }: { onClose(): void }) {
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const recurringVersion = useApp((state) => state.recurringVersion);
-  const showRows = useCallback((next: WalletRow[]) => {
-    setRows(next);
-    useApp.setState({ wallets: next.filter((wallet) => !wallet.is_archived) });
-  }, []);
+  const showRows = useCallback(
+    (next: { rows: WalletRow[]; pinnedIds: string[] }) => {
+      setRows(next.rows);
+      setPinnedIds(next.pinnedIds);
+      useApp.setState({
+        wallets: next.rows.filter((wallet) => !wallet.is_archived),
+      });
+    },
+    [],
+  );
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      withDatabase((db) => listWallets(db, true))
+      withDatabase(readWalletManagerData)
         .then((next) => {
           if (cancelled) return;
           showRows(next);
@@ -115,7 +133,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
     setLoading(true);
     setError('');
     try {
-      showRows(await withDatabase((db) => listWallets(db, true)));
+      showRows(await withDatabase(readWalletManagerData));
     } catch {
       setError(vi.walletsLoadError);
     } finally {
@@ -136,7 +154,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
           committed = true;
         });
         await useApp.getState().refreshRecurring(true);
-        showRows(await withDatabase((db) => listWallets(db, true)));
+        showRows(await withDatabase(readWalletManagerData));
         setSaved(true);
         return true;
       } catch {
@@ -149,7 +167,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         setBusy(false);
       }
     },
-    [showRows],
+    [showRows, setSaved],
   );
   const archive = useCallback(
     (wallet: WalletRow) =>
@@ -173,9 +191,15 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         busy={busy}
         onEdit={setEditing}
         onArchive={archive}
+        pinned={pinnedIds.includes(item.id)}
+        onPin={(wallet) =>
+          mutate((db) =>
+            setWalletPinned(db, wallet.id, !pinnedIds.includes(wallet.id)),
+          )
+        }
       />
     ),
-    [archive, busy],
+    [archive, busy, mutate, pinnedIds],
   );
 
   if (editing !== undefined)
@@ -294,11 +318,15 @@ const WalletItem = memo(function WalletItem({
   busy,
   onEdit,
   onArchive,
+  pinned,
+  onPin,
 }: {
   wallet: WalletRow;
   busy: boolean;
   onEdit(wallet: WalletRow): void;
   onArchive(wallet: WalletRow): Promise<boolean>;
+  pinned: boolean;
+  onPin(wallet: WalletRow): Promise<boolean>;
 }) {
   const [confirming, setConfirming] = useState(false);
   const palette = useFinancePalette();
@@ -391,7 +419,30 @@ const WalletItem = memo(function WalletItem({
         </Button>
       ) : (
         <View style={styles.row}>
-          <View style={styles.inlineRow}>
+          <View style={[styles.inlineRow, { flexWrap: 'wrap' }]}>
+            <Button
+              compact
+              mode={pinned ? 'contained-tonal' : 'text'}
+              icon={
+                Platform.OS === 'ios'
+                  ? ({ size, color }) => (
+                      <SymbolView
+                        name={pinned ? 'pin.slash' : 'pin'}
+                        size={size}
+                        tintColor={color}
+                      />
+                    )
+                  : pinned
+                    ? 'pin-off-outline'
+                    : 'pin-outline'
+              }
+              accessibilityLabel={pinned ? vi.unpinWallet : vi.pinWallet}
+              accessibilityState={{ selected: pinned }}
+              disabled={busy}
+              onPress={() => void onPin(wallet)}
+            >
+              {pinned ? vi.unpinWallet : vi.pinWallet}
+            </Button>
             <Button
               compact
               mode="contained-tonal"

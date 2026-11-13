@@ -1,3 +1,5 @@
+import { useTransientState } from '@/hooks/use-transient-state';
+import { useCurrentDate } from '@/hooks/use-current-date';
 import { FieldFeedback } from '@/components/field-feedback';
 import {
   amountError,
@@ -17,7 +19,7 @@ import {
 } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { BudgetInputSchema, type BudgetInput } from '@pfm/contracts';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
@@ -29,6 +31,7 @@ import {
   IconButton,
   ProgressBar,
   SegmentedButtons,
+  Switch,
   Text,
   TextInput,
   useTheme,
@@ -58,7 +61,11 @@ import {
   readBudgetMonth,
   type BudgetRow,
 } from '@/data/budgets';
-import { listCategories, orderCategoriesByParent, type CategoryRow } from '@/data/categories';
+import {
+  listCategories,
+  orderCategoriesByParent,
+  type CategoryRow,
+} from '@/data/categories';
 import { vi } from '@/messages/vi';
 import { displayCategoryName } from '@/messages/seed-labels';
 import { useApp } from '@/state/app';
@@ -80,44 +87,53 @@ export function BudgetManager({
   onSwitchToStats?(): void;
   onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
 } = {}) {
+  const currentDate = useCurrentDate();
+  const previousDate = useRef(currentDate);
   const [month, setMonth] = useState(() =>
     monthKey(today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' })),
   );
+  useEffect(() => {
+    const previousMonth = previousDate.current.slice(0, 7);
+    setMonth((selected) =>
+      selected === previousMonth ? currentDate.slice(0, 7) : selected,
+    );
+    previousDate.current = currentDate;
+  }, [currentDate]);
   const [rows, setRows] = useState<BudgetRow[]>([]),
     [categories, setCategories] = useState<CategoryRow[]>([]);
   const [mode, setMode] = useState<Mode>({ type: 'list' });
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
-    [notice, setNotice] = useState('');
+    [notice, setNotice] = useTransientState('');
   const working = useRef(false);
+  const loadRequest = useRef(0);
   const hasLoadedOnce = useRef(false);
   const tabBarScroll = useTabBarScroll();
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const load = useCallback(async () => {
-    if (working.current) return;
-    working.current = true;
+    const request = ++loadRequest.current;
     if (!hasLoadedOnce.current) {
       setLoading(true);
     }
     setError('');
     try {
       const data = await withDatabase(async (db) => ({
-        rows: await readBudgetMonth(db, month),
+        rows: await readBudgetMonth(db, month, undefined, currentDate),
         categories: await listCategories(db, true),
       }));
+      if (request !== loadRequest.current) return;
       hasLoadedOnce.current = true;
       setRows(data.rows);
       setCategories(data.categories);
       void checkBudgetAlerts();
     } catch {
-      setError(vi.budgetLoadError);
+      if (request === loadRequest.current) setError(vi.budgetLoadError);
     } finally {
-      working.current = false;
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
-  }, [month]);
+  }, [month, currentDate]);
   useFocusEffect(
     useCallback(() => {
       const frame = requestAnimationFrame(() => {
@@ -153,6 +169,7 @@ export function BudgetManager({
     async (action: (db: Database) => Promise<void>) => {
       if (working.current) return;
       working.current = true;
+      const request = ++loadRequest.current;
       setBusy(true);
       setError('');
       setNotice('');
@@ -163,7 +180,7 @@ export function BudgetManager({
           committed = true;
           return readBudgetMonth(db, month);
         });
-        setRows(next);
+        if (request === loadRequest.current) setRows(next);
         setMode({ type: 'list' });
         setNotice(vi.budgetSaved);
         useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
@@ -174,15 +191,19 @@ export function BudgetManager({
       } finally {
         working.current = false;
         setBusy(false);
+        if (request === loadRequest.current) setLoading(false);
       }
     },
-    [month],
+    [month, setNotice],
   );
-  const edit = useCallback((row: BudgetRow) => {
-    setMode({ type: 'form', row, id: row.id });
-    setError('');
-    setNotice('');
-  }, []);
+  const edit = useCallback(
+    (row: BudgetRow) => {
+      setMode({ type: 'form', row, id: row.id });
+      setError('');
+      setNotice('');
+    },
+    [setNotice],
+  );
   const toggle = useCallback(
     (row: BudgetRow) => {
       void mutate((db) =>
@@ -403,8 +424,10 @@ const BudgetItem = memo(function BudgetItem({
       : catColor || palette.primaryInk;
 
   const periodSubtitle =
-    row.period_type === 'custom' && row.start_date && row.end_date
-      ? `Từ ${formatDisplayDate(row.start_date)} đến ${formatDisplayDate(row.end_date)}`
+    row.period_type === 'custom' && row.start_date
+      ? row.end_date
+        ? `Từ ${formatDisplayDate(row.start_date)} đến ${formatDisplayDate(row.end_date)}`
+        : `${vi.budgetStartDate} ${formatDisplayDate(row.start_date)} · ${vi.budgetNoEndDate}`
       : `${formatDisplayMonth(row.start_month)}${row.end_month ? ` → ${formatDisplayMonth(row.end_month)}` : ' (Tự động reset)'}`;
 
   return (
@@ -467,14 +490,20 @@ const BudgetItem = memo(function BudgetItem({
         <>
           <View style={styles.row}>
             <Text variant="bodyMedium" style={styles.number}>
-              {vi.budgetSpent}:{' '}
+              {row.period_type === 'custom'
+                ? vi.budgetDailySpent
+                : vi.budgetSpent}
+              :{' '}
               <Text style={{ fontWeight: '700' }}>{formatVnd(row.spent)}</Text>
             </Text>
             <Text
               variant="bodyMedium"
               style={[styles.number, { color: palette.textMuted }]}
             >
-              {vi.budgetLimit}: {formatVnd(row.amount)}
+              {row.period_type === 'custom'
+                ? vi.budgetDailyLimit
+                : vi.budgetLimit}
+              : {formatVnd(row.amount)}
             </Text>
           </View>
           {row.spent > row.amount && (
@@ -606,7 +635,7 @@ function BudgetForm({
     startMonth: row?.start_month ?? month,
     endMonth: row?.end_month ?? '',
     startDate: row?.start_date ?? todayStr,
-    endDate: row?.end_date ?? todayStr,
+    endDate: row?.period_type === 'custom' ? (row.end_date ?? '') : todayStr,
     categoryId: row?.category_id ?? '',
   }));
   const {
@@ -636,8 +665,22 @@ function BudgetForm({
   const disabled = busy || isSubmitting;
   const relevantKeys: (keyof BudgetFields)[] =
     periodType === 'custom'
-      ? ['amount', 'warnPercent', 'periodType', 'startDate', 'endDate', 'categoryId']
-      : ['amount', 'warnPercent', 'periodType', 'startMonth', 'endMonth', 'categoryId'];
+      ? [
+          'amount',
+          'warnPercent',
+          'periodType',
+          'startDate',
+          'endDate',
+          'categoryId',
+        ]
+      : [
+          'amount',
+          'warnPercent',
+          'periodType',
+          'startMonth',
+          'endMonth',
+          'categoryId',
+        ];
   const dirty = haveFieldsChanged(initialValues, currentValues, {
     moneyKeys: ['amount'],
     keys: relevantKeys,
@@ -719,12 +762,12 @@ function BudgetForm({
               if (values.periodType === 'custom') {
                 try {
                   validateDate(values.startDate);
-                  validateDate(values.endDate);
+                  if (values.endDate) validateDate(values.endDate);
                 } catch {
                   setFormError(vi.budgetDateRangeInvalid);
                   return;
                 }
-                if (values.endDate < values.startDate) {
+                if (values.endDate && values.endDate < values.startDate) {
                   setFormError(vi.budgetDateRangeInvalid);
                   return;
                 }
@@ -736,14 +779,19 @@ function BudgetForm({
                 periodType: values.periodType,
                 startDate:
                   values.periodType === 'custom' ? values.startDate : null,
-                endDate: values.periodType === 'custom' ? values.endDate : null,
+                endDate:
+                  values.periodType === 'custom'
+                    ? values.endDate || null
+                    : null,
                 startMonth:
                   values.periodType === 'custom'
                     ? values.startDate.slice(0, 7)
                     : values.startMonth,
                 endMonth:
                   values.periodType === 'custom'
-                    ? values.endDate.slice(0, 7)
+                    ? values.endDate
+                      ? values.endDate.slice(0, 7)
+                      : null
                     : values.endMonth || null,
                 categoryId: values.categoryId || null,
               });
@@ -787,12 +835,12 @@ function BudgetForm({
               message={fieldState.error?.message}
             >
               <AppleMenuPicker
-                  label={vi.transactionCategory}
-                  value={field.value}
-                  options={categoryOptions}
-                  disabled={disabled}
-                  onSelect={field.onChange}
-                />
+                label={vi.transactionCategory}
+                value={field.value}
+                options={categoryOptions}
+                disabled={disabled}
+                onSelect={field.onChange}
+              />
             </FieldFeedback>
           )}
         />
@@ -823,40 +871,60 @@ function BudgetForm({
                   message={fieldState.error?.message}
                 >
                   <DateField
-                      error={!!fieldState.error}
-                      label={vi.budgetStartDate}
-                      value={field.value}
-                      onChange={field.onChange}
-                      disabled={disabled}
-                    />
+                    error={!!fieldState.error}
+                    label={vi.budgetStartDate}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={disabled}
+                  />
                 </FieldFeedback>
               )}
             />
-            <Controller
-              control={control}
-              name="endDate"
-              rules={{
-                validate: (value) =>
-                  getValues('periodType') !== 'custom' ||
-                  endDateError(value, getValues('startDate')),
-              }}
-              render={({ field, fieldState }) => (
-                <FieldFeedback
-                  fieldRef={field.ref}
-                  message={fieldState.error?.message}
-                >
-                  <DateField
+            <View style={styles.row}>
+              <Text style={{ flex: 1 }}>{vi.budgetNoEndDate}</Text>
+              <Switch
+                accessibilityLabel={vi.budgetNoEndDate}
+                disabled={disabled}
+                value={!currentValues.endDate}
+                onValueChange={(unlimited) =>
+                  setValue(
+                    'endDate',
+                    unlimited
+                      ? ''
+                      : currentValues.startDate > todayStr
+                        ? currentValues.startDate
+                        : todayStr,
+                  )
+                }
+              />
+            </View>
+            {!!currentValues.endDate && (
+              <Controller
+                control={control}
+                name="endDate"
+                rules={{
+                  validate: (value) =>
+                    getValues('periodType') !== 'custom' ||
+                    endDateError(value, getValues('startDate'), true),
+                }}
+                render={({ field, fieldState }) => (
+                  <FieldFeedback
+                    fieldRef={field.ref}
+                    message={fieldState.error?.message}
+                  >
+                    <DateField
                       error={!!fieldState.error}
                       label={vi.budgetEndDate}
                       value={field.value}
                       onChange={field.onChange}
                       disabled={disabled}
                     />
-                </FieldFeedback>
-              )}
-            />
+                  </FieldFeedback>
+                )}
+              />
+            )}
             <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-              {vi.budgetCustomHint}
+              {vi.budgetDailyResetHint}
             </Text>
           </>
         ) : (
@@ -874,12 +942,12 @@ function BudgetForm({
                   message={fieldState.error?.message}
                 >
                   <MonthField
-                      error={!!fieldState.error}
-                      label={vi.budgetStart}
-                      value={field.value}
-                      onChange={field.onChange}
-                      disabled={disabled}
-                    />
+                    error={!!fieldState.error}
+                    label={vi.budgetStart}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={disabled}
+                  />
                 </FieldFeedback>
               )}
             />
@@ -901,13 +969,13 @@ function BudgetForm({
                   message={fieldState.error?.message}
                 >
                   <MonthField
-                      error={!!fieldState.error}
-                      label={vi.budgetEnd}
-                      value={field.value}
-                      onChange={field.onChange}
-                      disabled={disabled}
-                      allowClear
-                    />
+                    error={!!fieldState.error}
+                    label={vi.budgetEnd}
+                    value={field.value}
+                    onChange={field.onChange}
+                    disabled={disabled}
+                    allowClear
+                  />
                 </FieldFeedback>
               )}
             />
@@ -929,15 +997,23 @@ function BudgetForm({
               message={fieldState.error?.message}
             >
               <MoneyInput
-                  error={!!fieldState.error}
-                  label={vi.budgetAmount}
-                  accessibilityLabel={vi.budgetAmount}
-                  value={field.value}
-                  onBlur={field.onBlur}
-                  disabled={disabled}
-                  left={<TextInput.Icon icon="cash" />}
-                  onChangeText={field.onChange}
-                />
+                error={!!fieldState.error}
+                label={
+                  periodType === 'custom'
+                    ? vi.budgetDailyAmount
+                    : vi.budgetAmount
+                }
+                accessibilityLabel={
+                  periodType === 'custom'
+                    ? vi.budgetDailyAmount
+                    : vi.budgetAmount
+                }
+                value={field.value}
+                onBlur={field.onBlur}
+                disabled={disabled}
+                left={<TextInput.Icon icon="cash" />}
+                onChangeText={field.onChange}
+              />
             </FieldFeedback>
           )}
         />
@@ -952,23 +1028,21 @@ function BudgetForm({
               message={fieldState.error?.message}
             >
               <TextInput
-                  error={!!fieldState.error}
-                  mode="outlined"
-                  label={vi.budgetWarnPercent}
-                  accessibilityLabel={vi.budgetWarnPercent}
-                  value={field.value}
-                  onBlur={field.onBlur}
-                  disabled={disabled}
-                  left={<TextInput.Icon icon="percent-outline" />}
-                  keyboardType="number-pad"
-                  onChangeText={field.onChange}
-                />
+                error={!!fieldState.error}
+                mode="outlined"
+                label={vi.budgetWarnPercent}
+                accessibilityLabel={vi.budgetWarnPercent}
+                value={field.value}
+                onBlur={field.onBlur}
+                disabled={disabled}
+                left={<TextInput.Icon icon="percent-outline" />}
+                keyboardType="number-pad"
+                onChangeText={field.onChange}
+              />
             </FieldFeedback>
           )}
         />
       </View>
-
-
     </Screen>
   );
 }

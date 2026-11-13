@@ -21,6 +21,74 @@ function makeScrollEvent(
 }
 
 describe('createTabBarScrollHandler', () => {
+  it('accumulates slow scrolling and restarts the threshold when direction changes', () => {
+    let expanded = true;
+    const onScroll = createTabBarScrollHandler(
+      (value) => {
+        expanded = value;
+      },
+      { showAtBottom: false },
+    );
+    for (let y = 0; y <= 200; y += 5) onScroll(makeScrollEvent(y));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(195));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(190));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(185));
+    expect(expanded).toBe(true);
+  });
+  it('restores search when filtering shrinks a collapsed list so it cannot scroll', () => {
+    let expanded = true;
+    const onScroll = createTabBarScrollHandler(
+      (value) => {
+        expanded = value;
+      },
+      { showAtBottom: false },
+    );
+    onScroll(makeScrollEvent(150));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(0, 100, 600));
+    expect(expanded).toBe(true);
+  });
+  it('does not expand compact controls when their own animation resizes the list', () => {
+    let expanded = true;
+    const onScroll = createTabBarScrollHandler(
+      (value) => {
+        expanded = value;
+      },
+      { showAtBottom: false },
+    );
+    onScroll(makeScrollEvent(300, 1000, 600));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(280, 1000, 650));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(250, 1000, 650));
+    expect(expanded).toBe(true);
+  });
+  it('keeps controls collapsed at the bottom until scrolling up', () => {
+    let expanded = true;
+    const onScroll = createTabBarScrollHandler(
+      (value) => {
+        expanded = value;
+      },
+      { showAtBottom: false },
+    );
+    onScroll(makeScrollEvent(100));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(400));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(420));
+    onScroll(makeScrollEvent(400));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(370));
+    expect(expanded).toBe(true);
+    onScroll(makeScrollEvent(200));
+    onScroll(makeScrollEvent(230));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(0));
+    expect(expanded).toBe(true);
+  });
   it('hides tab bar when scrolling down and restores it when scrolling up or near top', () => {
     let isVisible = true;
     const setTabBarVisible = (val: boolean) => {

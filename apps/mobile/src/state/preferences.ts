@@ -42,6 +42,8 @@ interface PreferencesState extends UserPreferences {
   isAddTransactionOpen: boolean;
   isChatOpen: boolean;
   isTabBarVisible: boolean;
+  tabBarHideCount: number;
+  holdTabBarHidden(): () => void;
   hideBalance: boolean;
   setTabBarVisible(visible: boolean): void;
   setHideBalance(hide: boolean): Promise<void>;
@@ -233,12 +235,30 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   isAddTransactionOpen: false,
   isChatOpen: false,
   isTabBarVisible: true,
+  tabBarHideCount: 0,
   hideBalance: false,
 
   setTabBarVisible(visible: boolean) {
+    if (visible && get().tabBarHideCount > 0) return;
     if (get().isTabBarVisible !== visible) {
       set({ isTabBarVisible: visible });
     }
+  },
+
+  holdTabBarHidden() {
+    set((state) => ({
+      tabBarHideCount: state.tabBarHideCount + 1,
+      isTabBarVisible: false,
+    }));
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      set((state) => ({
+        tabBarHideCount: state.tabBarHideCount - 1,
+        isTabBarVisible: state.tabBarHideCount === 1,
+      }));
+    };
   },
 
   async setHideBalance(hide: boolean) {
@@ -365,10 +385,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
           db,
           PREF_KEYS.notifyRecurring,
         );
-        const hideBalance = await readSettingValue(
-          db,
-          PREF_KEYS.hideBalance,
-        );
+        const hideBalance = await readSettingValue(db, PREF_KEYS.hideBalance);
         return {
           language: (language === 'en' || language === 'vi'
             ? language

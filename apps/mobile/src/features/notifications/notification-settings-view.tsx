@@ -1,14 +1,15 @@
+import { useTransientState } from '@/hooks/use-transient-state';
 import * as Notifications from 'expo-notifications';
 import { IosAuthorizationStatus } from 'expo-notifications';
 import { useEffect, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import {
-  Button,
-  Divider,
-  Icon,
-  Switch,
-  Text,
-} from 'react-native-paper';
+  BackHandler,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { Button, Divider, Icon, Switch, Text } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard, TimeField } from '@/components/ui';
 import {
@@ -36,7 +37,7 @@ const PRESET_TIMES = ['12:00', '18:00', '20:00', '21:00', '22:00'] as const;
 export function NotificationSettingsView({ onClose }: { onClose(): void }) {
   const [subView, setSubView] = useState<'main' | 'budget'>('main');
   const [permissionStatus, setPermissionStatus] = useState<string>('');
-  const [testNotice, setTestNotice] = useState<string>('');
+  const [testNotice, setTestNotice] = useTransientState('');
 
   const theme = useDesignTheme();
   const palette = useFinancePalette();
@@ -359,43 +360,45 @@ export function NotificationSettingsView({ onClose }: { onClose(): void }) {
           />
         </View>
 
-        <View style={localStyles.presetsRow}>
-          {PRESET_TIMES.map((preset) => {
-            const active = dailyExpenseReminderTime === preset;
-            return (
-              <Pressable
-                key={preset}
-                disabled={!notificationsEnabled}
-                onPress={() => {
-                  void setDailyExpenseReminderTime(preset).then(() =>
-                    syncDailyExpenseReminder(),
-                  );
-                }}
-                style={[
-                  localStyles.presetChip,
-                  {
-                    backgroundColor: active
-                      ? theme.brand.primary
-                      : theme.card.surfaceSubtle,
-                    borderColor: active
-                      ? theme.brand.primary
-                      : theme.card.border,
-                  },
-                ]}
-              >
-                <Text
-                  variant="labelMedium"
-                  style={{
-                    fontWeight: '700',
-                    color: active ? '#FFFFFF' : theme.text.secondary,
+        {Platform.OS !== 'ios' && (
+          <View style={localStyles.presetsRow}>
+            {PRESET_TIMES.map((preset) => {
+              const active = dailyExpenseReminderTime === preset;
+              return (
+                <Pressable
+                  key={preset}
+                  disabled={!notificationsEnabled}
+                  onPress={() => {
+                    void setDailyExpenseReminderTime(preset).then(() =>
+                      syncDailyExpenseReminder(),
+                    );
                   }}
+                  style={[
+                    localStyles.presetChip,
+                    {
+                      backgroundColor: active
+                        ? theme.brand.primary
+                        : theme.card.surfaceSubtle,
+                      borderColor: active
+                        ? theme.brand.primary
+                        : theme.card.border,
+                    },
+                  ]}
                 >
-                  {preset}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                  <Text
+                    variant="labelMedium"
+                    style={{
+                      fontWeight: '700',
+                      color: active ? '#FFFFFF' : theme.text.secondary,
+                    }}
+                  >
+                    {preset}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </GlassCard>
 
       {/* 4. AI Reply Completed Notification */}

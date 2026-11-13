@@ -3,6 +3,7 @@ import {
   accessibilityLabel as accessibilityLabelModifier,
   datePickerStyle,
   disabled as disabledModifier,
+  labelsHidden,
 } from '@expo/ui/swift-ui/modifiers';
 import { StyleSheet, View } from 'react-native';
 import { useDesignTheme } from '@/constants/theme';
@@ -26,7 +27,7 @@ export function TimeField({
   return (
     <View style={[styles.wrap, disabled && styles.disabled]}>
       <Host
-        matchContents={{ horizontal: true, vertical: true }}
+        matchContents={{ vertical: true }}
         colorScheme={theme.mode}
         style={styles.host}
       >
@@ -42,6 +43,7 @@ export function TimeField({
           }}
           modifiers={[
             datePickerStyle('compact'),
+            labelsHidden(),
             disabledModifier(disabled),
             accessibilityLabelModifier(
               (accessibilityLabel ?? label) + ': ' + value,
@@ -60,6 +62,7 @@ const styles = StyleSheet.create({
   },
   host: {
     minHeight: 36,
+    width: 120,
   },
   disabled: {
     opacity: 0.55,

@@ -3,6 +3,8 @@ import {
   budgetThresholds,
   daysInMonth,
   monthKey,
+  today,
+  validateDate,
   type BudgetBannerItem,
   type BudgetBannerLevel,
 } from '@pfm/domain';
@@ -28,29 +30,35 @@ export interface BudgetRow {
   category_archived: number | null;
   spent: number;
   in_period: number;
+  period_key?: string;
 }
 
 export async function readBudgetMonth(
   db: Queries,
   month: string,
   budgetId?: string,
+  referenceDate = today({
+    now: () => new Date(),
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }),
 ) {
   monthKey(`${month}-01`);
+  validateDate(referenceDate);
   const [year, number] = month.split('-').map(Number);
   const startDay = `${month}-01`;
   const endDay = `${month}-${String(daysInMonth(year, number)).padStart(2, '0')}`;
   const rows = await db.getAllAsync<BudgetRow>(
     `SELECT b.*, c.name category_name, c.is_archived category_archived,
      CASE
-       WHEN b.period_type = 'custom' AND b.start_date IS NOT NULL AND b.end_date IS NOT NULL THEN
-         CASE WHEN b.start_date <= ? AND (b.end_date IS NULL OR b.end_date >= ?) THEN 1 ELSE 0 END
+       WHEN b.period_type = 'custom' AND b.start_date IS NOT NULL THEN
+         CASE WHEN b.start_date <= ? AND (b.end_date IS NULL OR b.end_date >= ?) AND substr(?, 1, 7) = ? THEN 1 ELSE 0 END
        ELSE
          CASE WHEN b.start_month <= ? AND (b.end_month IS NULL OR b.end_month >= ?) THEN 1 ELSE 0 END
      END in_period,
      CASE
-       WHEN b.period_type = 'custom' AND b.start_date IS NOT NULL AND b.end_date IS NOT NULL THEN
+       WHEN b.period_type = 'custom' AND b.start_date IS NOT NULL THEN
          COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.kind = 'expense'
-           AND t.occurred_on >= b.start_date AND t.occurred_on <= b.end_date
+           AND t.occurred_on = ? AND t.occurred_on >= b.start_date AND (b.end_date IS NULL OR t.occurred_on <= b.end_date) AND substr(t.occurred_on, 1, 7) = ?
            AND (b.category_id IS NULL OR t.category_id = b.category_id OR t.category_id IN (SELECT id FROM categories WHERE parent_id = b.category_id))), 0)
        ELSE
          COALESCE((SELECT SUM(t.amount) FROM transactions t WHERE t.kind = 'expense'
@@ -59,9 +67,13 @@ export async function readBudgetMonth(
      END spent
      FROM budgets b LEFT JOIN categories c ON c.id = b.category_id ${budgetId === undefined ? '' : 'WHERE b.id = ?'}
      ORDER BY b.is_active DESC, b.created_at, b.id`,
-    endDay,
-    startDay,
+    referenceDate,
+    referenceDate,
+    referenceDate,
     month,
+    month,
+    month,
+    referenceDate,
     month,
     startDay,
     endDay,
@@ -69,7 +81,9 @@ export async function readBudgetMonth(
   );
   if (rows.some((row) => !Number.isSafeInteger(row.spent)))
     throw new Error('BUDGET_TOTAL_UNSAFE');
-  return rows;
+  return rows.map((row) =>
+    row.period_type === 'custom' ? { ...row, period_key: referenceDate } : row,
+  );
 }
 
 export async function createBudget(
@@ -174,15 +188,21 @@ export async function setBudgetActive(
 export async function claimBudgetAlert(
   db: Database,
   id: string,
-  month: string,
+  period: string,
   threshold: number,
   timestamp: string,
 ) {
   let claimed = false;
   await db.transaction(async (transaction) => {
-    const budget = (await readBudgetMonth(transaction, month, id)).find(
-      (row) => row.id === id,
-    );
+    const month = period.slice(0, 7);
+    const budget = (
+      await readBudgetMonth(
+        transaction,
+        month,
+        id,
+        period.length === 10 ? period : undefined,
+      )
+    ).find((row) => row.id === id);
     if (
       !budget ||
       !budget.is_active ||
@@ -194,11 +214,12 @@ export async function claimBudgetAlert(
       ).includes(threshold)
     )
       return;
+    const periodKey = budget.period_key ?? month;
     if (
       await transaction.getFirstAsync(
         'SELECT 1 FROM budget_alerts_sent WHERE budget_id=? AND month=? AND threshold_percent=?',
         id,
-        month,
+        periodKey,
         threshold,
       )
     )
@@ -206,7 +227,7 @@ export async function claimBudgetAlert(
     await transaction.runAsync(
       'INSERT INTO budget_alerts_sent (budget_id,month,threshold_percent,sent_at) VALUES (?,?,?,?)',
       id,
-      month,
+      periodKey,
       threshold,
       timestamp,
     );
@@ -259,7 +280,9 @@ export function parseDismissedBudgetBannerKeys(
       const [budgetId, month, level] = parts;
       if (
         !budgetId ||
-        month !== currentMonth ||
+        (month !== currentMonth &&
+          (!/^\d{4}-\d{2}-\d{2}$/.test(month) ||
+            month.slice(0, 7) !== currentMonth)) ||
         (level !== 'warn' && level !== 'over')
       ) {
         continue;
@@ -284,7 +307,13 @@ export function filterVisibleBudgetBannerItems(
     dismissedKeys instanceof Set ? dismissedKeys : new Set(dismissedKeys);
   return items.filter(
     (item) =>
-      !dismissed.has(budgetBannerDismissKey(item.budgetId, month, item.level)),
+      !dismissed.has(
+        budgetBannerDismissKey(
+          item.budgetId,
+          item.periodKey ?? month,
+          item.level,
+        ),
+      ),
   );
 }
 
@@ -310,13 +339,23 @@ export async function readDismissedBudgetBannerKeys(
 export async function dismissBudgetBannerItems(
   db: Queries,
   currentMonth: string,
-  items: readonly { budgetId: string; level: BudgetBannerLevel }[],
+  items: readonly {
+    budgetId: string;
+    level: BudgetBannerLevel;
+    periodKey?: string;
+  }[],
 ): Promise<string[]> {
   monthKey(`${currentMonth}-01`);
   const existing = await readDismissedBudgetBannerKeys(db, currentMonth);
   const merged = new Set(existing);
   for (const item of items) {
-    merged.add(budgetBannerDismissKey(item.budgetId, currentMonth, item.level));
+    merged.add(
+      budgetBannerDismissKey(
+        item.budgetId,
+        item.periodKey ?? currentMonth,
+        item.level,
+      ),
+    );
   }
   const next = [...merged];
   await db.runAsync(

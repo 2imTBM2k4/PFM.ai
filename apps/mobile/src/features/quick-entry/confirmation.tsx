@@ -1,4 +1,7 @@
-import { FieldFeedback } from '@/components/field-feedback';
+import {
+  FieldFeedback,
+  FocusAwareTextInput,
+} from '@/components/field-feedback';
 import { quickEntryErrors } from './validation';
 import { useMemo, useState } from 'react';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
@@ -14,13 +17,7 @@ import {
   type ResolverResult,
   type UseFormSetValue,
 } from 'react-hook-form';
-import {
-  Button,
-  Checkbox,
-  HelperText,
-  Text,
-  TextInput,
-} from 'react-native-paper';
+import { Button, Checkbox, HelperText, Text } from 'react-native-paper';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
   CONFIDENCE_HIGH,
@@ -395,40 +392,40 @@ function CandidateFields({
       render={({ field, fieldState }) => (
         <FieldFeedback fieldRef={field.ref} message={fieldState.error?.message}>
           <View>
-              {name === 'amount' ? (
-                <MoneyInput
-                  currency={draft.currency}
-                  label={label}
-                  accessibilityLabel={label}
-                  value={field.value}
-                  disabled={disabled || !draft.selected}
-                  error={!!fieldState.error}
-                  onBlur={field.onBlur}
-                  outlineColor={low ? palette.warning : undefined}
-                  onChangeText={(value) => {
-                    field.onChange(value);
-                    setValue(`${path}.amountConfirmed`, false, {
-                      shouldValidate: true,
-                    });
-                  }}
-                />
-              ) : (
-                <TextInput
-                  mode="outlined"
-                  label={label}
-                  accessibilityLabel={label}
-                  value={field.value}
-                  disabled={disabled || !draft.selected}
-                  keyboardType="default"
-                  multiline={name === 'note'}
-                  error={!!fieldState.error}
-                  onBlur={field.onBlur}
-                  outlineColor={low ? palette.warning : undefined}
-                  onChangeText={field.onChange}
-                />
-              )}
-              {low && <HelperText type="info">{vi.quickCheckField}</HelperText>}
-            </View>
+            {name === 'amount' ? (
+              <MoneyInput
+                currency={draft.currency}
+                label={label}
+                accessibilityLabel={label}
+                value={field.value}
+                disabled={disabled || !draft.selected}
+                error={!!fieldState.error}
+                onBlur={field.onBlur}
+                outlineColor={low ? palette.warning : undefined}
+                onChangeText={(value) => {
+                  field.onChange(value);
+                  setValue(`${path}.amountConfirmed`, false, {
+                    shouldValidate: true,
+                  });
+                }}
+              />
+            ) : (
+              <FocusAwareTextInput
+                mode="outlined"
+                label={label}
+                accessibilityLabel={label}
+                value={field.value}
+                disabled={disabled || !draft.selected}
+                keyboardType="default"
+                multiline={name === 'note'}
+                error={!!fieldState.error}
+                onBlur={field.onBlur}
+                outlineColor={low ? palette.warning : undefined}
+                onChangeText={field.onChange}
+              />
+            )}
+            {low && <HelperText type="info">{vi.quickCheckField}</HelperText>}
+          </View>
         </FieldFeedback>
       )}
     />
@@ -485,12 +482,12 @@ function CandidateFields({
             message={fieldState.error?.message}
           >
             <Checkbox.Item
-                position="leading"
-                label={`${index + 1}. ${vi.quickSelect}`}
-                status={field.value ? 'checked' : 'unchecked'}
-                onPress={() => field.onChange(!field.value)}
-                disabled={disabled}
-              />
+              position="leading"
+              label={`${index + 1}. ${vi.quickSelect}`}
+              status={field.value ? 'checked' : 'unchecked'}
+              onPress={() => field.onChange(!field.value)}
+              disabled={disabled}
+            />
           </FieldFeedback>
         )}
       />
@@ -512,7 +509,9 @@ function CandidateFields({
       >
         {vi.quickDetails}
       </Button>
-      <View style={{ display: expanded || hasErrors ? 'flex' : 'none', gap: 8 }}>
+      <View
+        style={{ display: expanded || hasErrors ? 'flex' : 'none', gap: 8 }}
+      >
         <Controller
           control={control}
           name={`${path}.kind`}
@@ -594,11 +593,11 @@ function CandidateFields({
                   message={fieldState.error?.message}
                 >
                   <Checkbox.Item
-                      label={vi.quickAmountConfirm}
-                      status={field.value ? 'checked' : 'unchecked'}
-                      disabled={formDisabled}
-                      onPress={() => field.onChange(!field.value)}
-                    />
+                    label={vi.quickAmountConfirm}
+                    status={field.value ? 'checked' : 'unchecked'}
+                    disabled={formDisabled}
+                    onPress={() => field.onChange(!field.value)}
+                  />
                 </FieldFeedback>
               )}
             />
@@ -724,17 +723,17 @@ function CandidateFields({
               message={fieldState.error?.message}
             >
               <DateField
-                  label={vi.transactionDate}
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={formDisabled}
-                  error={candidate.date.confidence !== 'high' || !draft.date}
-                  helperText={
-                    candidate.date.confidence !== 'high' || !draft.date
-                      ? vi.quickCheckField
-                      : undefined
-                  }
-                />
+                label={vi.transactionDate}
+                value={field.value}
+                onChange={field.onChange}
+                disabled={formDisabled}
+                error={candidate.date.confidence !== 'high' || !draft.date}
+                helperText={
+                  candidate.date.confidence !== 'high' || !draft.date
+                    ? vi.quickCheckField
+                    : undefined
+                }
+              />
             </FieldFeedback>
           )}
         />

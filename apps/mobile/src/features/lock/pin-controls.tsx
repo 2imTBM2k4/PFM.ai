@@ -1,3 +1,4 @@
+import { useTransientState } from '@/hooks/use-transient-state';
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import {
@@ -93,7 +94,7 @@ function ActivePinSettings() {
   const [mode, setMode] = useState<'enable' | 'change' | 'disable' | null>(
     null,
   );
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useTransientState(false);
   return (
     <View style={{ gap: 16 }}>
       <Text accessibilityRole="header" variant="titleMedium">
@@ -305,7 +306,11 @@ function PinForm({
       >
         {mode === 'disable' ? vi.pinDisable : vi.pinSave}
       </Button>
-      <Button contentStyle={styles.button} disabled={busy} onPress={requestLeave}>
+      <Button
+        contentStyle={styles.button}
+        disabled={busy}
+        onPress={requestLeave}
+      >
         {vi.cancel}
       </Button>
     </View>

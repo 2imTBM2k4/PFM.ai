@@ -1,5 +1,12 @@
-import { createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
+import {
+  createElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Platform } from 'react-native';
+import { Pill } from './pill';
 import { CATEGORY_ICONS } from '@/data/categories';
 import { setActiveLanguage } from '@/messages/language';
 import { vi as viMessages } from '@/messages/vi';
@@ -40,7 +47,9 @@ vi.mock('react', async (importOriginal) => {
       const idx = stateHooks.cursor++;
       if (!(idx in stateHooks.values)) {
         stateHooks.values[idx] =
-          typeof initial === 'function' ? (initial as () => unknown)() : initial;
+          typeof initial === 'function'
+            ? (initial as () => unknown)()
+            : initial;
         stateHooks.setters[idx] = (next: unknown) => {
           stateHooks.values[idx] =
             typeof next === 'function'
@@ -69,7 +78,13 @@ vi.mock('react-native', () => ({
   },
   StyleSheet: {
     create: <T extends Record<string, unknown>>(styles: T): T => styles,
-    absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+    absoluteFill: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    },
     hairlineWidth: 1,
   },
 }));
@@ -80,6 +95,7 @@ vi.mock('react-native-reanimated', () => ({
   useAnimatedStyle: (fn: () => Record<string, unknown>) => fn(),
   withSpring: (v: number) => v,
   withTiming: (v: number) => v,
+  LinearTransition: { duration: () => ({}) },
 }));
 
 vi.mock('@expo/vector-icons/MaterialCommunityIcons', () => ({
@@ -130,12 +146,27 @@ vi.mock('@expo/ui/swift-ui', () => ({
 }));
 
 vi.mock('@expo/ui/swift-ui/modifiers', () => ({
-  accessibilityLabel: (value: string) => ({ type: 'accessibilityLabel', value }),
-  background: (style: unknown, shape: unknown) => ({ type: 'background', style, shape }),
+  accessibilityLabel: (value: string) => ({
+    type: 'accessibilityLabel',
+    value,
+  }),
+  background: (style: unknown, shape: unknown) => ({
+    type: 'background',
+    style,
+    shape,
+  }),
   buttonStyle: (value: string) => ({ type: 'buttonStyle', value }),
-  clipShape: (shape: string, radius?: number) => ({ type: 'clipShape', shape, radius }),
-  contentTransition: (transitionType: string) => ({ type: 'contentTransition', transitionType }),
+  clipShape: (shape: string, radius?: number) => ({
+    type: 'clipShape',
+    shape,
+    radius,
+  }),
+  contentTransition: (transitionType: string) => ({
+    type: 'contentTransition',
+    transitionType,
+  }),
   datePickerStyle: (value: string) => ({ type: 'datePickerStyle', value }),
+  labelsHidden: () => ({ type: 'labelsHidden' }),
   disabled: (value?: boolean) => ({ type: 'disabled', value }),
   foregroundStyle: (value: unknown) => ({ type: 'foregroundStyle', value }),
   frame: (value: unknown) => ({ type: 'frame', value }),
@@ -145,7 +176,12 @@ vi.mock('@expo/ui/swift-ui/modifiers', () => ({
   menuStyle: (value: string) => ({ type: 'menuStyle', value }),
   padding: (value: unknown) => ({ type: 'padding', value }),
   pickerStyle: (value: string) => ({ type: 'pickerStyle', value }),
-  shapes: { roundedRectangle: (params: unknown) => ({ shape: 'roundedRectangle', params }) },
+  shapes: {
+    roundedRectangle: (params: unknown) => ({
+      shape: 'roundedRectangle',
+      params,
+    }),
+  },
   tag: (value: unknown) => ({ type: 'tag', value }),
   truncationMode: (mode: string) => ({ type: 'truncationMode', mode }),
 }));
@@ -179,7 +215,11 @@ function collectElements(
     if (!isValidElement(current)) return;
     const element = current as ReactElement<Record<string, unknown>>;
     if (typeof element.type === 'function') {
-      visit((element.type as (props: Record<string, unknown>) => ReactNode)(element.props));
+      visit(
+        (element.type as (props: Record<string, unknown>) => ReactNode)(
+          element.props,
+        ),
+      );
       return;
     }
     if (
@@ -189,9 +229,11 @@ function collectElements(
       typeof (element.type as { type: unknown }).type === 'function'
     ) {
       visit(
-        (element.type as { type: (props: Record<string, unknown>) => ReactNode }).type(
-          element.props,
-        ),
+        (
+          element.type as {
+            type: (props: Record<string, unknown>) => ReactNode;
+          }
+        ).type(element.props),
       );
       return;
     }
@@ -214,10 +256,66 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
   beforeEach(() => {
     resetStateHooks();
     setActiveLanguage('vi');
+    (Platform as { OS: string }).OS = 'ios';
   });
 
+  it.each(['ios', 'android', 'web'])(
+    'keeps compact transaction filters labeled, selected and actionable on %s',
+    (platform) => {
+      (Platform as { OS: string }).OS = platform;
+      const onPress = vi.fn();
+      const compact = Pill({
+        label: viMessages.transactionExpense,
+        icon: 'arrow-top-right',
+        compact: true,
+        selected: true,
+        onPress,
+      });
+      const buttons = collectElements(
+        compact,
+        (element) => element.type === 'Pressable',
+      );
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]!.props.accessibilityLabel).toBe(
+        viMessages.transactionExpense,
+      );
+      expect(buttons[0]!.props.accessibilityState).toEqual({ selected: true });
+      expect(
+        Object.assign({}, ...(buttons[0]!.props.style as object[])),
+      ).toMatchObject({ width: 32, height: 32 });
+      expect(
+        collectElements(compact, (element) => element.type === 'RNText'),
+      ).toHaveLength(0);
+      expect(
+        collectElements(
+          compact,
+          (element) =>
+            element.type ===
+            (platform === 'ios' ? 'SymbolView' : 'MaterialCommunityIcons'),
+        ),
+      ).toHaveLength(1);
+      (buttons[0]!.props.onPress as () => void)();
+      expect(onPress).toHaveBeenCalledOnce();
+      const expanded = Pill({
+        label: viMessages.transactionExpense,
+        icon: 'arrow-top-right',
+        compact: false,
+        selected: true,
+        onPress,
+      });
+      expect(
+        collectElements(expanded, (element) => element.type === 'RNText'),
+      ).toHaveLength(1);
+    },
+  );
+
   it('round-trips ISO dates including leap days and distant years without day shift', () => {
-    for (const iso of ['2026-11-11', '2028-02-29', '1995-01-01', '2099-12-31']) {
+    for (const iso of [
+      '2026-11-11',
+      '2028-02-29',
+      '1995-01-01',
+      '2099-12-31',
+    ]) {
       const date = parseIsoDateToLocalDate(iso, '2026-11-11');
       expect(formatLocalDateToIso(date)).toBe(iso);
     }
@@ -230,12 +328,16 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
       year: 2026,
       monthIndex: 10,
     });
-    expect(formatMonthDraftToKey({ year: 2026, monthIndex: 10 })).toBe('2026-11');
+    expect(formatMonthDraftToKey({ year: 2026, monthIndex: 10 })).toBe(
+      '2026-11',
+    );
     const years = buildMonthYearOptions(2065, 2026, 30);
     expect(years[0]).toBe(1996);
     expect(years.at(-1)).toBe(2095);
     expect(years).toContain(2065);
-    expect(getMonthWheelLabels('vi', viMessages.monthPickerMonth)).toHaveLength(12);
+    expect(getMonthWheelLabels('vi', viMessages.monthPickerMonth)).toHaveLength(
+      12,
+    );
   });
 
   it('parses and formats arbitrary times such as 07:10 and rejects invalid inputs', () => {
@@ -267,7 +369,11 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
       expect(toSfSymbol(icon)).not.toBe('circle');
     }
     expect(
-      formatPickerOptionLabel({ value: '1', label: 'Cà phê', subtitle: 'Thuộc: Ăn uống' }),
+      formatPickerOptionLabel({
+        value: '1',
+        label: 'Cà phê',
+        subtitle: 'Thuộc: Ăn uống',
+      }),
     ).toBe('Cà phê · Thuộc: Ăn uống');
     expect(
       resolveSelectedOption([{ value: 'a', label: 'A' }], 'a')?.label,
@@ -282,7 +388,8 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
   });
 
   it('renders native SwiftUI Menu + Picker on iOS AppleMenuPicker with colorSwatch and subtitles', async () => {
-    const { AppleMenuPicker: IosAppleMenuPicker } = await import('./apple-menu-picker.ios');
+    const { AppleMenuPicker: IosAppleMenuPicker } =
+      await import('./apple-menu-picker.ios');
     const onSelect = vi.fn();
     const tree = createElement(IosAppleMenuPicker, {
       label: 'Danh mục',
@@ -303,9 +410,16 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
     const host = collectElements(tree, (el) => el.type === 'SwiftUI.Host')[0]!;
     expect(host.props.matchContents).toEqual({ vertical: true });
     expect(host.props.alignment).toBe('trailing');
-    expect(collectElements(tree, (el) => el.type === 'SwiftUI.Menu')).toHaveLength(1);
-    expect(collectElements(tree, (el) => el.type === 'SwiftUI.Circle')).toHaveLength(1);
-    const picker = collectElements(tree, (el) => el.type === 'SwiftUI.Picker')[0]!;
+    expect(
+      collectElements(tree, (el) => el.type === 'SwiftUI.Menu'),
+    ).toHaveLength(1);
+    expect(
+      collectElements(tree, (el) => el.type === 'SwiftUI.Circle'),
+    ).toHaveLength(1);
+    const picker = collectElements(
+      tree,
+      (el) => el.type === 'SwiftUI.Picker',
+    )[0]!;
     expect(picker.props.selection).toBe('coffee');
 
     const labels = collectElements(tree, (el) => el.type === 'SwiftUI.Label');
@@ -319,7 +433,8 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
   });
 
   it('keeps custom Modal popup on Android/web AppleMenuPicker', async () => {
-    const { AppleMenuPicker: FallbackAppleMenuPicker } = await import('./apple-menu-picker');
+    const { AppleMenuPicker: FallbackAppleMenuPicker } =
+      await import('./apple-menu-picker');
     const onSelect = vi.fn();
     const tree = createElement(FallbackAppleMenuPicker, {
       label: 'Ví',
@@ -327,7 +442,9 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
       options: [{ value: 'w1', label: 'Tiền mặt' }],
       onSelect,
     });
-    expect(collectElements(tree, (el) => el.type === 'SwiftUI.Menu')).toHaveLength(0);
+    expect(
+      collectElements(tree, (el) => el.type === 'SwiftUI.Menu'),
+    ).toHaveLength(0);
     expect(collectElements(tree, (el) => el.type === 'Modal')).toHaveLength(1);
   });
 
@@ -344,10 +461,17 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
 
     stateHooks.cursor = 0;
     const treeWithClear = render(true);
-    const buttons = collectElements(treeWithClear, (el) => el.type === 'PaperButton');
+    const buttons = collectElements(
+      treeWithClear,
+      (el) => el.type === 'PaperButton',
+    );
     const clearBtn = buttons.find((b) => b.props.children === viMessages.clear);
-    const todayBtn = buttons.find((b) => b.props.children === viMessages.datePickerToday);
-    const cancelBtn = buttons.find((b) => b.props.children === viMessages.cancel);
+    const todayBtn = buttons.find(
+      (b) => b.props.children === viMessages.datePickerToday,
+    );
+    const cancelBtn = buttons.find(
+      (b) => b.props.children === viMessages.cancel,
+    );
     expect(clearBtn).toBeDefined();
     expect(todayBtn).toBeDefined();
 
@@ -387,7 +511,9 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
     expect(pickers).toHaveLength(2);
 
     const buttons = collectElements(tree, (el) => el.type === 'PaperButton');
-    const clearBtn = buttons.find((b) => b.props.children === viMessages.clear)!;
+    const clearBtn = buttons.find(
+      (b) => b.props.children === viMessages.clear,
+    )!;
     (clearBtn.props.onPress as () => void)();
     expect(onChange).toHaveBeenCalledWith('');
   });
@@ -405,8 +531,24 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
       iosTree,
       (el) => el.type === 'SwiftUI.DatePicker',
     )[0]!;
+    const host = collectElements(
+      iosTree,
+      (el) => el.type === 'SwiftUI.Host',
+    )[0]!;
+    expect(host.props.matchContents).toEqual({ vertical: true });
+    expect(iosPicker.props.modifiers).toContainEqual({ type: 'labelsHidden' });
+    expect(iosPicker.props.modifiers).toContainEqual({
+      type: 'disabled',
+      value: false,
+    });
+    (iosPicker.props.onDateChange as (d: Date) => void)(
+      new Date(2026, 10, 11, 20, 0),
+    );
+    expect(onIosChange).not.toHaveBeenCalled();
     expect(iosPicker.props.displayedComponents).toEqual(['hourAndMinute']);
-    (iosPicker.props.onDateChange as (d: Date) => void)(new Date(2026, 10, 11, 7, 10));
+    (iosPicker.props.onDateChange as (d: Date) => void)(
+      new Date(2026, 10, 11, 7, 10),
+    );
     expect(onIosChange).toHaveBeenCalledWith('07:10');
 
     resetStateHooks();
@@ -420,24 +562,33 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
       });
     };
     let fallbackTree = renderFallback();
-    const trigger = collectElements(fallbackTree, (el) => el.type === 'Pressable')[0]!;
+    const trigger = collectElements(
+      fallbackTree,
+      (el) => el.type === 'Pressable',
+    )[0]!;
     (trigger.props.onPress as () => void)();
     fallbackTree = renderFallback();
-    const inputs = collectElements(fallbackTree, (el) => el.type === 'PaperTextInput');
+    const inputs = collectElements(
+      fallbackTree,
+      (el) => el.type === 'PaperTextInput',
+    );
     (inputs[0]!.props.onChangeText as (v: string) => void)('07');
     (inputs[1]!.props.onChangeText as (v: string) => void)('10');
     fallbackTree = renderFallback();
     const doneBtn = collectElements(
       fallbackTree,
-      (el) => el.type === 'PaperButton' && el.props.children === viMessages.done,
+      (el) =>
+        el.type === 'PaperButton' && el.props.children === viMessages.done,
     )[0]!;
     (doneBtn.props.onPress as () => void)();
     expect(onFallbackChange).toHaveBeenCalledWith('07:10');
   });
 
   it('renders SegmentedOptionPicker natively on iOS and via SegmentedButtons on Android/web', async () => {
-    const { SegmentedOptionPicker: IosSegmentedOptionPicker } = await import('./segmented-option-picker.ios');
-    const { SegmentedOptionPicker: FallbackSegmentedOptionPicker } = await import('./segmented-option-picker');
+    const { SegmentedOptionPicker: IosSegmentedOptionPicker } =
+      await import('./segmented-option-picker.ios');
+    const { SegmentedOptionPicker: FallbackSegmentedOptionPicker } =
+      await import('./segmented-option-picker');
     const onIosSelect = vi.fn();
     const iosTree = IosSegmentedOptionPicker({
       label: 'Loại giao dịch',
@@ -449,7 +600,10 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
       ],
       onSelect: onIosSelect,
     });
-    const picker = collectElements(iosTree, (el) => el.type === 'SwiftUI.Picker')[0]!;
+    const picker = collectElements(
+      iosTree,
+      (el) => el.type === 'SwiftUI.Picker',
+    )[0]!;
     expect(picker.props.selection).toBe('expense');
     (picker.props.onSelectionChange as (v: unknown) => void)('income');
     expect(onIosSelect).toHaveBeenCalledWith('income');
@@ -465,7 +619,10 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
       onSelect: vi.fn(),
     });
     expect(
-      collectElements(fallbackTree, (el) => el.type === 'PaperSegmentedButtons'),
+      collectElements(
+        fallbackTree,
+        (el) => el.type === 'PaperSegmentedButtons',
+      ),
     ).toHaveLength(1);
   });
 });

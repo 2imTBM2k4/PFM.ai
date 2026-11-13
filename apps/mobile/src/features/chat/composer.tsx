@@ -1,3 +1,4 @@
+import { useTransientState } from '@/hooks/use-transient-state';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { uuid } from 'expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -96,7 +97,7 @@ export function ChatComposer({
   const [chosenRoute, setChosenRoute] = useState<'advice' | null>(null);
   const [showQuickBar, setShowQuickBar] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useTransientState('');
   const focused = useRef(false);
   const working = useRef(false);
   const request = useRef(0);
