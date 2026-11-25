@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
-import { withDatabase } from '@/data/connection';
+import {
+  runWithoutMutationNotification,
+  subscribeDatabaseMutations,
+  withDatabase,
+} from '@/data/connection';
 import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { syncDailyExpenseReminder } from '@/features/notifications/notification-settings-service';
 import { runRecurring } from '@/features/recurring/mobile';
@@ -20,6 +24,8 @@ import {
   type GoogleAuthErrorReason,
 } from './google-auth';
 import { applySnapshot, validateAndPrepareSnapshot } from './restore';
+import { buildSnapshot } from './snapshot';
+import { decideInitialConnectSync, hasMeaningfulLocalData } from './sync-decision';
 import {
   createBackupScheduler,
   type BackupRuntimeStatus,
@@ -33,6 +39,13 @@ export const backupScheduler = createBackupScheduler({
   runWithDatabase: withDatabase,
   driveClient: defaultDriveClient,
   authService: defaultGoogleAuthService,
+  onRemoteNewerDetected: async (fileId) => {
+    const res = await restoreFromGoogleDriveBackup({
+      fileId,
+      enableAutoBackupAfterRestore: true,
+    });
+    return res.ok;
+  },
 });
 
 export function useBackupRuntimeStatus(): BackupRuntimeStatus {
@@ -66,27 +79,154 @@ function mapRestoreExceptionToError(error: unknown): BackupOperationError {
   return 'invalid_snapshot';
 }
 
-export async function connectGoogleDriveBackup(): Promise<
-  | { ok: true; email: string }
-  | { ok: false; error: BackupOperationError }
-> {
+export type ConnectGoogleDriveResult =
+  | {
+      ok: true;
+      email: string;
+      syncAction: 'uploaded' | 'restored' | 'already_synced';
+    }
+  | {
+      ok: true;
+      email: string;
+      syncAction: 'conflict';
+      remoteMetadata: RemoteBackupMetadata;
+    }
+  | { ok: false; error: BackupOperationError };
+
+export async function connectGoogleDriveBackup(): Promise<ConnectGoogleDriveResult> {
   const signInRes = await defaultGoogleAuthService.signIn();
   if (!signInRes.ok) {
     return { ok: false, error: signInRes.reason };
+  }
+
+  const localPrep = await withDatabase(async (db) => {
+    const previousState = await readBackupState(db);
+    const snapshot = await buildSnapshot(db, {
+      createdAt: new Date().toISOString(),
+    });
+    const hasLocalData = await hasMeaningfulLocalData(db);
+    return {
+      previousState,
+      localChecksum: snapshot.checksum,
+      hasLocalData,
+    };
+  });
+
+  const metaRes = await defaultDriveClient.fetchRemoteBackupMetadata({
+    cachedFileId: localPrep.previousState.remoteFileId,
+  });
+  if (!metaRes.ok) {
+    await withDatabase((db) =>
+      updateBackupState(db, {
+        enabled: true,
+        accountEmail: signInRes.email,
+        lastError: metaRes.errorCode,
+        dirty: false,
+      }),
+    );
+    await backupScheduler.refreshState();
+    return { ok: false, error: metaRes.errorCode };
+  }
+
+  const decision = decideInitialConnectSync({
+    signedInEmail: signInRes.email,
+    previousState: localPrep.previousState,
+    localChecksum: localPrep.localChecksum,
+    hasLocalData: localPrep.hasLocalData,
+    remoteMetadata: metaRes.found ? metaRes.metadata : null,
+  });
+
+  if (decision.action === 'already_synced' && metaRes.found) {
+    await withDatabase((db) =>
+      updateBackupState(db, {
+        enabled: true,
+        accountEmail: signInRes.email,
+        remoteFileId: metaRes.metadata.fileId,
+        lastUploadedHash: metaRes.metadata.sha256 ?? localPrep.localChecksum,
+        lastSuccessAt:
+          metaRes.metadata.modifiedTime ??
+          metaRes.metadata.createdAt ??
+          new Date().toISOString(),
+        lastError: null,
+        dirty: false,
+        lastLocalMutationAt: null,
+      }),
+    );
+    await backupScheduler.refreshState();
+    return { ok: true, email: signInRes.email, syncAction: 'already_synced' };
+  }
+
+  if (decision.action === 'auto_restore') {
+    const restoreRes = await restoreFromGoogleDriveBackup({
+      fileId: decision.fileId,
+      enableAutoBackupAfterRestore: true,
+      accountEmail: signInRes.email,
+    });
+    if (!restoreRes.ok) {
+      await withDatabase((db) =>
+        updateBackupState(db, {
+          enabled: false,
+          accountEmail: signInRes.email,
+          remoteFileId: decision.fileId,
+          lastError: null,
+        }),
+      );
+      await backupScheduler.refreshState();
+      return { ok: false, error: restoreRes.error };
+    }
+    return { ok: true, email: signInRes.email, syncAction: 'restored' };
+  }
+
+  if (decision.action === 'ask_conflict') {
+    await withDatabase((db) =>
+      updateBackupState(db, {
+        enabled: false,
+        accountEmail: signInRes.email,
+        remoteFileId: decision.remoteMetadata.fileId,
+        lastError: null,
+        dirty: true,
+      }),
+    );
+    await backupScheduler.refreshState();
+    return {
+      ok: true,
+      email: signInRes.email,
+      syncAction: 'conflict',
+      remoteMetadata: decision.remoteMetadata,
+    };
   }
 
   await withDatabase((db) =>
     updateBackupState(db, {
       enabled: true,
       accountEmail: signInRes.email,
+      remoteFileId: metaRes.found ? metaRes.metadata.fileId : null,
       lastError: null,
       dirty: true,
+      lastLocalMutationAt: new Date().toISOString(),
     }),
   );
 
   await backupScheduler.refreshState();
   void backupScheduler.runBackupCycle({ force: true });
-  return { ok: true, email: signInRes.email };
+  return { ok: true, email: signInRes.email, syncAction: 'uploaded' };
+}
+
+/** Resolves a one-time initial sign-in conflict by keeping local data and uploading it to Google Drive. */
+export async function resolveInitialSyncByUploadingLocal(): Promise<{
+  ok: boolean;
+  error: BackupOperationError | null;
+}> {
+  await withDatabase((db) =>
+    updateBackupState(db, {
+      enabled: true,
+      lastError: null,
+      dirty: true,
+      lastLocalMutationAt: new Date().toISOString(),
+    }),
+  );
+  await backupScheduler.refreshState();
+  return runManualGoogleDriveBackup();
 }
 
 export async function setGoogleDriveAutoBackupEnabled(
@@ -216,25 +356,28 @@ export async function restoreFromGoogleDriveBackup(options: {
     return { ok: false, error: mapRestoreExceptionToError(error) };
   }
 
-  // 3. Apply snapshot atomically inside a single SQLite transaction
+  // 3. Apply snapshot atomically inside a single SQLite transaction without firing local mutation hooks
   try {
-    await withDatabase(async (db) => {
-      const restored = await applySnapshot(db, downloadRes.rawSnapshot);
-      await db.runAsync(
-        `INSERT INTO settings (key, value) VALUES ('onboarding_complete', 'true')
-         ON CONFLICT(key) DO UPDATE SET value = 'true'`,
-      );
-      const current = await readBackupState(db);
-      await updateBackupState(db, {
-        enabled: options.enableAutoBackupAfterRestore ?? current.enabled,
-        accountEmail: options.accountEmail ?? current.accountEmail,
-        remoteFileId: options.fileId,
-        lastUploadedHash: restored.checksum,
-        lastSuccessAt: restored.createdAt,
-        lastError: null,
-        dirty: false,
-      });
-    });
+    await runWithoutMutationNotification(() =>
+      withDatabase(async (db) => {
+        const restored = await applySnapshot(db, downloadRes.rawSnapshot);
+        await db.runAsync(
+          `INSERT INTO settings (key, value) VALUES ('onboarding_complete', 'true')
+           ON CONFLICT(key) DO UPDATE SET value = 'true'`,
+        );
+        const current = await readBackupState(db);
+        await updateBackupState(db, {
+          enabled: options.enableAutoBackupAfterRestore ?? current.enabled,
+          accountEmail: options.accountEmail ?? current.accountEmail,
+          remoteFileId: options.fileId,
+          lastUploadedHash: restored.checksum,
+          lastSuccessAt: restored.createdAt,
+          lastError: null,
+          dirty: false,
+          lastLocalMutationAt: null,
+        });
+      }),
+    );
   } catch (error) {
     logAppEvent('error', {
       route: 'backup',
@@ -277,8 +420,6 @@ export async function disconnectGoogleDriveBackup(options?: {
 export function BackupWatcher() {
   const status = useApp((state) => state.status);
   const onboarded = useApp((state) => state.onboarded);
-  const wallets = useApp((state) => state.wallets);
-  const recurringVersion = useApp((state) => state.recurringVersion);
 
   useEffect(() => {
     if (status !== 'ready' || !onboarded) {
@@ -289,17 +430,46 @@ export function BackupWatcher() {
     const appStateSub = AppState.addEventListener('change', (nextState) => {
       void backupScheduler.notifyAppStateChange(nextState);
     });
+    const unsubscribeMutations = subscribeDatabaseMutations(() => {
+      backupScheduler.notifyDataChanged();
+    });
+
+    const cleanupWebListeners: (() => void)[] = [];
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      const handleFocus = () => {
+        void backupScheduler.notifyAppStateChange('active');
+      };
+      const handleOnline = () => {
+        void backupScheduler.notifyNetworkAvailable();
+      };
+      window.addEventListener('focus', handleFocus);
+      window.addEventListener('online', handleOnline);
+      cleanupWebListeners.push(() => {
+        window.removeEventListener('focus', handleFocus);
+        window.removeEventListener('online', handleOnline);
+      });
+    }
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+      const handleVisibility = () => {
+        if (document.visibilityState === 'visible') {
+          void backupScheduler.notifyAppStateChange('active');
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+      cleanupWebListeners.push(() => {
+        document.removeEventListener('visibilitychange', handleVisibility);
+      });
+    }
+
     return () => {
       appStateSub.remove();
+      unsubscribeMutations();
+      for (const cleanup of cleanupWebListeners) {
+        cleanup();
+      }
       backupScheduler.stop();
     };
   }, [status, onboarded]);
-
-  useEffect(() => {
-    if (status === 'ready' && onboarded) {
-      backupScheduler.notifyDataChanged();
-    }
-  }, [status, onboarded, wallets, recurringVersion]);
 
   return null;
 }

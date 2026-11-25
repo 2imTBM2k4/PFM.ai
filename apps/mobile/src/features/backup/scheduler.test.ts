@@ -415,4 +415,205 @@ describe('Automatic Backup Scheduler (B5)', () => {
       hasBackupIndicatorIssue({ ...state, enabled: false }, nowMs),
     ).toBe(false);
   });
+
+  it('pulls newer remote snapshot from another device when local has no unsynced changes', async () => {
+    const onRemoteNewerDetected = vi.fn(async () => true);
+    const driveClient: DriveClient = {
+      uploadSnapshot: vi.fn(),
+      fetchRemoteBackupMetadata: vi.fn(async () => ({
+        ok: true as const,
+        found: true as const,
+        metadata: {
+          fileId: 'remote-file-newer',
+          modifiedTime: '2026-06-15T14:00:00.000Z',
+          createdAt: '2026-06-15T14:00:00.000Z',
+          sha256: 'f'.repeat(64),
+          schemaVersion: 7,
+          formatVersion: 1,
+          txCount: 10,
+          walletCount: 2,
+          sizeBytes: 2048,
+        },
+      })),
+      downloadRemoteBackup: vi.fn(),
+      deleteRemoteBackup: vi.fn(),
+    };
+
+    // First compute current local checksum and mark it as already synced (dirty: false)
+    const { createHash } = await import('node:crypto');
+    const hashPort = async (input: string) => createHash('sha256').update(input).digest('hex');
+    const { buildSnapshot } = await import('./snapshot');
+    const localSnap = await buildSnapshot(db, { hashPort });
+    await updateBackupState(db, {
+      enabled: true,
+      accountEmail: 'user@example.com',
+      lastSuccessAt: '2026-06-15T12:00:00.000Z',
+      lastError: null,
+      remoteFolderId: 'folder-1',
+      remoteFileId: 'remote-file-newer',
+      lastUploadedHash: localSnap.checksum,
+      dirty: false,
+    });
+
+    const scheduler = createBackupScheduler({
+      runWithDatabase: (task) => task(db),
+      driveClient,
+      authService: createMockAuthService(),
+      hashPort,
+      onRemoteNewerDetected,
+    });
+
+    const outcome = await scheduler.runBackupCycle({ force: false });
+    expect(outcome.uploaded).toBe(false);
+    expect(outcome.skippedUnchanged).toBe(true);
+    expect(onRemoteNewerDetected).toHaveBeenCalledWith(
+      'remote-file-newer',
+      'f'.repeat(64),
+    );
+    expect(driveClient.uploadSnapshot).not.toHaveBeenCalled();
+    expect(outcome.restored).toBe(true);
+  });
+
+  it("Last-Write-Wins (B1): auto-restores when both local and remote changed and remote is newer", async () => {
+    const onRemoteNewerDetected = vi.fn(async () => true);
+    const driveClient: DriveClient = {
+      uploadSnapshot: vi.fn(),
+      fetchRemoteBackupMetadata: vi.fn(async () => ({
+        ok: true as const,
+        found: true as const,
+        metadata: {
+          fileId: 'remote-newer-conflict',
+          modifiedTime: '2026-06-15T15:00:00.000Z',
+          createdAt: '2026-06-15T15:00:00.000Z',
+          sha256: '9'.repeat(64),
+          schemaVersion: 7,
+          formatVersion: 1,
+          txCount: 12,
+          walletCount: 2,
+          sizeBytes: 2048,
+        },
+      })),
+      downloadRemoteBackup: vi.fn(),
+      deleteRemoteBackup: vi.fn(),
+    };
+
+    await updateBackupState(db, {
+      enabled: true,
+      accountEmail: 'user@example.com',
+      lastSuccessAt: '2026-06-15T12:00:00.000Z',
+      lastLocalMutationAt: '2026-06-15T14:00:00.000Z',
+      lastError: null,
+      remoteFolderId: 'folder-1',
+      remoteFileId: 'remote-newer-conflict',
+      lastUploadedHash: '1'.repeat(64),
+      dirty: true,
+    });
+
+    const scheduler = createBackupScheduler({
+      runWithDatabase: (task) => task(db),
+      driveClient,
+      authService: createMockAuthService(),
+      onRemoteNewerDetected,
+    });
+
+    const outcome = await scheduler.runBackupCycle({ force: false });
+    expect(outcome.uploaded).toBe(false);
+    expect(outcome.restored).toBe(true);
+    expect(onRemoteNewerDetected).toHaveBeenCalledWith(
+      'remote-newer-conflict',
+      '9'.repeat(64),
+    );
+    expect(driveClient.uploadSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("Last-Write-Wins (B1): uploads local snapshot when both changed and local mutation is newer", async () => {
+    const onRemoteNewerDetected = vi.fn(async () => true);
+    const driveClient: DriveClient = {
+      uploadSnapshot: vi.fn(async (snap) => ({
+        ok: true as const,
+        folderId: 'folder-1',
+        fileId: 'remote-older-conflict',
+        sha256: snap.checksum,
+        modifiedTime: '2026-06-15T16:00:00.000Z',
+      })),
+      fetchRemoteBackupMetadata: vi.fn(async () => ({
+        ok: true as const,
+        found: true as const,
+        metadata: {
+          fileId: 'remote-older-conflict',
+          modifiedTime: '2026-06-15T13:00:00.000Z',
+          createdAt: '2026-06-15T13:00:00.000Z',
+          sha256: '8'.repeat(64),
+          schemaVersion: 7,
+          formatVersion: 1,
+          txCount: 8,
+          walletCount: 2,
+          sizeBytes: 1500,
+        },
+      })),
+      downloadRemoteBackup: vi.fn(),
+      deleteRemoteBackup: vi.fn(),
+    };
+
+    await updateBackupState(db, {
+      enabled: true,
+      accountEmail: 'user@example.com',
+      lastSuccessAt: '2026-06-15T12:00:00.000Z',
+      lastLocalMutationAt: '2026-06-15T16:00:00.000Z',
+      lastError: null,
+      remoteFolderId: 'folder-1',
+      remoteFileId: 'remote-older-conflict',
+      lastUploadedHash: '1'.repeat(64),
+      dirty: true,
+    });
+
+    const scheduler = createBackupScheduler({
+      runWithDatabase: (task) => task(db),
+      driveClient,
+      authService: createMockAuthService(),
+      onRemoteNewerDetected,
+    });
+
+    const outcome = await scheduler.runBackupCycle({ force: false });
+    expect(outcome.uploaded).toBe(true);
+    expect(driveClient.uploadSnapshot).toHaveBeenCalledTimes(1);
+    expect(onRemoteNewerDetected).not.toHaveBeenCalled();
+  });
+
+  it("stops safely without overwriting Drive if metadata check fails with network_error", async () => {
+    const onRemoteNewerDetected = vi.fn(async () => true);
+    const driveClient: DriveClient = {
+      uploadSnapshot: vi.fn(),
+      fetchRemoteBackupMetadata: vi.fn(async () => ({
+        ok: false as const,
+        errorCode: 'network_error' as const,
+      })),
+      downloadRemoteBackup: vi.fn(),
+      deleteRemoteBackup: vi.fn(),
+    };
+
+    await updateBackupState(db, {
+      enabled: true,
+      accountEmail: 'user@example.com',
+      lastSuccessAt: '2026-06-15T12:00:00.000Z',
+      lastError: null,
+      remoteFolderId: 'folder-1',
+      remoteFileId: 'remote-file-1',
+      lastUploadedHash: '1'.repeat(64),
+      dirty: true,
+    });
+
+    const scheduler = createBackupScheduler({
+      runWithDatabase: (task) => task(db),
+      driveClient,
+      authService: createMockAuthService(),
+      onRemoteNewerDetected,
+    });
+
+    const outcome = await scheduler.runBackupCycle({ force: false });
+    expect(outcome.uploaded).toBe(false);
+    expect(outcome.errorCode).toBe('network_error');
+    expect(driveClient.uploadSnapshot).not.toHaveBeenCalled();
+  });
+
 });

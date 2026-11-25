@@ -1,4 +1,5 @@
 import type { Queries } from '@/data/migrate';
+import { createWebGoogleSignInDriver } from './google-auth-web';
 
 export const BACKUP_STATE_SETTING_KEY = 'backup_state_v1' as const;
 export const GOOGLE_DRIVE_FILE_SCOPE =
@@ -34,6 +35,7 @@ export interface BackupState {
   remoteFileId: string | null;
   lastUploadedHash: string | null;
   dirty: boolean;
+  lastLocalMutationAt?: string | null;
 }
 
 export const DEFAULT_BACKUP_STATE: BackupState = {
@@ -45,6 +47,7 @@ export const DEFAULT_BACKUP_STATE: BackupState = {
   remoteFileId: null,
   lastUploadedHash: null,
   dirty: false,
+  lastLocalMutationAt: null,
 };
 
 const VALID_ERROR_CODES = new Set<BackupErrorCode>([
@@ -96,6 +99,11 @@ export function parseBackupState(raw: string | null | undefined): BackupState {
           ? obj.lastUploadedHash.trim()
           : null,
       dirty: obj.dirty === true,
+      lastLocalMutationAt:
+        typeof obj.lastLocalMutationAt === 'string' &&
+        obj.lastLocalMutationAt.trim()
+          ? obj.lastLocalMutationAt.trim()
+          : null,
     };
   } catch {
     return { ...DEFAULT_BACKUP_STATE };
@@ -186,7 +194,22 @@ function detectExpoGoRuntime(): boolean {
   return false;
 }
 
+let cachedWebDriver: NativeGoogleSignInDriver | null = null;
+
+function isBrowserWebRuntime(): boolean {
+  return (
+    process.env.EXPO_OS === 'web' ||
+    (typeof window !== 'undefined' && typeof document !== 'undefined')
+  );
+}
+
 function loadNativeGoogleSigninDriverSafely(): NativeGoogleSignInDriver | null {
+  if (isBrowserWebRuntime()) {
+    if (!cachedWebDriver) {
+      cachedWebDriver = createWebGoogleSignInDriver();
+    }
+    return cachedWebDriver;
+  }
   try {
     // Lazy require so Expo Go never evaluates TurboModuleRegistry.getEnforcing('RNGoogleSignin') at startup.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -267,6 +290,7 @@ export function classifyGoogleAuthError(error: unknown): GoogleAuthErrorReason {
     message.includes('failed to determine clientid') ||
     message.includes('googleservice-info.plist') ||
     message.includes('iosclientid was not provided') ||
+    message.includes('webclientid was not provided') ||
     message.includes('missing support for the following url schemes')
   ) {
     return 'not_configured';

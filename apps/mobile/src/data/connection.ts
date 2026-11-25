@@ -23,6 +23,44 @@ const SNAPSHOT_NAME = encrypted
   : 'pfm-preview-migration.db';
 let opening: ReturnType<typeof initialize> | undefined;
 let operations: Promise<unknown> = Promise.resolve();
+const mutationListeners = new Set<() => void>();
+let suppressMutationDepth = 0;
+
+const MUTATING_SQL_PATTERN = /^\s*(INSERT|UPDATE|DELETE)\b/i;
+
+function isUserDataMutation(sql: string, params: unknown[]): boolean {
+  if (suppressMutationDepth > 0) return false;
+  if (!MUTATING_SQL_PATTERN.test(sql)) return false;
+  if (sql.includes('backup_state_v1')) return false;
+  if (params.some((value) => value === 'backup_state_v1')) return false;
+  return true;
+}
+
+function emitDatabaseMutation(): void {
+  for (const listener of mutationListeners) {
+    listener();
+  }
+}
+
+/** Subscribes to any user-data SQLite write (INSERT/UPDATE/DELETE). */
+export function subscribeDatabaseMutations(listener: () => void): () => void {
+  mutationListeners.add(listener);
+  return () => {
+    mutationListeners.delete(listener);
+  };
+}
+
+/** Runs a task without emitting local mutation notifications (e.g. during backup restore). */
+export async function runWithoutMutationNotification<T>(
+  task: () => Promise<T>,
+): Promise<T> {
+  suppressMutationDepth += 1;
+  try {
+    return await task();
+  } finally {
+    suppressMutationDepth -= 1;
+  }
+}
 
 /** Opens a connection and rejects builds that cannot encrypt native storage. */
 async function openDatabase(name: string, key?: string) {
@@ -54,8 +92,15 @@ async function initialize() {
   const db = await openDatabase(DATABASE_NAME, key);
   // The queue prevents interleaving; keep transactions on the FK-enabled connection.
   const connection: Database & { closeAsync(): Promise<void> } = {
-    execAsync: db.execAsync.bind(db),
-    runAsync: db.runAsync.bind(db),
+    execAsync: async (source) => {
+      await db.execAsync(source);
+      if (isUserDataMutation(source, [])) emitDatabaseMutation();
+    },
+    runAsync: async (source, ...params) => {
+      const result = await db.runAsync(source, ...params);
+      if (isUserDataMutation(source, params)) emitDatabaseMutation();
+      return result;
+    },
     getFirstAsync: db.getFirstAsync.bind(db),
     getAllAsync: db.getAllAsync.bind(db),
     closeAsync: db.closeAsync.bind(db),

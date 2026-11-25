@@ -1019,6 +1019,11 @@ export const viMessages = {
     'Khôi phục sẽ thay thế toàn bộ ví, giao dịch, nợ, ngân sách và mục tiêu hiện có trên máy bằng bản sao lưu từ Google Drive.',
   backupRestoreConfirmPrompt: 'Nhập KHOIPHUC để xác nhận ghi đè dữ liệu',
   backupRestoreConfirmWord: 'KHOIPHUC',
+  backupSyncConflictTitle: 'Chọn bản dữ liệu để đồng bộ',
+  backupSyncConflictBody:
+    'Cả thiết bị này và Google Drive đều đang có dữ liệu. Chọn bản bạn muốn giữ để bật đồng bộ tự động hai chiều:',
+  backupSyncConflictUseRemote: 'Khôi phục từ Google Drive',
+  backupSyncConflictUseLocal: 'Giữ dữ liệu máy này & đẩy lên Drive',
   backupRestoreConfirmButton: 'Xác nhận khôi phục dữ liệu',
   backupRestoreSuccessNotice:
     'Đã khôi phục dữ liệu từ Google Drive thành công.',

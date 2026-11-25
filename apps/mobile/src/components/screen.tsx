@@ -193,9 +193,11 @@ export function Screen({
       ? DesignSpacing.sm
       : width <= 380
         ? 12
-        : width < 390
-          ? DesignSpacing.md
-          : DesignSpacing.screenPadding;
+        : Platform.OS === 'web' && width >= 600
+          ? 16
+          : width < 390
+            ? DesignSpacing.md
+            : DesignSpacing.screenPadding;
   const compactHeight = height <= 700;
   const content = (
     <RevealFieldContext.Provider value={revealField}>
@@ -206,7 +208,11 @@ export function Screen({
         style={[
           styles.column,
           scroll ? styles.scrollColumn : styles.fill,
-          maxWidth !== undefined && { maxWidth },
+          maxWidth !== undefined
+            ? { maxWidth, alignSelf: 'center', width: '100%' }
+            : Platform.OS === 'web' && width >= 600
+              ? { maxWidth: 500, alignSelf: 'center', width: '100%' }
+              : undefined,
           {
             paddingLeft: horizontalPadding,
             paddingRight:
@@ -350,6 +356,7 @@ export function Screen({
               <View
                 style={[
                   styles.column,
+                  Platform.OS === 'web' && width >= 600 && { maxWidth: 500 },
                   {
                     paddingLeft: horizontalPadding,
                     paddingRight:

@@ -960,6 +960,11 @@ export const en: Record<keyof typeof viMessages, string> = {
     'Restoring will replace all existing wallets, transactions, debts, budgets, and goals on this device with the backup from Google Drive.',
   backupRestoreConfirmPrompt: 'Type RESTORE to confirm overwriting local data',
   backupRestoreConfirmWord: 'RESTORE',
+  backupSyncConflictTitle: 'Choose which data to sync',
+  backupSyncConflictBody:
+    'Both this device and Google Drive contain data. Choose which copy to keep to enable automatic two-way sync:',
+  backupSyncConflictUseRemote: 'Restore from Google Drive',
+  backupSyncConflictUseLocal: 'Keep this device & upload to Drive',
   backupRestoreConfirmButton: 'Confirm data restore',
   backupRestoreSuccessNotice: 'Successfully restored data from Google Drive.',
   backupDisconnectButton: 'Disconnect Google Drive',

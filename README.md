@@ -112,6 +112,7 @@ Google Sign-In and Google Drive backup (`drive.file` scope) require a native dev
      - EAS build SHA-1: `eas credentials -p android`
    - **iOS Client ID**: Create an OAuth 2.0 Client ID of type **iOS** with bundle identifier `com.pfmai.app` (or the exact bundle ID you use when sideloading). Set `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` in `apps/mobile/.env` (or via GitHub Secrets / workflow inputs); `apps/mobile/app.config.ts` automatically derives `iosUrlScheme` (`com.googleusercontent.apps.<IOS_CLIENT_ID_PREFIX>`) during `expo prebuild`.
    - **GitHub Actions IPA + Sideloadly**: Add `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` in repository **Settings ? Secrets and variables ? Actions** (or pass them into `Build iOS IPA` workflow inputs). When sideloading with Sideloadly, keep the bundle identifier matching the iOS OAuth Client ID (disable automatic bundle ID rewriting or pass `ios_bundle_id` to the workflow).
+   - **GitHub Actions Android APK & EAS APK**: Run **Build Android APK** (`.github/workflows/build-android.yml`) to download a standalone `.apk` artifact (the workflow prints the signing keystore `SHA-1` in its logs so you can register it in Google Cloud Console under the Android OAuth Client ID), or run `eas build --platform android --profile preview` inside `apps/mobile` (configured with `buildType: "apk"`).
 4. **Build & Run Development Client**:
    - Android: `npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile android`
    - iOS: `npx.cmd --yes pnpm@10.33.4 --filter @pfm/mobile ios`

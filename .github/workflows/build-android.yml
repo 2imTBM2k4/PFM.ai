@@ -1,0 +1,150 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: 'Kiểu build: "release" (khuyên dùng để cài thử) hoặc "debug"'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+      proxy_url:
+        description: 'EXPO_PUBLIC_PROXY_URL (không cần dấu / ở cuối; để trống sẽ lấy từ Secret)'
+        required: false
+        default: ''
+        type: string
+      google_web_client_id:
+        description: 'EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID (để trống để lấy từ GitHub Secret)'
+        required: false
+        default: ''
+        type: string
+      android_package:
+        description: 'Android package name ghi đè (mặc định com.pfmai.app)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write mobile .env
+        env:
+          INPUT_PROXY_URL: ${{ inputs.proxy_url }}
+          SECRET_PROXY_URL: ${{ secrets.EXPO_PUBLIC_PROXY_URL }}
+          INPUT_GOOGLE_WEB_CLIENT_ID: ${{ inputs.google_web_client_id }}
+          SECRET_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          INPUT_ANDROID_PACKAGE: ${{ inputs.android_package }}
+        run: |
+          mkdir -p apps/mobile
+          PROXY_URL="${INPUT_PROXY_URL:-$SECRET_PROXY_URL}"
+          PROXY_URL="${PROXY_URL%/}"
+          GOOGLE_WEB_CLIENT_ID="${INPUT_GOOGLE_WEB_CLIENT_ID:-$SECRET_GOOGLE_WEB_CLIENT_ID}"
+          ANDROID_PACKAGE="${INPUT_ANDROID_PACKAGE}"
+
+          {
+            if [ -n "$PROXY_URL" ]; then
+              printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$PROXY_URL"
+            fi
+            if [ -n "$GOOGLE_WEB_CLIENT_ID" ]; then
+              printf "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=%s\n" "$GOOGLE_WEB_CLIENT_ID"
+            fi
+            if [ -n "$ANDROID_PACKAGE" ]; then
+              printf "EXPO_PUBLIC_ANDROID_PACKAGE=%s\n" "$ANDROID_PACKAGE"
+            fi
+          } > apps/mobile/.env
+
+      - name: Run Expo prebuild (Android)
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+
+      - name: Configure Android signing keystore (optional release keystore)
+        working-directory: apps/mobile/android/app
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+            echo "HAS_RELEASE_KEYSTORE=true" >> "$GITHUB_ENV"
+            echo "=== Release Keystore SHA-1 (dùng cho Android OAuth Client ID) ==="
+            keytool -list -v -keystore release.keystore -alias "$KEY_ALIAS" -storepass "$KEYSTORE_PASSWORD" | grep -E "SHA1:|SHA256:" || true
+          else
+            echo "HAS_RELEASE_KEYSTORE=false" >> "$GITHUB_ENV"
+            echo "=== Debug Keystore SHA-1 (dùng cho Android OAuth Client ID khi chưa có release keystore) ==="
+            keytool -list -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android | grep -E "SHA1:|SHA256:" || true
+          fi
+
+      - name: Build Android APK
+        working-directory: apps/mobile/android
+        env:
+          VARIANT: ${{ inputs.build_variant }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          if [ "$VARIANT" = "debug" ]; then
+            ./gradlew assembleDebug --no-daemon
+          elif [ "$HAS_RELEASE_KEYSTORE" = "true" ]; then
+            ./gradlew assembleRelease --no-daemon \
+              -PMYAPP_UPLOAD_STORE_FILE=release.keystore \
+              -PMYAPP_UPLOAD_KEY_ALIAS="$KEY_ALIAS" \
+              -PMYAPP_UPLOAD_STORE_PASSWORD="$KEYSTORE_PASSWORD" \
+              -PMYAPP_UPLOAD_KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          else
+            ./gradlew assembleRelease --no-daemon
+          fi
+
+      - name: Locate built APK
+        id: apk
+        working-directory: apps/mobile/android
+        run: |
+          APK_PATH=$(find app/build/outputs/apk -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK found!" >&2
+            exit 1
+          fi
+          echo "path=apps/mobile/android/$APK_PATH" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK_PATH"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pfm-ai-android-${{ inputs.build_variant }}-apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 14

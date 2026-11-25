@@ -33,6 +33,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const iosUrlScheme =
     deriveGoogleIosUrlScheme(iosClientId) ?? PLACEHOLDER_IOS_URL_SCHEME;
   const iosBundleId = process.env.EXPO_PUBLIC_IOS_BUNDLE_ID?.trim();
+  const androidPackage = process.env.EXPO_PUBLIC_ANDROID_PACKAGE?.trim();
 
   const existingPlugins = Array.isArray(config.plugins) ? config.plugins : [];
   let updatedGooglePlugin = false;
@@ -72,6 +73,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...config.ios,
       bundleIdentifier:
         iosBundleId || config.ios?.bundleIdentifier || 'com.pfmai.app',
+    },
+    android: {
+      ...config.android,
+      package: androidPackage || config.android?.package || 'com.pfmai.app',
     },
     plugins,
   };

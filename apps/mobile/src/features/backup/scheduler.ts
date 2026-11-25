@@ -57,10 +57,13 @@ export interface BackupSchedulerDependencies {
   hashPort?: HashPort;
   foregroundIntervalMs?: number;
   debounceMs?: number;
+  /** Called during automatic sync when Drive has a newer snapshot from another device and local has no unsynced changes. */
+  onRemoteNewerDetected?: (fileId: string, remoteSha256: string) => Promise<boolean>;
 }
 
 export interface BackupCycleOutcome {
   uploaded: boolean;
+  restored?: boolean;
   skippedUnchanged: boolean;
   state: BackupState;
   errorCode: BackupErrorCode;
@@ -98,6 +101,7 @@ export function createBackupScheduler(
   let inFlightPromise: Promise<BackupCycleOutcome> | null = null;
   let rerunRequested = false;
   let rerunForce = false;
+  let pendingLocalMutationAt: string | null = null;
 
   const listeners = new Set<(status: BackupRuntimeStatus) => void>();
 
@@ -195,13 +199,19 @@ export function createBackupScheduler(
         return {
           shouldUpload: false as const,
           skippedUnchanged: true,
+          checkRemoteForPull: true as const,
           state,
           snapshot: null as BackupSnapshot | null,
         };
       }
 
-      // Persist dirty = true before starting network upload so mid-upload app kill recovers on next startup
-      const dirtyState = await updateBackupState(db, { dirty: true });
+      // Persist dirty = true and local mutation timestamp before network I/O
+      const localMutationAt =
+        pendingLocalMutationAt ?? state.lastLocalMutationAt ?? now();
+      const dirtyState = await updateBackupState(db, {
+        dirty: true,
+        lastLocalMutationAt: localMutationAt,
+      });
       return {
         shouldUpload: true as const,
         skippedUnchanged: false,
@@ -215,12 +225,132 @@ export function createBackupScheduler(
     emit();
 
     if (!dbPrep.shouldUpload || !dbPrep.snapshot) {
+      let restored = false;
+      if (
+        'checkRemoteForPull' in dbPrep &&
+        dbPrep.checkRemoteForPull &&
+        deps.onRemoteNewerDetected
+      ) {
+        const remoteMeta = await driveClient.fetchRemoteBackupMetadata({
+          cachedFileId: currentState.remoteFileId,
+        });
+        if (
+          remoteMeta.ok &&
+          remoteMeta.found &&
+          remoteMeta.metadata.sha256 &&
+          remoteMeta.metadata.sha256.toLowerCase() !==
+            currentState.lastUploadedHash?.toLowerCase()
+        ) {
+          restored = await deps.onRemoteNewerDetected(
+            remoteMeta.metadata.fileId,
+            remoteMeta.metadata.sha256,
+          );
+          currentState = await deps.runWithDatabase((db) => readBackupState(db));
+          emit();
+        }
+      }
       return {
         uploaded: false,
+        restored,
         skippedUnchanged: dbPrep.skippedUnchanged,
         state: currentState,
         errorCode: currentState.lastError,
       };
+    }
+
+    // Step 1.5: Last-Write-Wins conflict check before automatic upload
+    if (
+      !force &&
+      deps.onRemoteNewerDetected &&
+      (currentState.lastUploadedHash !== null ||
+        currentState.remoteFileId !== null)
+    ) {
+      const remoteMeta = await driveClient.fetchRemoteBackupMetadata({
+        cachedFileId: currentState.remoteFileId,
+      });
+      if (!remoteMeta.ok) {
+        currentState = await deps.runWithDatabase((db) =>
+          updateBackupState(db, {
+            lastError: remoteMeta.errorCode,
+            dirty: true,
+          }),
+        );
+        syncIntervalTimer();
+        emit();
+        return {
+          uploaded: false,
+          restored: false,
+          skippedUnchanged: false,
+          state: currentState,
+          errorCode: remoteMeta.errorCode,
+        };
+      }
+      if (remoteMeta.found && remoteMeta.metadata.sha256) {
+        const remoteHash = remoteMeta.metadata.sha256.toLowerCase();
+        const localHash = dbPrep.snapshot.checksum.toLowerCase();
+        if (remoteHash === localHash) {
+          pendingLocalMutationAt = null;
+          currentState = await deps.runWithDatabase((db) =>
+            updateBackupState(db, {
+              remoteFileId: remoteMeta.metadata.fileId,
+              lastUploadedHash: remoteMeta.metadata.sha256,
+              lastSuccessAt:
+                remoteMeta.metadata.modifiedTime ??
+                remoteMeta.metadata.createdAt ??
+                now(),
+              lastError: null,
+              dirty: false,
+              lastLocalMutationAt: null,
+            }),
+          );
+          syncIntervalTimer();
+          emit();
+          return {
+            uploaded: false,
+            restored: false,
+            skippedUnchanged: true,
+            state: currentState,
+            errorCode: null,
+          };
+        }
+        const remoteChangedSinceLastSync =
+          currentState.lastUploadedHash !== null &&
+          remoteHash !== currentState.lastUploadedHash.toLowerCase();
+        if (remoteChangedSinceLastSync) {
+          const remoteTimeMs = Date.parse(
+            remoteMeta.metadata.modifiedTime ??
+              remoteMeta.metadata.createdAt ??
+              '',
+          );
+          const localTimeMs = Date.parse(
+            currentState.lastLocalMutationAt ??
+              currentState.lastSuccessAt ??
+              '',
+          );
+          const remoteIsNewer =
+            Number.isFinite(remoteTimeMs) &&
+            (!Number.isFinite(localTimeMs) || remoteTimeMs > localTimeMs);
+          if (remoteIsNewer) {
+            const restored = await deps.onRemoteNewerDetected(
+              remoteMeta.metadata.fileId,
+              remoteMeta.metadata.sha256,
+            );
+            pendingLocalMutationAt = null;
+            currentState = await deps.runWithDatabase((db) =>
+              readBackupState(db),
+            );
+            syncIntervalTimer();
+            emit();
+            return {
+              uploaded: false,
+              restored,
+              skippedUnchanged: false,
+              state: currentState,
+              errorCode: currentState.lastError,
+            };
+          }
+        }
+      }
     }
 
     // Step 2: Upload to Google Drive outside withDatabase
@@ -239,6 +369,7 @@ export function createBackupScheduler(
 
     // Step 3: Persist outcome in withDatabase
     if (uploadRes.ok) {
+      pendingLocalMutationAt = null;
       const successAt = now();
       currentState = await deps.runWithDatabase((db) =>
         updateBackupState(db, {
@@ -248,6 +379,7 @@ export function createBackupScheduler(
           lastSuccessAt: successAt,
           lastError: null,
           dirty: false,
+          lastLocalMutationAt: null,
         }),
       );
       syncIntervalTimer();
@@ -335,6 +467,7 @@ export function createBackupScheduler(
     },
 
     notifyDataChanged(): void {
+      pendingLocalMutationAt = now();
       if (!canRunAutomatically(currentState)) return;
       if (debounceTimer !== null) {
         clearTimeout(debounceTimer);

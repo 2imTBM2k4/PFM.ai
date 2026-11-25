@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   PixelRatio,
+  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -230,7 +231,9 @@ export function AllocationDonutChart({
               stroke={callouts[0].item.color}
               strokeWidth={outerRadius - innerRadius}
               fill="none"
-              onPress={() => onSelectSlice?.(callouts[0].item.id)}
+              {...(Platform.OS === 'web'
+                ? ({ onClick: () => onSelectSlice?.(callouts[0].item.id) } as object)
+                : { onPress: () => onSelectSlice?.(callouts[0].item.id) })}
             />
           ) : (
             callouts.map((point) => {
@@ -252,7 +255,9 @@ export function AllocationDonutChart({
                     eDeg,
                   )}
                   fill={point.item.color}
-                  onPress={() => onSelectSlice?.(point.item.id)}
+                  {...(Platform.OS === 'web'
+                    ? ({ onClick: () => onSelectSlice?.(point.item.id) } as object)
+                    : { onPress: () => onSelectSlice?.(point.item.id) })}
                 />
               );
             })

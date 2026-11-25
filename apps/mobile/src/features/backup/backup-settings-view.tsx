@@ -21,6 +21,7 @@ import {
   connectGoogleDriveBackup,
   disconnectGoogleDriveBackup,
   inspectRemoteGoogleDriveBackup,
+  resolveInitialSyncByUploadingLocal,
   restoreFromGoogleDriveBackup,
   runManualGoogleDriveBackup,
   setGoogleDriveAutoBackupEnabled,
@@ -96,6 +97,10 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
   const [remoteMeta, setRemoteMeta] = useState<RemoteBackupMetadata | null>(
     null,
   );
+  const [syncConflict, setSyncConflict] = useState<{
+    email: string;
+    metadata: RemoteBackupMetadata;
+  } | null>(null);
   const [restoreAccountEmail, setRestoreAccountEmail] = useState<string | null>(
     null,
   );
@@ -123,14 +128,54 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
     setBusy(true);
     setNotice('');
     setActionError(null);
+    setSyncConflict(null);
     try {
       const res = await connectGoogleDriveBackup();
       if (!res.ok) {
         if (res.error !== 'cancelled') {
           setActionError(res.error);
         }
-      } else {
+      } else if (res.syncAction === 'conflict') {
+        setSyncConflict({
+          email: res.email,
+          metadata: res.remoteMetadata,
+        });
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
+  const handleResolveConflictUseRemote = async () => {
+    if (!syncConflict || busy || isUploading) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await restoreFromGoogleDriveBackup({
+        fileId: syncConflict.metadata.fileId,
+        enableAutoBackupAfterRestore: true,
+        accountEmail: syncConflict.email,
+      });
+      if (res.ok) {
+        setSyncConflict(null);
+      } else {
+        setActionError(res.error);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResolveConflictUseLocal = async () => {
+    if (!syncConflict || busy || isUploading) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const res = await resolveInitialSyncByUploadingLocal();
+      if (res.ok) {
+        setSyncConflict(null);
+      } else if (res.error) {
+        setActionError(res.error);
       }
     } finally {
       setBusy(false);
@@ -477,6 +522,85 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
       )}
 
       {/* Restore Confirmation Card (when remote backup metadata has been fetched) */}
+      {!!syncConflict && (
+        <GlassCard
+          variant="elevated"
+          radius="xl"
+          padding={DesignSpacing.lg}
+          style={{ gap: 12, borderColor: palette.warning }}
+        >
+          <View style={styles.inlineRow}>
+            <IconBadge
+              icon="cloud-sync-outline"
+              bg={palette.warningSoft}
+              fg={palette.warningInk}
+              size={38}
+              iconSize={20}
+            />
+            <Text
+              variant="titleSmall"
+              style={{ fontWeight: '800', color: theme.text.primary, flex: 1 }}
+            >
+              {vi.backupSyncConflictTitle}
+            </Text>
+          </View>
+          <Text
+            variant="bodySmall"
+            style={{ color: theme.text.secondary, lineHeight: 19 }}
+          >
+            {vi.backupSyncConflictBody}
+          </Text>
+          <Text
+            variant="bodySmall"
+            style={{ color: theme.text.primary, fontWeight: '600' }}
+          >
+            {vi.backupRemoteFoundSummary
+              .replace(
+                '{date}',
+                formatBackupTimestamp(
+                  syncConflict.metadata.createdAt ??
+                    syncConflict.metadata.modifiedTime,
+                  language,
+                ),
+              )
+              .replace('{txCount}', String(syncConflict.metadata.txCount))
+              .replace(
+                '{walletCount}',
+                String(syncConflict.metadata.walletCount),
+              )}
+          </Text>
+          <Button
+            hitSlop={4}
+            mode="contained"
+            icon="cloud-download-outline"
+            buttonColor={theme.brand.primaryStrong}
+            textColor="#FFFFFF"
+            loading={busy}
+            disabled={busy || isUploading}
+            onPress={() => void handleResolveConflictUseRemote()}
+          >
+            {vi.backupSyncConflictUseRemote}
+          </Button>
+          <Button
+            hitSlop={4}
+            mode="outlined"
+            icon="cloud-upload-outline"
+            disabled={busy || isUploading}
+            onPress={() => void handleResolveConflictUseLocal()}
+          >
+            {vi.backupSyncConflictUseLocal}
+          </Button>
+          <Button
+            hitSlop={4}
+            mode="text"
+            disabled={busy}
+            onPress={() => setSyncConflict(null)}
+          >
+            {vi.cancel}
+          </Button>
+        </GlassCard>
+      )}
+
       {!!remoteMeta && (
         <GlassCard
           variant="elevated"

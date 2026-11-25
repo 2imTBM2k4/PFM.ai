@@ -87,6 +87,7 @@ describe('Google Auth & Backup State Persistence (B3)', () => {
       remoteFileId: 'file-456',
       lastUploadedHash: 'abc123hash',
       dirty: true,
+      lastLocalMutationAt: null,
     });
 
     const row = await db.getFirstAsync<{ value: string }>(
