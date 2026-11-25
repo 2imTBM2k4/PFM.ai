@@ -14,6 +14,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  useReducedMotion,
   LinearTransition,
 } from 'react-native-reanimated';
 import {
@@ -54,6 +55,7 @@ export function Pill({
   compact = false,
 }: PillProps) {
   const theme = useDesignTheme();
+  const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -118,10 +120,10 @@ export function Pill({
     },
     style,
     compact && {
-      width: 32,
-      height: 32,
-      minWidth: 32,
-      minHeight: 32,
+      width: 44,
+      height: 44,
+      minWidth: 44,
+      minHeight: 44,
       paddingHorizontal: 0,
       paddingVertical: 0,
       justifyContent: 'center',
@@ -136,6 +138,7 @@ export function Pill({
             name={toSfSymbol(icon)!}
             size={18}
             tintColor={colors.fg}
+            style={{ width: 18, height: 18 }}
           />
         ) : (
           <MaterialCommunityIcons
@@ -147,7 +150,6 @@ export function Pill({
       ) : null}
       {!compact && (
         <Text
-          numberOfLines={1}
           style={[
             styles.label,
             {
@@ -177,8 +179,8 @@ export function Pill({
 
   return (
     <Animated.View
-      layout={LinearTransition.duration(220)}
-      style={[animatedStyle, compact && { padding: 6 }]}
+      layout={reduceMotion ? undefined : LinearTransition.duration(180)}
+      style={animatedStyle}
     >
       <Pressable
         accessibilityRole="button"
@@ -187,12 +189,17 @@ export function Pill({
         hitSlop={10}
         onPress={onPress}
         onPressIn={() => {
-          scale.set(withSpring(0.95, { damping: 16, stiffness: 300 }));
+          if (!reduceMotion)
+            scale.set(withSpring(0.95, { damping: 16, stiffness: 300 }));
         }}
         onPressOut={() => {
-          scale.set(withSpring(1, { damping: 16, stiffness: 300 }));
+          if (!reduceMotion)
+            scale.set(withSpring(1, { damping: 16, stiffness: 300 }));
         }}
-        style={containerStyle}
+        style={[
+          containerStyle,
+          { minWidth: 44, minHeight: 44, justifyContent: 'center' },
+        ]}
       >
         {content}
       </Pressable>

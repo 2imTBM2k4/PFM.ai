@@ -1,5 +1,7 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
+export const flags = { useStateBackedContext: false, useAgentLoop: true };
+
 const PLACEHOLDER_IOS_URL_SCHEME =
   'com.googleusercontent.apps.placeholder-replace-with-reversed-ios-client-id';
 const GOOGLE_SIGNIN_PLUGIN = '@react-native-google-signin/google-signin';
@@ -63,6 +65,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
+    extra: { ...config.extra, flags: { ...config.extra?.flags, ...flags } },
     name: config.name ?? 'PFM.ai',
     slug: config.slug ?? 'pfm-ai',
     ios: {

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   aggregatePeriodSummary,
+  buildDonutBreakdown,
   computeCategoryAllocation,
+  computeDonutCallouts,
+  computeTrendChartScale,
+  formatAllocationPercentLabel,
+  resolveCategoryVisual,
   shouldShowDailyTotals,
 } from './stats-summary';
 
@@ -82,5 +87,103 @@ describe('Stats Summary & Category Allocation (Stage 5)', () => {
       'Di chuyển',
     ]);
     expect(allocation.items.map((i) => i.percentage)).toEqual([50, 40, 10]);
+  });
+
+  it('formats <1%, 100%, and 99% allocation labels cleanly', () => {
+    expect(formatAllocationPercentLabel(1, 86_000, 2)).toBe('<1%');
+    expect(formatAllocationPercentLabel(85_999, 86_000, 2)).toBe('99%');
+    expect(formatAllocationPercentLabel(500_000, 500_000, 1)).toBe('100%');
+    expect(formatAllocationPercentLabel(75, 100, 4)).toBe('75%');
+    expect(formatAllocationPercentLabel(0, 100, 2)).toBe('0%');
+  });
+
+  it('builds complete breakdown items and merges tail beyond 5 top slices into Other for donut chart', () => {
+    const input = [
+      { id: 'c1', systemKey: 'expense.housing', name: 'Nhà ở', amount: 750_000 },
+      { id: 'c2', systemKey: 'expense.food', name: 'Ăn uống', amount: 130_000 },
+      { id: 'c3', systemKey: 'expense.bills_subscriptions', name: 'Hóa đơn', amount: 100_000 },
+      { id: 'c4', systemKey: 'expense.transport', name: 'Di chuyển', amount: 20_000 },
+      { id: 'c5', systemKey: 'expense.health', name: 'Sức khỏe', amount: 15_000 },
+      { id: 'c6', systemKey: 'expense.education', name: 'Giáo dục', amount: 10_000 },
+      { id: null, systemKey: null, name: null, amount: 5_000 },
+    ];
+
+    const breakdown = buildDonutBreakdown(input, 'Chưa phân loại', 'Khác');
+    expect(breakdown.total).toBe(1_030_000);
+    expect(breakdown.items).toHaveLength(7);
+    expect(breakdown.slices).toHaveLength(6);
+    expect(breakdown.slices.at(-1)?.name).toBe('Khác');
+    expect(breakdown.slices.at(-1)?.amount).toBe(15_000);
+    expect(breakdown.items[0].icon).toBe('home');
+    expect(breakdown.items.at(-1)?.icon).toBe('help-circle-outline');
+  });
+
+  it('solves non-overlapping left/right donut callout positions with minimum vertical spacing', () => {
+    const { slices } = buildDonutBreakdown(
+      [
+        { id: 'c1', systemKey: 'expense.housing', name: 'Nhà ở', amount: 750_000 },
+        { id: 'c2', systemKey: 'expense.food', name: 'Ăn uống', amount: 130_000 },
+        { id: 'c3', systemKey: 'expense.bills_subscriptions', name: 'Hóa đơn', amount: 100_000 },
+        { id: 'c4', systemKey: 'expense.transport', name: 'Di chuyển', amount: 20_000 },
+        { id: 'c5', systemKey: 'expense.health', name: 'Sức khỏe', amount: 10_000 },
+        { id: 'c6', systemKey: 'expense.education', name: 'Giáo dục', amount: 5_000 },
+      ],
+      'Chưa phân loại',
+      'Khác',
+    );
+
+    const points = computeDonutCallouts(slices, 156, 114, 62, 24, 204, 38);
+    expect(points).toHaveLength(6);
+
+    const checkSpacing = (column: typeof points) => {
+      const sorted = [...column].sort((a, b) => a.labelY - b.labelY);
+      for (let i = 0; i < sorted.length; i++) {
+        expect(sorted[i].labelY).toBeGreaterThanOrEqual(24);
+        expect(sorted[i].labelY).toBeLessThanOrEqual(204);
+        if (i > 0) {
+          expect(sorted[i].labelY - sorted[i - 1].labelY).toBeGreaterThanOrEqual(37.9);
+        }
+      }
+    };
+
+    checkSpacing(points.filter((p) => p.side === 'left'));
+    checkSpacing(points.filter((p) => p.side === 'right'));
+  });
+
+  it('resolves explicit category visuals over system keys and uncategorized fallbacks', () => {
+    expect(
+      resolveCategoryVisual(
+        { systemKey: 'expense.food', icon: 'cart', color: '#195DB7' },
+        0,
+        false,
+      ),
+    ).toEqual({ icon: 'cart', color: '#195DB7' });
+    expect(resolveCategoryVisual({ systemKey: null }, 0, true)).toEqual({
+      icon: 'help-circle-outline',
+      color: '#F472B6',
+    });
+  });
+
+  it('computes clean unidirectional, downward-only, and symmetric trend chart scales', () => {
+    const upward = computeTrendChartScale([0, 6_850_000, 1_600_000], false);
+    expect(upward.unitKind).toBe('million');
+    expect(upward.ticks).toEqual([8, 6, 4, 2, 0]);
+    expect(upward.zeroRatio).toBe(1);
+    expect(upward.maxRawValue).toBe(8_000_000);
+
+    const downwardOnly = computeTrendChartScale([-24_688_083, -4_685_195], true);
+    expect(downwardOnly.unitKind).toBe('million');
+    expect(downwardOnly.ticks).toEqual([0, -8, -16, -24, -32]);
+    expect(downwardOnly.zeroRatio).toBe(0);
+    expect(downwardOnly.minRawValue).toBe(-32_000_000);
+
+    const bidirectional = computeTrendChartScale([-3_599_000, 2_127_668], true);
+    expect(bidirectional.unitKind).toBe('million');
+    expect(bidirectional.ticks).toEqual([3.6, 2.4, 1.2, 0, -1.2, -2.4, -3.6]);
+    expect(bidirectional.zeroRatio).toBe(0.5);
+
+    const smallThousands = computeTrendChartScale([120_000, 450_000], false);
+    expect(smallThousands.unitKind).toBe('thousand');
+    expect(smallThousands.ticks).toEqual([480, 360, 240, 120, 0]);
   });
 });

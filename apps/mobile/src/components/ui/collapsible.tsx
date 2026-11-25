@@ -18,6 +18,9 @@ export function Collapsible({
   return (
     <ThemedView>
       <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: isOpen }}
         style={({ pressed }) => [
           styles.heading,
           pressed && styles.pressedHeading,
@@ -56,6 +59,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    minHeight: 44,
   },
   pressedHeading: {
     opacity: 0.7,

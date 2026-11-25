@@ -28,7 +28,13 @@ const { mockWindowDimensions, mockState } = vi.hoisted(() => ({
     mode: 'light' as 'light' | 'dark',
     menuOpen: false,
     reducedMotion: false,
+    reduceTransparency: false,
+    increaseContrast: false,
   },
+}));
+
+vi.mock('@/hooks/use-accessibility-preferences', () => ({
+  useAccessibilityPreferences: () => mockState,
 }));
 
 vi.mock('react', async (importOriginal) => {
@@ -300,6 +306,27 @@ function renderBar(visible = true) {
 }
 
 describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
+  it('labels every destination on compact and standard iPhones', () => {
+    for (const width of [320, 390]) {
+      mockWindowDimensions.width = width;
+      const labels = collectElements(renderBar(), (el) => el.type === 'Text');
+      expect(labels.map((label) => label.props.children)).toEqual(
+        APP_TAB_ITEMS.map((item) => item.label),
+      );
+    }
+  });
+  it.each(['reduceTransparency', 'increaseContrast'] as const)(
+    'uses solid controls for %s',
+    (preference) => {
+      mockState[preference] = true;
+      const glass = collectElements(
+        renderBar(),
+        (el) => el.type === 'GlassView',
+      );
+      expect(glass).toHaveLength(0);
+      mockState[preference] = false;
+    },
+  );
   beforeEach(() => {
     mockNavigate.mockReset();
     setActiveLanguage('vi');
@@ -309,6 +336,8 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
       mode: 'light',
       menuOpen: false,
       reducedMotion: false,
+      reduceTransparency: false,
+      increaseContrast: false,
     });
     mockWindowDimensions.width = 390;
     mockWindowDimensions.height = 844;
@@ -386,12 +415,12 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
     expect(compact.compact).toBe(true);
     expect(compact.rowWidth).toBeLessThanOrEqual(300);
     expect(compact.inactiveTabWidth).toBeGreaterThanOrEqual(44);
-    expect(compact.showActiveLabel).toBe(false);
+    expect(compact.showActiveLabel).toBe(true);
 
     const standard = getFloatingTabBarLayout(390);
     expect(standard.compact).toBe(false);
     expect(standard.showActiveLabel).toBe(true);
-    expect(standard.activeTabWidth).toBeGreaterThan(standard.inactiveTabWidth);
+    expect(standard.activeTabWidth).toBe(standard.inactiveTabWidth);
 
     const expanded = getFloatingTabBarLayout(900, 24, 24);
     expect(expanded.rowWidth).toBe(468);
@@ -418,7 +447,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
             (el) => el.type === 'GlassView',
           )[0]!;
           const actionStyle = flattenStyle(actionGlass);
-          expect(actionGlass.props.glassEffectStyle).toBe('clear');
+          expect(actionGlass.props.glassEffectStyle).toBe('regular');
           expect(actionGlass.props.colorScheme).toBe(mode);
           expect(actionGlass.props.tintColor).toBeUndefined();
           expect(actionStyle.borderRadius).toBe(24);
@@ -452,7 +481,10 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
           }
           expect(bar.props.isInteractive).toBe(true);
           expect(bar.props.colorScheme).toBe(mode);
+          expect(style.height).toBe(48);
+          expect(flattenStyle(action).height).toBe(48);
           if (glass) {
+            expect(style.paddingVertical).toBe(2);
             for (const key of [
               'backgroundColor',
               'borderColor',
@@ -466,6 +498,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
             }
           } else {
             expect(style).toMatchObject({
+              paddingVertical: 1,
               backgroundColor: DesignColors[mode].tabBar.pillBackground,
               borderColor: DesignColors[mode].tabBar.pillBorder,
               borderWidth: 1,
@@ -490,6 +523,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
                     ? 'SymbolView'
                     : 'MaterialCommunityIcons'),
               )[0]!;
+              expect(icon.props.size).toBe(18);
               expect(icon.props.name).toBe(
                 platform === 'ios'
                   ? symbols[index]![active ? 1 : 0]
@@ -506,6 +540,18 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
               );
             }
           });
+          const iconOnly = collectElements(
+            TabIconButton({
+              item: APP_TAB_ITEMS[0]!,
+              active: true,
+              showLabel: false,
+              onPress: vi.fn(),
+            }),
+            (el) =>
+              el.type ===
+              (platform === 'ios' ? 'SymbolView' : 'MaterialCommunityIcons'),
+          )[0]!;
+          expect(iconOnly.props.size).toBe(22);
         });
       }
     }
@@ -566,6 +612,8 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
             (el) => el.props.accessibilityRole === 'tablist',
           )[0]!;
           expect(flattenStyle(bar).flexDirection).toBe(duo ? 'column' : 'row');
+          expect(flattenStyle(bar).height).toBe(duo ? 222 : 48);
+          expect(flattenStyle(action).height).toBe(48);
           const controls = collectElements(
             bar,
             (el) => el.type === 'Pressable',

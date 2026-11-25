@@ -117,6 +117,7 @@ export const CalculationSchema = z.discriminatedUnion('type', [
 export type Calculation = z.infer<typeof CalculationSchema>;
 
 export const AdviceHistoryItemSchema = z.object({
+  id: z.string().trim().min(1).max(120).optional(),
   role: z.enum(['user', 'assistant']),
   text: z.string().trim().min(1).max(500),
 });
@@ -160,9 +161,7 @@ export const AdviceSuccessResponseSchema = z.object({
   calculations: z.array(CalculationSchema).default([]),
   model: z.string().optional(),
 });
-export type AdviceSuccessResponse = z.infer<
-  typeof AdviceSuccessResponseSchema
->;
+export type AdviceSuccessResponse = z.infer<typeof AdviceSuccessResponseSchema>;
 
 export const AdviceErrorResponseSchema = z.object({
   success: z.literal(false),

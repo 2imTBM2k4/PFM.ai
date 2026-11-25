@@ -10,10 +10,6 @@ export {
   type AppleMenuOption,
   type AppleMenuPickerProps,
 } from './apple-menu-picker';
-export {
-  BottomSheetModal,
-  type BottomSheetModalProps,
-} from './bottom-sheet-modal';
 export { DateField, type DateFieldProps } from './date-field';
 export { MonthField, type MonthFieldProps } from './month-field';
 export {

@@ -1,5 +1,6 @@
 import {
   classifyAdviceScope,
+  classifyFinancialIntent,
   parseEntry,
   type AdviceScopeDecision,
 } from '@pfm/domain';
@@ -39,12 +40,19 @@ export function routeChatInput(
   if (scopeDecision.status === 'restricted') {
     return { route: 'restricted', parsed, scopeDecision };
   }
+  const intent = classifyFinancialIntent(input);
+  if (intent.intent === 'entry') return { route: 'transaction', parsed, scopeDecision };
   if (scopeDecision.status === 'allowed') {
     return { route: 'advice', parsed, scopeDecision };
   }
 
   // If advice scope is ambiguous, check for transaction candidates
   const text = ` ${foldSearchText(input).replace(/[^a-z0-9?]+/g, ' ')} `;
+  if (
+    /\b(toi (tieu|chi|thu)|luong toi|thu nhap cua toi)\b/.test(text) &&
+    !/\b(ghi|luu|them|nhap)\b/.test(text)
+  )
+    return { route: 'advice', parsed, scopeDecision };
 
   if (
     adviceFollowup &&
@@ -55,7 +63,7 @@ export function routeChatInput(
     return { route: 'advice', parsed, scopeDecision };
   }
 
-  if (/\b(khong|chua|huy)\b/.test(text)) {
+  if (/\b(dung|khong|chua|huy|lam sao|cach nao|how do|how can|do not|dont)\b/.test(text) || input.includes('?') || /["“”]/.test(input)) {
     return { route: 'ambiguous', parsed, scopeDecision };
   }
 

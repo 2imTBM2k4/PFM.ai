@@ -4,6 +4,9 @@ import { vi } from '@/messages/vi';
 import { amountError, dateError } from '@/utils/form-validation';
 import { parseAmountInput } from '../transactions/form';
 import type { EntryDraft, EntryReferences } from './draft';
+import { unconfirmedDraftFields } from './draft';
+
+type EntryField = Exclude<keyof EntryDraft, 'sourceDraft' | 'confirmedFields'>;
 
 /** Collect errors for selected rows, accounting for combined repayments in a batch. */
 export function quickEntryErrors(
@@ -11,16 +14,18 @@ export function quickEntryErrors(
   drafts: EntryDraft[],
   refs: EntryReferences,
   rate: number | null,
-): Partial<Record<keyof EntryDraft, FieldError>>[] {
+): Partial<Record<EntryField, FieldError>>[] {
   const remaining = new Map(
     refs.debts.map((debt) => [debt.id, debt.outstanding]),
   );
   return drafts.map((draft, index) => {
-    const errors: Partial<Record<keyof EntryDraft, FieldError>> = {};
+    const errors: Partial<Record<EntryField, FieldError>> = {};
     if (!draft.selected) return errors;
-    const add = (name: keyof EntryDraft, message: string) => {
+    const add = (name: EntryField, message: string) => {
       errors[name] = { type: 'validate', message };
     };
+    if (unconfirmedDraftFields(draft).length)
+      add('merchant', vi.quickCheckField);
     if (draft.kind === 'unknown') add('kind', vi.quickKindRequired);
     const money = amountError(draft.amount, { currency: draft.currency });
     if (money !== true) add('amount', money);
@@ -30,9 +35,10 @@ export function quickEntryErrors(
     )
       add('currency', vi.aiExchangeRateUnavailable);
     if (
-      result.candidates[index]?.explanation.includes(
-        'amount.assumed_thousands',
-      ) &&
+      (draft.requiresAmountConfirmation ||
+        result.candidates[index]?.explanation.includes(
+          'amount.assumed_thousands',
+        )) &&
       !draft.amountConfirmed
     )
       add('amountConfirmed', vi.quickAmountRequired);

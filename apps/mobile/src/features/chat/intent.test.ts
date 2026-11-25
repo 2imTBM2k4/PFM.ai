@@ -9,6 +9,34 @@ const ctx = {
 };
 
 describe('local chat routing before any write', () => {
+  it.each(['2 xị', '2xyz', '2 l', '2 lít'])(
+    'keeps a bare amount available for clarification: %s',
+    (input) => {
+      expect(routeChatInput(input, ctx).route).toBe('ambiguous');
+    },
+  );
+
+  it.each(['ghi chi 2 xị', 'ghi chi 2xyz', 'ghi chi 2 l'])(
+    'opens an incomplete draft without inventing money for an explicit command: %s',
+    (input) => {
+      const result = routeChatInput(input, ctx);
+      expect(result.route).toBe('transaction');
+      expect(result.parsed.candidates[0].amount.value).toBeNull();
+      expect(result.parsed.warnings).toContain('NO_AMOUNT');
+    },
+  );
+
+  it('treats narrated income and expenses as advice without opening an entry draft', () => {
+    expect(
+      routeChatInput('Tháng này tôi tiêu ăn uống 3 triệu', ctx).route,
+    ).toBe('advice');
+    expect(
+      routeChatInput(
+        'Lương tôi 15 triệu, tiền nhà 3 triệu, nên tiết kiệm bao nhiêu?',
+        ctx,
+      ).route,
+    ).toBe('advice');
+  });
   it('routes a clarification answer to advice and an explicit record request to transactions', () => {
     expect(routeChatInput('thu nhập 12 triệu mỗi tháng', ctx, true).route).toBe(
       'advice',

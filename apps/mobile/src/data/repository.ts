@@ -28,6 +28,37 @@ export interface ChatSessionRow {
   messageCount: number;
 }
 
+export interface ChatSourceMessage {
+  id: string;
+  text: string;
+  sessionId: string;
+  createdAt: string;
+}
+
+/** Read only requested user evidence from its owning session, independently of chat pagination. */
+export async function readChatSourceMessages(
+  db: Queries,
+  sessionId: string,
+  messageIds: readonly string[],
+): Promise<ChatSourceMessage[]> {
+  const ids = [...new Set(messageIds)];
+  const rows: ChatSourceMessage[] = [];
+  for (let offset = 0; offset < ids.length; offset += 200) {
+    const batch = ids.slice(offset, offset + 200);
+    rows.push(
+      ...(await db.getAllAsync<ChatSourceMessage>(
+        `SELECT id, text, session_id AS sessionId, created_at AS createdAt FROM chat_messages WHERE session_id = ? AND id IN (${batch.map(() => '?').join(',')})`,
+        sessionId,
+        ...batch,
+      )),
+    );
+  }
+  return rows.sort(
+    (a, b) =>
+      a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+  );
+}
+
 export const AI_REPLIES_SETTING_KEY = 'ai_chat_replies_v1';
 
 export async function readOnboarding(db: Queries) {
@@ -120,6 +151,10 @@ export async function deleteChatSessions(db: Database, sessionIds: string[]) {
   await db.transaction(async (tx) => {
     const messageIds: string[] = [];
     for (const sessionId of new Set(sessionIds)) {
+      await tx.runAsync(
+        'DELETE FROM conversation_states WHERE session_id = ?',
+        sessionId,
+      );
       const rows = await tx.getAllAsync<{ id: string }>(
         'SELECT id FROM chat_messages WHERE session_id = ?',
         sessionId,

@@ -1,70 +1,12 @@
-import { useEffect } from 'react';
-import { BackHandler, Pressable, StyleSheet, View } from 'react-native';
-import { Button, Divider, Icon, Text } from 'react-native-paper';
+import { useFocusedBackHandler } from '@/hooks/use-focused-back-handler';
+import { SegmentedOptionPicker } from '@/components/ui/segmented-option-picker';
+import { StyleSheet, View } from 'react-native';
+import { Button, Divider, Text } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard } from '@/components/ui';
-import { DesignRadius, DesignSpacing, useDesignTheme } from '@/constants/theme';
+import { DesignSpacing, useDesignTheme } from '@/constants/theme';
 import { vi } from '@/messages/vi';
 import { usePreferences } from '@/state/preferences';
-
-function InlineTogglePill<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: readonly { value: T; label: string; icon?: string }[];
-  onChange(next: T): void;
-}) {
-  const theme = useDesignTheme();
-  return (
-    <View
-      style={[
-        localStyles.pillContainer,
-        {
-          backgroundColor: theme.card.surfaceSubtle,
-          borderColor: theme.card.border,
-        },
-      ]}
-    >
-      {options.map((opt) => {
-        const active = value === opt.value;
-        return (
-          <Pressable
-            key={opt.value}
-            accessibilityRole="button"
-            accessibilityLabel={opt.label}
-            accessibilityState={{ selected: active }}
-            onPress={() => onChange(opt.value)}
-            style={[
-              localStyles.pillOption,
-              active && {
-                backgroundColor: theme.brand.primary,
-              },
-            ]}
-          >
-            {!!opt.icon && (
-              <Icon
-                source={opt.icon}
-                size={14}
-                color={active ? '#FFFFFF' : theme.text.secondary}
-              />
-            )}
-            <Text
-              variant="labelMedium"
-              style={{
-                fontWeight: '700',
-                color: active ? '#FFFFFF' : theme.text.secondary,
-              }}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 /** Displays the existing appearance, language and currency preferences. */
 export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
@@ -84,16 +26,10 @@ export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
   const refreshExchangeRate = usePreferences(
     (state) => state.refreshExchangeRate,
   );
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        onClose();
-        return true;
-      },
-    );
-    return () => subscription.remove();
-  }, [onClose]);
+  useFocusedBackHandler(() => {
+    onClose();
+    return true;
+  });
   return (
     <Screen title={vi.settingsPreferencesTitle} onBack={onClose}>
       {/* 1. Display preferences (Single-row toggles) */}
@@ -130,9 +66,9 @@ export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
           >
             {vi.settingsLanguageLabel}
           </Text>
-          <InlineTogglePill
+          <SegmentedOptionPicker
             value={language}
-            onChange={(value) => void setLanguage(value)}
+            onSelect={(value) => void setLanguage(value)}
             options={[
               { value: 'vi', label: vi.settingsLanguageVi },
               { value: 'en', label: vi.settingsLanguageEn },
@@ -149,9 +85,9 @@ export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
           >
             {vi.settingsCurrencyLabel}
           </Text>
-          <InlineTogglePill
+          <SegmentedOptionPicker
             value={currency}
-            onChange={(value) => void setCurrency(value)}
+            onSelect={(value) => void setCurrency(value)}
             options={[
               { value: 'VND', label: 'VND (₫)' },
               { value: 'USD', label: 'USD ($)' },
@@ -170,7 +106,11 @@ export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
                 ? 'USD/VND rate unavailable. Connect to the internet to convert amounts.'
                 : 'Chưa có tỷ giá USD/VND. Cần kết nối mạng để quy đổi.'}
           </Text>
-          <Button compact onPress={() => void refreshExchangeRate()}>
+          <Button
+            hitSlop={4}
+            compact
+            onPress={() => void refreshExchangeRate()}
+          >
             {language === 'en' ? 'Refresh' : 'Cập nhật tỷ giá'}
           </Button>
         </View>
@@ -185,23 +125,18 @@ export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
             >
               {vi.settingsThemeLabel}
             </Text>
-            <Text variant="bodySmall" style={{ color: theme.text.muted }}>
-              Pastel Sunset / Midnight Aurora
-            </Text>
           </View>
-          <InlineTogglePill
+          <SegmentedOptionPicker
             value={themeMode}
-            onChange={(value) => void setThemeMode(value)}
+            onSelect={(value) => void setThemeMode(value)}
             options={[
               {
                 value: 'light',
                 label: vi.settingsThemeLightShort,
-                icon: 'weather-sunset',
               },
               {
                 value: 'dark',
                 label: vi.settingsThemeDarkShort,
-                icon: 'weather-night',
               },
             ]}
           />
@@ -212,9 +147,6 @@ export function AppearanceSettingsView({ onClose }: { onClose(): void }) {
 }
 const localStyles = StyleSheet.create({
   singleRowSetting: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
   exchangeRateRow: {
@@ -222,22 +154,5 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-  },
-  pillContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: DesignRadius.pill,
-    borderWidth: 1,
-    padding: 3,
-    gap: 2,
-  },
-  pillOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    minHeight: 44,
-    borderRadius: DesignRadius.pill,
   },
 });

@@ -24,6 +24,9 @@ describe('responsive layout', () => {
         ).toBeCloseTo(layout.pillWidth);
         expect(layout.inactiveTabWidth).toBeGreaterThanOrEqual(44);
         expect(layout.addButtonSize).toBe(48);
+        expect(layout.pillHeight).toBe(layout.addButtonSize);
+        expect(layout.rowHeight).toBe(layout.addButtonSize);
+        expect(layout.tabHeight).toBe(44);
         expect(layout.controlGap).toBeGreaterThanOrEqual(8);
       }
     },

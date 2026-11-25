@@ -1,6 +1,11 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { AnalysisSummarySchema } from '@pfm/contracts';
-import { computeAdviceMetrics, requiredMonthlySaving } from './advice-metrics';
+import {
+  computeAdviceMetrics,
+  requiredMonthlySaving,
+  createAdviceCalculationCache,
+  resolveAdviceMetrics,
+} from './advice-metrics';
 
 const summary = AnalysisSummarySchema.parse({
   generatedForDate: '2026-11-02',
@@ -51,6 +56,230 @@ const noHistory = {
   ...summary,
   window: { monthsRequested: 6, monthsWithData: 0 },
 };
+
+it('keeps the observation window separate from monthly arithmetic and target duration', () => {
+  const facts = (
+    [
+      ['income', 15_000_000],
+      ['expense', 10_000_000],
+      ['saving_goal', 24_000_000],
+    ] as const
+  ).map(([kind, amount]) => ({
+    id: kind,
+    source_message_id: 'user',
+    kind,
+    amount,
+    currency: 'VND' as const,
+    period:
+      kind === 'saving_goal' ? ('one_off' as const) : ('monthly' as const),
+    source: 'user_statement' as const,
+    mode: 'actual' as const,
+  }));
+  const selection = {
+    metrics: ['savings_required_monthly', 'surplus_after_savings_goal'] as (
+      'savings_required_monthly' | 'surplus_after_savings_goal'
+    )[],
+    scenario: { conversationFacts: facts },
+  };
+  const context = {
+    cashFlowBasis: 'monthly' as const,
+    observationRange: { from: '2026-05-01', to: '2026-10-31' },
+    mode: 'actual' as const,
+    currency: 'VND' as const,
+    savingsForGoal: 0,
+  };
+  expect(resolveAdviceMetrics(null, selection, context)).toEqual({
+    ok: false,
+    needsClarification: ['savingsMonths'],
+  });
+  expect(
+    resolveAdviceMetrics(null, selection, { ...context, savingsMonths: 6 }),
+  ).toMatchObject({
+    ok: true,
+    result: {
+      metrics: {
+        savings_required_monthly: 4_000_000,
+        surplus_after_savings_goal: 1_000_000,
+      },
+    },
+  });
+});
+
+it('caches calculations deterministically with TTL, LRU capacity, version and scope isolation', () => {
+  let now = 0;
+  const cache = createAdviceCalculationCache(() => now);
+  const scope = { deviceId: 'device', conversationId: 'chat' };
+  const calculate = vi.fn(() => ({ amount: 5 }));
+  expect(cache.getOrCompute(scope, { b: 2, a: 1 }, calculate)).toEqual({
+    amount: 5,
+  });
+  cache.getOrCompute(scope, { a: 1, b: 2 }, calculate);
+  expect(calculate).toHaveBeenCalledTimes(1);
+  now = 300_000;
+  cache.getOrCompute(scope, { a: 1, b: 2 }, calculate);
+  expect(calculate).toHaveBeenCalledTimes(2);
+  for (let i = 0; i < 32; i++) cache.getOrCompute(scope, { i }, calculate);
+  cache.getOrCompute(scope, { a: 1, b: 2 }, calculate);
+  expect(calculate).toHaveBeenCalledTimes(35);
+  cache.getOrCompute(scope, { a: 1, b: 2 }, calculate, 2);
+  cache.getOrCompute(
+    { userId: 'device', conversationId: 'chat' },
+    { a: 1, b: 2 },
+    calculate,
+  );
+  cache.getOrCompute(
+    { userId: 'other', conversationId: 'chat' },
+    { a: 1, b: 2 },
+    calculate,
+  );
+  cache.getOrCompute(
+    { ...scope, conversationId: 'other-chat' },
+    { a: 1, b: 2 },
+    calculate,
+  );
+  cache.clear();
+  cache.getOrCompute(scope, { a: 1, b: 2 }, calculate);
+  expect(calculate).toHaveBeenCalledTimes(40);
+});
+
+it('invalidates every input dimension, isolates mutations, and emits no logs', () => {
+  const logs = [
+    vi.spyOn(console, 'log'),
+    vi.spyOn(console, 'warn'),
+    vi.spyOn(console, 'error'),
+    vi.spyOn(console, 'info'),
+    vi.spyOn(console, 'debug'),
+  ];
+  try {
+    const cache = createAdviceCalculationCache();
+    const scope = { userId: 'user', conversationId: 'chat' };
+    const input = {
+      amount: 1,
+      period: 'monthly',
+      currency: 'VND',
+      rate: null,
+      includes: [],
+      supersedes_id: undefined,
+      source: 'conversation',
+      mode: 'actual',
+      appData: summary,
+    };
+    const calculate = vi.fn(() => ({ value: 1 }));
+    const first = cache.getOrCompute(scope, input, calculate);
+    first.value = 99;
+    expect(cache.getOrCompute(scope, input, calculate)).toEqual({ value: 1 });
+    for (const patch of [
+      { amount: 2 },
+      { period: 'yearly' },
+      { currency: 'USD' },
+      { rate: 25_000 },
+      { includes: ['housing'] },
+      { supersedes_id: 'old' },
+      { source: 'app' },
+      { mode: 'hypothetical' },
+      { appData: noHistory },
+    ])
+      cache.getOrCompute(scope, { ...input, ...patch }, calculate);
+    expect(calculate).toHaveBeenCalledTimes(10);
+    for (const log of logs) expect(log).not.toHaveBeenCalled();
+  } finally {
+    for (const log of logs) log.mockRestore();
+  }
+});
+
+it('returns a discriminated result and preserves conversation provenance and mode', () => {
+  const facts = [
+    {
+      id: 'income',
+      source_message_id: 'user',
+      kind: 'income' as const,
+      amount: 15_000_000,
+      period: 'monthly' as const,
+      currency: 'VND' as const,
+      mode: 'actual' as const,
+      source: 'user_statement' as const,
+    },
+  ];
+  const result = resolveAdviceMetrics(
+    summary,
+    {
+      metrics: ['monthly_income_avg', 'surplus_median'],
+      scenario: { conversationFacts: facts },
+    },
+    {
+      period: { kind: 'month', from: '2026-11-01', to: '2026-11-30' },
+      currency: 'VND',
+      mode: 'actual',
+    },
+  );
+  expect(result).toMatchObject({
+    ok: true,
+    result: {
+      metrics: { monthly_income_avg: 15_000_000, surplus_median: 12_000_000 },
+      inputs: {
+        income: { source: 'conversation' },
+        expense: { source: 'app' },
+        context: { mode: 'actual' },
+      },
+    },
+  });
+  expect(
+    resolveAdviceMetrics(
+      noHistory,
+      { metrics: ['monthly_income_avg'], scenario: { conversationFacts: [] } },
+      {
+        period: { kind: 'month', from: '2026-11-01', to: '2026-11-30' },
+        currency: 'VND',
+        mode: 'actual',
+      },
+    ),
+  ).toMatchObject({ ok: false, needsClarification: ['income', 'expense'] });
+});
+
+it('does not reuse failed calculations or clarification results', () => {
+  const cache = createAdviceCalculationCache();
+  const calculate = vi.fn(() => ({
+    ok: false,
+    needsClarification: ['income'],
+  }));
+  const scope = { deviceId: 'guest', conversationId: 'chat' };
+  cache.getOrCompute(scope, {}, calculate);
+  cache.getOrCompute(scope, {}, calculate);
+  expect(calculate).toHaveBeenCalledTimes(2);
+});
+
+it('does not replace all app expenses with a single conversation category', () => {
+  const result = resolveAdviceMetrics(
+    summary,
+    {
+      metrics: ['surplus_median'],
+      scenario: {
+        conversationFacts: [
+          {
+            id: 'housing',
+            source_message_id: 'user',
+            kind: 'expense',
+            category: 'housing',
+            amount: 1_000_000,
+            currency: 'VND',
+            period: 'monthly',
+            mode: 'actual',
+            source: 'user_statement',
+          },
+        ],
+      },
+    },
+    {
+      currency: 'VND',
+      mode: 'actual',
+      period: { kind: 'month', from: '2026-11-01', to: '2026-11-30' },
+    },
+  );
+  expect(result).toMatchObject({
+    ok: false,
+    needsClarification: ['expense.appOverlap'],
+  });
+});
 
 it('calculates a 40m purchase timeline locally and returns only requested metrics', () => {
   expect(

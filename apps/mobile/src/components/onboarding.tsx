@@ -115,7 +115,11 @@ export function Onboarding() {
     }
   }
   return (
-    <Screen title={vi.welcome} subtitle={vi.welcomeDescription}>
+    <Screen
+      title={vi.welcome}
+      subtitle={vi.welcomeDescription}
+      hasTabBar={false}
+    >
       <View
         style={[
           styles.panel,
@@ -170,6 +174,12 @@ export function Onboarding() {
                   return (
                     <Pressable
                       key={preset}
+                      accessibilityRole="button"
+                      accessibilityLabel={formatVnd(preset)}
+                      accessibilityState={{
+                        selected,
+                        disabled: isSubmitting || skipping,
+                      }}
                       disabled={isSubmitting || skipping}
                       onPress={() =>
                         setValue('balance', String(preset), {
@@ -177,6 +187,8 @@ export function Onboarding() {
                         })
                       }
                       style={{
+                        minHeight: 44,
+                        justifyContent: 'center',
                         paddingHorizontal: 12,
                         paddingVertical: 6,
                         borderRadius: 999,
@@ -288,6 +300,7 @@ export function Onboarding() {
               .replace('{walletCount}', String(remoteMeta.walletCount))}
           </Text>
           <Button
+            hitSlop={4}
             mode="contained"
             icon="cloud-download-outline"
             contentStyle={styles.button}
@@ -298,6 +311,7 @@ export function Onboarding() {
             {vi.onboardingRestoreConfirmBtn}
           </Button>
           <Button
+            hitSlop={4}
             mode="outlined"
             contentStyle={styles.button}
             disabled={driveBusy}
@@ -308,6 +322,7 @@ export function Onboarding() {
         </View>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="arrow-right"
         contentStyle={[styles.button, { flexDirection: 'row-reverse' }]}
@@ -320,6 +335,7 @@ export function Onboarding() {
         {vi.start}
       </Button>
       <Button
+        hitSlop={4}
         mode="outlined"
         contentStyle={styles.button}
         disabled={isSubmitting || skipping || driveBusy}
@@ -336,6 +352,7 @@ export function Onboarding() {
         {vi.skip}
       </Button>
       <Button
+        hitSlop={4}
         mode="text"
         icon="google-drive"
         contentStyle={styles.button}

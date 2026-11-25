@@ -1,12 +1,16 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { monthKey, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { ActivityIndicator, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Text } from 'react-native-paper';
 import { EmptyStateCard, Screen, styles } from '@/components/screen';
 import { GlassCard, Pill } from '@/components/ui';
-import { DesignSpacing, useDesignTheme } from '@/constants/theme';
+import {
+  DesignSpacing,
+  useDesignTheme,
+  useFinancePalette,
+} from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import { readDashboard } from '@/data/dashboard';
 import { vi } from '@/messages/vi';
@@ -29,7 +33,10 @@ interface NotificationAlertItem {
 export function NotificationsView({ onClose }: { onClose(): void }) {
   const [items, setItems] = useState<NotificationAlertItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const requestId = useRef(0);
   const theme = useDesignTheme();
+  const palette = useFinancePalette();
   const language = usePreferences((state) => state.language);
 
   const fetchNotifications = useCallback(async () => {
@@ -43,7 +50,9 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
 
     // 1. Budget threshold notifications
     for (const budget of dashboard.budgets) {
-      const name = budget.category_name ? displayCategoryName(budget.category_name) : vi.budgetOverall;
+      const name = budget.category_name
+        ? displayCategoryName(budget.category_name)
+        : vi.budgetOverall;
       const percent =
         budget.amount > 0
           ? Math.round((budget.spent * 100) / budget.amount)
@@ -61,7 +70,10 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
         nextItems.push({
           id: `budget-warn-${budget.id}`,
           title: `${name}: ${vi.budgetWarning.replace('{percent}', String(budget.warn_percent))}`,
-          description: language === 'en' ? `Used ${percent}% of the monthly limit (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).` : `Đã sử dụng ${percent}% hạn mức tháng (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`,
+          description:
+            language === 'en'
+              ? `Used ${percent}% of the monthly limit (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`
+              : `Đã sử dụng ${percent}% hạn mức tháng (${formatVnd(budget.spent)} / ${formatVnd(budget.amount)}).`,
           tone: 'primary',
           icon: 'bell-ring-outline',
           badgeText: `${percent}%`,
@@ -88,7 +100,10 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
       nextItems.push({
         id: `goal-${firstGoal.id}`,
         title: `${vi.goals}: ${firstGoal.name}`,
-        description: language === 'en' ? `Target: ${formatVnd(firstGoal.target_amount)}. Keep saving regularly each month.` : `Mục tiêu: ${formatVnd(firstGoal.target_amount)}. Hãy duy trì tích lũy đều đặn mỗi tháng.`,
+        description:
+          language === 'en'
+            ? `Target: ${formatVnd(firstGoal.target_amount)}. Keep saving regularly each month.`
+            : `Mục tiêu: ${formatVnd(firstGoal.target_amount)}. Hãy duy trì tích lũy đều đặn mỗi tháng.`,
         tone: 'savings',
         icon: 'bullseye-arrow',
         badgeText: vi.goals,
@@ -98,25 +113,34 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
     return nextItems;
   }, [language]);
 
-  useEffect(() => {
+  const startFetch = useCallback(() => {
+    const id = ++requestId.current;
     let cancelled = false;
     fetchNotifications()
       .then((nextItems) => {
-        if (!cancelled) {
-          setItems(nextItems);
-          setLoading(false);
-        }
+        if (cancelled || id !== requestId.current) return;
+        setItems(nextItems);
+        setError(false);
+        setLoading(false);
       })
       .catch(() => {
-        if (!cancelled) {
-          setItems([]);
-          setLoading(false);
-        }
+        if (cancelled || id !== requestId.current) return;
+        setItems([]);
+        setError(true);
+        setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [fetchNotifications]);
+
+  const handleRetry = useCallback(() => {
+    setLoading(true);
+    setError(false);
+    startFetch();
+  }, [startFetch]);
+
+  useEffect(() => startFetch(), [startFetch]);
 
   return (
     <Screen title={vi.notificationsTitle} onBack={onClose}>
@@ -124,6 +148,27 @@ export function NotificationsView({ onClose }: { onClose(): void }) {
         <View style={{ paddingVertical: 28, alignItems: 'center' }}>
           <ActivityIndicator size="large" accessibilityLabel={vi.loading} />
         </View>
+      ) : error ? (
+        <GlassCard
+          radius="lg"
+          style={{
+            backgroundColor: palette.dangerSoft,
+            borderColor: palette.danger,
+            gap: 10,
+          }}
+        >
+          <Text accessibilityRole="alert" style={{ color: palette.dangerInk }}>
+            {vi.notificationsLoadError}
+          </Text>
+          <Button
+            hitSlop={4}
+            mode="contained-tonal"
+            disabled={loading}
+            onPress={handleRetry}
+          >
+            {vi.retry}
+          </Button>
+        </GlassCard>
       ) : items.length === 0 ? (
         <EmptyStateCard
           icon="bell-sleep-outline"

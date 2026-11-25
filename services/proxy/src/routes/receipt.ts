@@ -1,9 +1,9 @@
+import { authUserId } from '../middleware/auth';
 import { ReceiptCategoryKeySchema, ReceiptDataSchema, ReceiptScanRequestSchema } from '@pfm/contracts';
 import type { FastifyPluginAsync } from 'fastify';
 import { AppError } from '../errors/app-error';
 import { quotaService } from '../services/quota-service';
 import { scanPii } from '../services/pii-scanner';
-import { rateLimitService } from '../services/rate-limit-service';
 import { upstreamAiService } from '../services/upstream-ai';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -11,10 +11,6 @@ const prompt = 'Read this expense receipt in Vietnamese or English. Return only 
 
 export const receiptRoutes: FastifyPluginAsync = async (app) => {
   app.post('/v1/receipts/scan', { bodyLimit: 3 * 1024 * 1024 }, async (request) => {
-    const rate = rateLimitService.checkRateLimit(request.ip);
-    if (!rate.allowed) throw AppError.rateLimitExceeded();
-    rateLimitService.consumeRateLimit(request.ip);
-
     const input = ReceiptScanRequestSchema.parse(request.body);
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(input.imageBase64) || input.imageBase64.length % 4 !== 0)
       throw AppError.badRequest('Ảnh hóa đơn không hợp lệ.');
@@ -22,8 +18,8 @@ export const receiptRoutes: FastifyPluginAsync = async (app) => {
     if (image.length > MAX_IMAGE_BYTES || image.length < 4 || image[0] !== 0xff || image[1] !== 0xd8 || image.at(-2) !== 0xff || image.at(-1) !== 0xd9)
       throw AppError.badRequest('Ảnh hóa đơn phải là JPEG dưới 2 MiB.');
 
-    const deviceId = String(request.headers['x-device-id'] ?? 'anonymous-device');
-    if (!quotaService.checkQuota(deviceId).allowed)
+    const deviceId = authUserId(request.auth);
+    if (!quotaService.checkQuota(deviceId, request.auth.mode).allowed)
       throw AppError.quotaExceeded('Bạn đã dùng hết lượt AI hôm nay.');
 
     const answer = await upstreamAiService.callVision(prompt, input.imageBase64);
@@ -36,7 +32,7 @@ export const receiptRoutes: FastifyPluginAsync = async (app) => {
       merchant: receipt.data.merchant && scanPii(receipt.data.merchant).hasPii
         ? null : receipt.data.merchant,
     };
-    quotaService.consumeQuota(deviceId);
+    quotaService.consumeQuota(deviceId, request.auth.mode);
     return {
       success: true,
       message: 'OK',

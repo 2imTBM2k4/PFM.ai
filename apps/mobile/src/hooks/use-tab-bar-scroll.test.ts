@@ -89,6 +89,39 @@ describe('createTabBarScrollHandler', () => {
     onScroll(makeScrollEvent(0));
     expect(expanded).toBe(true);
   });
+  it('keeps controls collapsed while scrolling up mid-list when showOnlyAtTop is enabled, expanding only at the top', () => {
+    let expanded = true;
+    const onScroll = createTabBarScrollHandler(
+      (value) => {
+        expanded = value;
+      },
+      { showAtBottom: false, showOnlyAtTop: true },
+    );
+
+    onScroll(makeScrollEvent(0));
+    expect(expanded).toBe(true);
+
+    onScroll(makeScrollEvent(200));
+    expect(expanded).toBe(false);
+
+    // Scrolling up in the middle of the list or at bottom stays collapsed
+    onScroll(makeScrollEvent(400));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(120));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(40));
+    expect(expanded).toBe(false);
+
+    // Reaching the top clearance restores expanded controls
+    onScroll(makeScrollEvent(24));
+    expect(expanded).toBe(true);
+
+    onScroll(makeScrollEvent(150));
+    expect(expanded).toBe(false);
+    onScroll(makeScrollEvent(0));
+    expect(expanded).toBe(true);
+  });
+
   it('hides tab bar when scrolling down and restores it when scrolling up or near top', () => {
     let isVisible = true;
     const setTabBarVisible = (val: boolean) => {

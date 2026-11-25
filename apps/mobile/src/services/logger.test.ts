@@ -1,5 +1,40 @@
-import { expect, it } from 'vitest';
-import { createLogger } from './logger';
+import { expect, it, vi } from 'vitest';
+import { createLogger, logLocalAIEntry } from './logger';
+
+it('writes local draft metadata with nine fields and rejects payloads disguised as an identifier', () => {
+  vi.stubGlobal('__DEV__', true);
+  const write = vi.spyOn(console, 'info').mockImplementation(() => {});
+  try {
+    logLocalAIEntry('11111111-2222-4333-8444-555555555555', 'guest');
+    const record = JSON.parse(write.mock.calls[0][0]);
+    expect(Object.keys(record).sort()).toEqual(
+      [
+        'request_id',
+        'model',
+        'latency_ms',
+        'intent',
+        'tool_calls',
+        'fallback_used',
+        'bypass_used',
+        'auth_mode',
+        'error_code',
+      ].sort(),
+    );
+    expect(record).toMatchObject({
+      intent: 'entry',
+      model: null,
+      auth_mode: 'guest',
+      tool_calls: [],
+    });
+    expect(() => logLocalAIEntry('PRIVATE amount 123', 'guest')).toThrow(
+      'LOG_FIELD_REJECTED',
+    );
+    expect(write).toHaveBeenCalledTimes(1);
+  } finally {
+    write.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
 
 it('permits bounded entry lifecycle diagnostics without accepting private text', () => {
   const output: unknown[] = [];

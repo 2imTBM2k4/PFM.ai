@@ -1,4 +1,103 @@
 import type { Queries } from './migrate';
+import { AdviceDataGroupSchema } from '@pfm/contracts';
+import { addDays, nextOccurrence, validateDate } from '@pfm/domain';
+import { listRecurringRules, scheduleOf } from './recurring';
+
+/** Read one pending occurrence per valid rule, without advancing its generation cursor. */
+export async function readScheduledDue(
+  db: Queries,
+  asOf: string,
+  through: string,
+) {
+  validateDate(asOf);
+  validateDate(through);
+  if (through < asOf) throw new Error('ADVICE_DUE_RANGE');
+  const rules = await listRecurringRules(db);
+  const items: {
+    kind: 'expense' | 'income' | 'transfer';
+    amount: number;
+    dueOn: string;
+    status: 'scheduled';
+    paymentStatus: 'unknown';
+  }[] = [];
+  for (const rule of rules) {
+    if (!rule.is_active || rule.blocked || (rule.end_on && rule.end_on < asOf))
+      continue;
+    const references = await db.getFirstAsync<{ valid: number }>(
+      `SELECT EXISTS(SELECT 1 FROM wallets WHERE id=? AND is_archived=0)
+       AND (? IS NULL OR EXISTS(SELECT 1 FROM wallets WHERE id=? AND is_archived=0))
+       AND (? IS NULL OR EXISTS(SELECT 1 FROM categories WHERE id=? AND is_archived=0)) AS valid`,
+      rule.wallet_id,
+      rule.to_wallet_id,
+      rule.to_wallet_id,
+      rule.category_id,
+      rule.category_id,
+    );
+    if (!references?.valid) continue;
+    const handledRows = await db.getAllAsync<{ occurred_on: string }>(
+      `SELECT occurred_on FROM transactions WHERE recurring_rule_id=? AND occurred_on<=?
+       UNION SELECT occurred_on FROM recurring_skips WHERE recurring_rule_id=? AND occurred_on<=?`,
+      rule.id,
+      through,
+      rule.id,
+      through,
+    );
+    const handled = new Set(handledRows.map((row) => row.occurred_on));
+    let dueOn = nextOccurrence(
+      scheduleOf(rule),
+      rule.last_generated_on ?? addDays(rule.start_on, -1),
+    );
+    while (dueOn && dueOn <= through && handled.has(dueOn))
+      dueOn = nextOccurrence(scheduleOf(rule), dueOn);
+    if (!dueOn || dueOn > through) continue;
+    items.push({
+      kind: rule.kind,
+      amount: rule.amount,
+      dueOn,
+      status: 'scheduled',
+      paymentStatus: 'unknown',
+    });
+  }
+  items.sort((a, b) => a.dueOn.localeCompare(b.dueOn));
+  return AdviceDataGroupSchema.parse({
+    kind: 'scheduled_due',
+    asOf,
+    through,
+    totalCount: items.length,
+    items: items.slice(0, 5),
+  });
+}
+
+/** Retain uncategorized income and expense separately instead of treating them as absent data. */
+export async function readClassificationStatus(
+  db: Queries,
+  from: string,
+  to: string,
+) {
+  validateDate(from);
+  validateDate(to);
+  if (from > to) throw new Error('ADVICE_CLASSIFICATION_RANGE');
+  const rows = await db.getAllAsync<{
+    kind: string;
+    count: number;
+    amount: number;
+  }>(
+    `SELECT t.kind, COUNT(*) AS count, SUM(t.amount) AS amount FROM transactions t
+     LEFT JOIN categories c ON c.id=t.category_id
+     WHERE t.kind IN ('income','expense') AND c.id IS NULL AND t.occurred_on>=? AND t.occurred_on<=?
+     GROUP BY t.kind`,
+    from,
+    to,
+  );
+  const expense = rows.find((row) => row.kind === 'expense');
+  const income = rows.find((row) => row.kind === 'income');
+  return {
+    expenseCount: expense?.count ?? 0,
+    expenseAmount: expense?.amount ?? 0,
+    incomeCount: income?.count ?? 0,
+    incomeAmount: income?.amount ?? 0,
+  };
+}
 
 export interface AdviceCategoryItem {
   /** Category name as stored locally (custom names are shown as-is). */
