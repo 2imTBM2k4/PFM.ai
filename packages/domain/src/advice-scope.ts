@@ -230,6 +230,12 @@ const GENERAL_FINANCE_PATTERNS: RegExp[] = [
   /(?:chia|phan bo|can doi|sap xep)\s+(?:tien|chi tieu|thu nhap|luong|dong tien)\b/i,
   /(?:ke hoach|chien luoc|cach)\s+(?:kiem tien|tang thu nhap|quan ly chi tieu|can doi thu chi|chia tien)\b/i,
   /\b(?:daily (?:income|earning|spending) (?:target|goal|plan)|split my (?:income|spending|money)|balance my (?:income|cash flow))\b/i,
+  /\b(?:so du|thu nhap|chi tieu|luong|dong tien|tai chinh)\b[^.!?;]{0,140}\b(?:co the|lieu co|co|kip|duoc|dat|con|du)\s+(?:du|de danh|tiet kiem|tich luy|con lai|dat|xai|tieu)\b/i,
+  /\b(?:co the|lieu co|lam sao|cach nao)\s+(?:du|de danh|tiet kiem|tich luy)\s+(?:duoc\s+)?\d+(?:[.,]\d+)?\s*(?:m|tr|trieu|ty|k|nghin|ngan|dong|vnd|usd|\$)/i,
+  /\b(?:toi|den|truoc|cuoi)\s+(?:tet|cuoi nam|cuoi thang|thang\s+\d+|nam sau)\b[^.!?;]{0,100}\b(?:du|de danh|tiet kiem|tich luy|co duoc)\s+(?:duoc\s+)?\d+/i,
+  /\bso du\s+(?:hien tai|kha dung|cua toi)\b[^.!?;]{0,120}\b(?:thu nhap|chi tieu|tiet kiem|du|con lai|bao nhieu|duoc khong)\b/i,
+  /\b(?:thu nhap|chi tieu|so du|tai chinh|luong|tiet kiem|ngan sach)\s+(?:hien tai|cua toi|hang thang|moi thang|trung binh)\b[^.!?;]{0,120}(?:\b(?:co|nen|can|sao|the nao|bao nhieu|duoc khong|on khong|hop ly)\b|[?])/i,
+  /\b(?:tu van|danh gia|nhan xet|phan tich|xem giup|kiem tra giup)\b[^.!?;]{0,80}\b(?:tai chinh|chi tieu|thu nhap|tiet kiem|ngan sach|so du|dong tien|muc tieu|khoan vay|khoan no)\b/i,
 ];
 
 export function classifyAdviceScope(input: string): AdviceScopeDecision {
@@ -430,6 +436,16 @@ export function classifyAdviceScope(input: string): AdviceScopeDecision {
           reason: 'SUPPORTED_SAVINGS',
         };
       }
+    }
+    const specificTopics = detectedTopics.filter(
+      ({ topic }) => topic !== 'general',
+    );
+    if (specificTopics.length === 1) {
+      return {
+        status: 'allowed',
+        topic: specificTopics[0].topic,
+        reason: specificTopics[0].reason,
+      };
     }
     return {
       status: 'ambiguous',

@@ -112,7 +112,39 @@ describe('POST /v1/advice/coach', () => {
     }
   });
 
-  it('blocks PII, restricted, out_of_scope, and standalone ambiguous inputs before calling upstream', async () => {
+  it('forwards colloquial natural questions without keyword matches directly to the model instead of rejecting as ambiguous', async () => {
+    const spy = vi.spyOn(upstreamAiService, 'callToolStep').mockResolvedValue(
+      new Response(
+        sseStream([
+          openAiChunk('Tháng sau có nhiều khoản phát sinh, bạn có thể tạm giảm chi linh hoạt.'),
+          openAiChunk(null, 'stop'),
+          'data: [DONE]\n\n',
+        ]),
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+    );
+    const app = buildApp();
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/v1/advice/coach',
+        headers: { 'x-device-id': 'coach-test-natural' },
+        payload: {
+          question: 'Tháng sau đám cưới bạn nhiều quá nên xoay xở sao cho ổn?',
+          language: 'vi',
+          currency: 'VND',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain('giảm chi linh hoạt');
+      expect(res.body).toContain('event: done');
+      expect(spy).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('blocks PII, restricted, out_of_scope, and minimal gibberish inputs before calling upstream', async () => {
     const spy = vi.spyOn(upstreamAiService, 'callToolStep');
     const app = buildApp();
     try {

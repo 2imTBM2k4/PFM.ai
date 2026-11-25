@@ -73,6 +73,7 @@ const CoachRequestSchema = z
 const COACH_SYSTEM_PROMPT = `You are PFM.ai, a helpful, practical personal finance coach.
 Scope and safety rules (strict):
 - Only discuss personal finance: cash flow, budgeting, daily/weekly/monthly income planning, spending habits, saving strategies, debt/loan literacy, and general financial principles.
+- If a message is unclear, off-topic, or lacks enough financial context to answer directly, do NOT invent numbers; politely ask 1-2 short, natural clarifying questions or briefly remind the user you assist with personal finance.
 - Never recommend specific stocks, crypto, banks, investment funds, insurance policies, or instant/online loans.
 - Never promise or guarantee profits or returns.
 - Never claim you have saved, created, edited, or deleted any transaction, budget, or app record (you are strictly read-only).
@@ -126,14 +127,21 @@ export async function coachAdviceRoutes(app: FastifyInstance): Promise<void> {
     if (scope.status === 'out_of_scope') throw AppError.outOfScope();
     if (scope.status === 'restricted') throw AppError.restricted();
     if (scope.status === 'ambiguous') {
-      const hasAllowedPrior =
-        scope.reason !== 'MULTIPLE_TOPICS' &&
-        history.some(
-          (item) =>
-            item.role === 'user' &&
-            classifyAdviceScope(item.content).status === 'allowed',
-        );
-      if (!hasAllowedPrior) throw AppError.ambiguous();
+      const folded = body.question
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/gi, 'd')
+        .toLowerCase();
+      const meaningful = folded
+        .replace(/[0-9kmt₫$,.?!%+\-*/=\s]/g, '')
+        .replace(/\b(trieu|ty|nghin|tram|dong|vnd)\b/g, '')
+        .trim();
+      const hasAllowedPrior = history.some(
+        (item) =>
+          item.role === 'user' &&
+          classifyAdviceScope(item.content).status === 'allowed',
+      );
+      if (meaningful.length < 3 && !hasAllowedPrior) throw AppError.ambiguous();
     }
 
     admitModelCall();

@@ -110,7 +110,9 @@ function isExplicitToolReadWithMissingParams(
   const text = foldText(prompt);
   if (
     decisionFields.includes('snapshotMonths') &&
-    /\btrung binh\b/.test(text)
+    /\btrung binh\b/.test(text) &&
+    /\b(?:cho toi xem|cho xem|liet ke|kiem tra|bao nhieu)\b/.test(text) &&
+    !/\b(?:co the|lieu co|tiet kiem|muc tieu|de danh|du\s+\d+|tet|mua)\b/.test(text)
   ) {
     return true;
   }
@@ -145,6 +147,16 @@ const COACH_DIRECT_CLARIFICATION_FIELDS = new Set([
   'transactionKind',
 ]);
 
+function isMinimalGibberish(prompt: string): boolean {
+  const folded = foldText(prompt).trim();
+  if (!folded) return true;
+  const meaningful = folded
+    .replace(/[0-9kmt₫$,.?!%+\-*/=\s]/g, '')
+    .replace(/\b(trieu|ty|nghin|tram|dong|vnd)\b/g, '')
+    .trim();
+  return meaningful.length < 3;
+}
+
 function canUseCoachTurn(
   prompt: string,
   scope: ReturnType<typeof classifyAdviceScope>,
@@ -161,16 +173,15 @@ function canUseCoachTurn(
     return false;
   }
   if (scope.status === 'allowed') return true;
-  if (
-    scope.status === 'ambiguous' &&
-    scope.reason === 'INSUFFICIENT_FINANCIAL_CONTEXT' &&
-    history?.length
-  ) {
-    return history.some((item) => {
-      if (item.role !== 'user') return false;
-      const prior = classifyAdviceScope(item.text);
-      return prior.status === 'allowed' && prior.topic !== 'savings_plan';
-    });
+  if (scope.status === 'ambiguous') {
+    if (!isMinimalGibberish(prompt)) return true;
+    if (history?.length) {
+      return history.some((item) => {
+        if (item.role !== 'user') return false;
+        const prior = classifyAdviceScope(item.text);
+        return prior.status === 'allowed' && prior.topic !== 'savings_plan';
+      });
+    }
   }
   return false;
 }

@@ -270,6 +270,10 @@ it.each([
   'Phân tích tỷ trọng chi tiêu theo danh mục',
   'Tháng này tôi chi bao nhiêu?',
   'Ngân sách tháng này của tôi thế nào?',
+  'Với số dư hiện tại và trung bình thu nhập thì tới tết âm lịch tôi có thể dư 10m không',
+  'Với thu nhập trung bình của tôi thì tới cuối năm có để dành được 15 triệu không?',
+  'Tháng sau đám cưới bạn nhiều quá nên xoay xở sao cho ổn?',
+  'Tết âm này liệu dư nổi chục củ không?',
 ])(
   'routes suggestion chips and natural financial questions to /v1/advice/coach instead of legacy local templates: %s',
   async (prompt) => {

@@ -358,6 +358,11 @@ it.each(cases)(
         requests.push({ path, body });
         if (path.endsWith('/v1/advice/step'))
           return Response.json({ status: 'needs_clarification', fields: ['toolIntent'] });
+        if (path.endsWith('/v1/advice/coach'))
+          return new Response(
+            'event: delta\ndata: {"seq":1,"text":"Đã ghi nhận điều chỉnh.","verification":"segment_passed"}\n\nevent: done\ndata: {"incomplete":false,"verification":"passed"}\n\n',
+            { headers: { 'content-type': 'text/event-stream' } },
+          );
         if (path.endsWith('/plan'))
           return Response.json({
             success: true,
@@ -401,7 +406,12 @@ it.each(cases)(
     const off = await run(false);
     const on = await run(true);
     expect(on.result.userMessageId).toBe('current');
-    expect(on.requests.every(({ path }) => path.endsWith('/v1/advice/step'))).toBe(true);
+    expect(
+      on.requests.every(
+        ({ path }) =>
+          path.endsWith('/v1/advice/step') || path.endsWith('/v1/advice/coach'),
+      ),
+    ).toBe(true);
     expect(
       off.requests.every(
         ({ path }) => path.endsWith('/plan') || path.endsWith('/complete'),
