@@ -42,7 +42,9 @@ import {
   createWallet,
   updateWallet,
   setWalletArchived,
+  readExcludedTotalBalanceWalletIds,
   readPinnedWalletIds,
+  setWalletIncludedInTotalBalance,
   setWalletPinned,
 } from '@/data/wallets';
 import { vi } from '@/messages/vi';
@@ -62,12 +64,14 @@ async function readWalletManagerData(db: Database) {
   return {
     rows: await listWallets(db, true),
     pinnedIds: await readPinnedWalletIds(db),
+    excludedTotalIds: await readExcludedTotalBalanceWalletIds(db),
   };
 }
 
 export function WalletManager({ onClose }: { onClose(): void }) {
   const [rows, setRows] = useState<WalletRow[]>([]);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [excludedTotalIds, setExcludedTotalIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saved, setSaved] = useTransientState(false);
@@ -83,9 +87,14 @@ export function WalletManager({ onClose }: { onClose(): void }) {
   const insets = useSafeAreaInsets();
   const recurringVersion = useApp((state) => state.recurringVersion);
   const showRows = useCallback(
-    (next: { rows: WalletRow[]; pinnedIds: string[] }) => {
+    (next: {
+      rows: WalletRow[];
+      pinnedIds: string[];
+      excludedTotalIds: string[];
+    }) => {
       setRows(next.rows);
       setPinnedIds(next.pinnedIds);
+      setExcludedTotalIds(next.excludedTotalIds);
       useApp.setState({
         wallets: next.rows.filter((wallet) => !wallet.is_archived),
       });
@@ -162,7 +171,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         });
         await useApp.getState().refreshRecurring(true);
         showRows(await withDatabase(readWalletManagerData));
-        setSaved(true);
+
         return true;
       } catch {
         setError(committed ? vi.walletSavedRefreshFailed : vi.saveError);
@@ -199,14 +208,20 @@ export function WalletManager({ onClose }: { onClose(): void }) {
         onEdit={setEditing}
         onArchive={archive}
         pinned={pinnedIds.includes(item.id)}
+        includedInTotal={!excludedTotalIds.includes(item.id)}
         onPin={(wallet) =>
           mutate((db) =>
             setWalletPinned(db, wallet.id, !pinnedIds.includes(wallet.id)),
           )
         }
+        onToggleTotalBalance={(wallet, included) =>
+          mutate((db) =>
+            setWalletIncludedInTotalBalance(db, wallet.id, included),
+          )
+        }
       />
     ),
-    [archive, busy, mutate, pinnedIds],
+    [archive, busy, excludedTotalIds, mutate, pinnedIds],
   );
 
   if (editing !== undefined)
@@ -330,14 +345,18 @@ const WalletItem = memo(function WalletItem({
   onEdit,
   onArchive,
   pinned,
+  includedInTotal,
   onPin,
+  onToggleTotalBalance,
 }: {
   wallet: WalletRow;
   busy: boolean;
   onEdit(wallet: WalletRow): void;
   onArchive(wallet: WalletRow): Promise<boolean>;
   pinned: boolean;
+  includedInTotal: boolean;
   onPin(wallet: WalletRow): Promise<boolean>;
+  onToggleTotalBalance(wallet: WalletRow, included: boolean): Promise<boolean>;
 }) {
   const [confirming, setConfirming] = useState(false);
   const palette = useFinancePalette();
@@ -375,13 +394,42 @@ const WalletItem = memo(function WalletItem({
         </Text>
       </View>
 
-      {!!wallet.is_goal_funding && (
-        <StatusPill
-          icon="bullseye-arrow"
-          label={vi.walletGoalFunding}
-          bg={palette.tealSoft}
-          fg={palette.tealInk}
-        />
+      <View style={[styles.inlineRow, { flexWrap: 'wrap', gap: 6 }]}>
+        {!!wallet.is_goal_funding && (
+          <StatusPill
+            icon="bullseye-arrow"
+            label={vi.walletGoalFunding}
+            bg={palette.tealSoft}
+            fg={palette.tealInk}
+          />
+        )}
+        {!wallet.is_archived && !includedInTotal && (
+          <StatusPill
+            icon="eye-off-outline"
+            label={vi.walletExcludedFromTotal}
+            bg={palette.surfaceMuted}
+            fg={palette.textMuted}
+          />
+        )}
+      </View>
+
+      {!wallet.is_archived && (
+        <View style={styles.row}>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text variant="bodyMedium" style={{ fontWeight: '600', color: palette.text }}>
+              {vi.walletIncludeInTotal}
+            </Text>
+            <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+              {vi.walletIncludeInTotalHelp}
+            </Text>
+          </View>
+          <Switch
+            value={includedInTotal}
+            disabled={busy}
+            accessibilityLabel={vi.walletIncludeInTotal}
+            onValueChange={(next) => void onToggleTotalBalance(wallet, next)}
+          />
+        </View>
       )}
 
       <Divider style={{ backgroundColor: palette.borderSubtle }} />

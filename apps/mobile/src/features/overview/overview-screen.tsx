@@ -70,7 +70,7 @@ export function OverviewScreen({
   const recurringVersion = useApp((state) => state.recurringVersion);
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
-  const { isDuoClosedPortrait } = useResponsiveLayout();
+  const { isDuoClosedPortrait, isCompactPhone } = useResponsiveLayout();
   const router = useRouter();
 
   const load = useCallback(
@@ -160,8 +160,10 @@ export function OverviewScreen({
         onPress={() =>
           router.push({ pathname: '/detail', params: { screen: 'alerts' } })
         }
+        hitSlop={4}
         style={({ pressed }) => [
           localStyles.circleHeaderBtn,
+          isCompactPhone && localStyles.circleHeaderBtnCompact,
           !isDuoClosedPortrait && createSoftShadow(designTheme.mode, 'sm'),
           {
             backgroundColor: isDuoClosedPortrait
@@ -248,7 +250,11 @@ export function OverviewScreen({
           />
 
           {/* Hero Total Balance Card */}
-          <GlassCard variant="elevated" radius="xl" padding={22}>
+          <GlassCard
+            variant="elevated"
+            radius={isCompactPhone ? 'lg' : 'xl'}
+            padding={isCompactPhone ? 14 : 22}
+          >
             <View style={localStyles.heroTopRow}>
               <View style={{ flex: 1, gap: 4 }}>
                 <View style={localStyles.balanceTitleRow}>
@@ -280,9 +286,13 @@ export function OverviewScreen({
                   </Pressable>
                 </View>
                 <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
                   style={[
                     styles.number,
                     localStyles.heroBalanceText,
+                    isCompactPhone && localStyles.heroBalanceTextCompact,
                     { color: designTheme.text.primary },
                   ]}
                 >
@@ -295,6 +305,7 @@ export function OverviewScreen({
                 <View
                   style={[
                     localStyles.heroStatPill,
+                    isCompactPhone && localStyles.heroStatPillCompact,
                     {
                       backgroundColor: designTheme.finance.incomeSoft,
                       borderColor:
@@ -325,6 +336,7 @@ export function OverviewScreen({
                 <View
                   style={[
                     localStyles.heroStatPill,
+                    isCompactPhone && localStyles.heroStatPillCompact,
                     {
                       backgroundColor: designTheme.finance.expenseSoft,
                       borderColor:
@@ -838,6 +850,11 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  circleHeaderBtnCompact: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
   centerBox: {
     paddingVertical: 32,
     alignItems: 'center',
@@ -878,6 +895,12 @@ const localStyles = StyleSheet.create({
     borderRadius: DesignRadius.pill,
     borderWidth: 1,
   },
+  heroStatPillCompact: {
+    minWidth: 104,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
   heroStatNumber: {
     fontSize: 13,
     lineHeight: 16,
@@ -889,6 +912,11 @@ const localStyles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: -0.8,
   },
+  heroBalanceTextCompact: {
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.6,
+  },
   walletsStrip: {
     flexDirection: 'row',
     gap: 10,
@@ -898,12 +926,12 @@ const localStyles = StyleSheet.create({
   walletMiniCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: DesignRadius.md,
     borderWidth: 1,
-    width: 210,
+    width: 172,
     flexShrink: 0,
   },
   summaryGrid: {
@@ -914,7 +942,7 @@ const localStyles = StyleSheet.create({
   summaryCardItem: {
     flexGrow: 1,
     flexBasis: '47%',
-    minWidth: 150,
+    minWidth: 132,
   },
   summaryCardWide: {
     flexGrow: 0,

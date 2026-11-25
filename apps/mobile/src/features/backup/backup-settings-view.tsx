@@ -130,7 +130,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
           setActionError(res.error);
         }
       } else {
-        setNotice(vi.backupNowSuccessNotice);
+
       }
     } finally {
       setBusy(false);
@@ -152,7 +152,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
     try {
       const res = await runManualGoogleDriveBackup();
       if (res.ok) {
-        setNotice(vi.backupNowSuccessNotice);
+
       } else if (res.error) {
         setActionError(res.error);
       }
@@ -229,7 +229,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
       setConfirmingDisconnect(false);
       setRemoteMeta(null);
       setRestoreConfirmText('');
-      setNotice(vi.backupDisconnectedNotice);
+
     } finally {
       setBusy(false);
     }

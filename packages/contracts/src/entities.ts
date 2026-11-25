@@ -111,6 +111,7 @@ export const TransactionInputSchema = z
       .default('manual'),
     recurringRuleId: NullableIdSchema,
     rawInput: TextSchema,
+    affectsWalletBalance: z.boolean().optional().default(true),
   })
   .strict()
   .superRefine((value, context) => {
@@ -209,6 +210,7 @@ export const DebtInputSchema = DebtChangesSchema.extend({
   amount: MoneySchema.positive(),
   walletId: IdSchema,
   occurredOn: DateSchema,
+  affectsWalletBalance: z.boolean().optional().default(true),
 }).strict();
 export type DebtInput = z.input<typeof DebtInputSchema>;
 export type DebtChanges = z.input<typeof DebtChangesSchema>;
@@ -216,6 +218,7 @@ export const DebtRepaymentSchema = DebtInputSchema.pick({
   amount: true,
   walletId: true,
   occurredOn: true,
+  affectsWalletBalance: true,
 })
   .extend({ note: TextSchema })
   .strict();

@@ -187,13 +187,16 @@ export function Screen({
     : isDuoClosedPortrait
       ? 0
       : cameraClearance;
+  const compactPhone = width <= 380 || height <= 700;
   const horizontalPadding =
     width <= 340
       ? DesignSpacing.sm
-      : width < 390
-        ? DesignSpacing.md
-        : DesignSpacing.screenPadding;
-  const compactHeight = height < 700;
+      : width <= 380
+        ? 12
+        : width < 390
+          ? DesignSpacing.md
+          : DesignSpacing.screenPadding;
+  const compactHeight = height <= 700;
   const content = (
     <RevealFieldContext.Provider value={revealField}>
       <Animated.View
@@ -261,7 +264,13 @@ export function Screen({
               <View style={{ flex: 1, gap: 2 }}>
                 <Text
                   accessibilityRole="header"
-                  variant={onBack ? 'titleLarge' : 'headlineLarge'}
+                  variant={
+                    onBack
+                      ? 'titleLarge'
+                      : compactPhone
+                        ? 'headlineSmall'
+                        : 'headlineLarge'
+                  }
                   style={[
                     styles.screenTitle,
                     { color: designTheme.text.primary },

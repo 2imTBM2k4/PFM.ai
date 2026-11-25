@@ -42,6 +42,7 @@ export async function createDebt(
         occurredOn: value.occurredOn,
         occurredAt: `${value.occurredOn}T12:00:00+07:00`,
         note: value.note,
+        affectsWalletBalance: value.affectsWalletBalance,
       },
       timestamp,
     );
@@ -76,6 +77,7 @@ export async function repayDebt(
         occurredOn: value.occurredOn,
         occurredAt: `${value.occurredOn}T12:00:00+07:00`,
         note: value.note,
+        affectsWalletBalance: value.affectsWalletBalance,
       },
       timestamp,
     );

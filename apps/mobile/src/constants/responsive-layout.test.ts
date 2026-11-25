@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getCameraClearance,
   getFloatingTabBarLayout,
+  isCompactPhoneViewport,
   isDuoClosedPortraitViewport,
 } from './responsive-layout';
 
@@ -70,5 +71,12 @@ describe('responsive layout', () => {
     expect(getCameraClearance(402, 874, 59)).toBe(0);
     expect(getCameraClearance(874, 402, 0)).toBe(0);
     expect(getCameraClearance(768, 1024, 0)).toBe(0);
+  });
+
+  it('detects compact phones like iPhone SE 3 (375x667) without affecting standard iPhones', () => {
+    expect(isCompactPhoneViewport(375, 667)).toBe(true);
+    expect(isCompactPhoneViewport(320, 568)).toBe(true);
+    expect(isCompactPhoneViewport(390, 844)).toBe(false);
+    expect(isCompactPhoneViewport(430, 932)).toBe(false);
   });
 });

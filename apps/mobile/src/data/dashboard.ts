@@ -4,7 +4,10 @@ import { readBudgetMonth, readDismissedBudgetBannerKeys } from './budgets';
 import { listGoals } from './goals';
 import { listTransactions } from './transactions';
 import { listWalletsByRecentActivity } from './repository';
-import { readPinnedWalletIds } from './wallets';
+import {
+  readExcludedTotalBalanceWalletIds,
+  readPinnedWalletIds,
+} from './wallets';
 
 interface MonthTotals {
   month: string;
@@ -97,15 +100,19 @@ export async function readDashboard(db: Queries, month: string) {
     .reduce((sum, row) => sum + row.amount, 0);
   const wallets = await listWalletsByRecentActivity(db, true);
   const pinnedWalletIds = await readPinnedWalletIds(db);
+  const excludedTotalBalanceWalletIds =
+    await readExcludedTotalBalanceWalletIds(db);
+  const excludedSet = new Set(excludedTotalBalanceWalletIds);
   if (wallets.some((wallet) => !Number.isSafeInteger(wallet.balance)))
     throw new Error('DASHBOARD_TOTAL_UNSAFE');
   const balance = wallets
-    .filter((wallet) => !wallet.is_archived)
+    .filter((wallet) => !wallet.is_archived && !excludedSet.has(wallet.id))
     .reduce((sum, wallet) => sum + wallet.balance, 0);
   if (!Number.isSafeInteger(balance)) throw new Error('DASHBOARD_TOTAL_UNSAFE');
   return {
     wallets,
     pinnedWalletIds,
+    excludedTotalBalanceWalletIds,
     balance,
     current,
     months,

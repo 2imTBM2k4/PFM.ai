@@ -243,7 +243,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   isChatOpen: false,
   isTabBarVisible: true,
   tabBarHideCount: 0,
-  hideBalance: false,
+  hideBalance: true,
 
   setTabBarVisible(visible: boolean) {
     if (visible && get().tabBarHideCount > 0) return;
@@ -270,13 +270,6 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
 
   async setHideBalance(hide: boolean) {
     set({ hideBalance: hide });
-    try {
-      await withDatabase((db) =>
-        writeSettingValue(db, PREF_KEYS.hideBalance, String(hide)),
-      );
-    } catch {
-      // Ignore write errors
-    }
   },
 
   async toggleHideBalance() {
@@ -430,7 +423,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
           db,
           PREF_KEYS.notifyRecurring,
         );
-        const hideBalance = await readSettingValue(db, PREF_KEYS.hideBalance);
+        // Balance always starts hidden on app launch; do not restore persisted visibility.
         return {
           language: (language === 'en' || language === 'vi'
             ? language
@@ -453,7 +446,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
           notifyAIReply: notifyAIReply !== 'false',
           notifyDebts: notifyDebts !== 'false',
           notifyRecurring: notifyRecurring !== 'false',
-          hideBalance: hideBalance === 'true',
+          hideBalance: true,
         };
       });
       set({ ...loaded, hydrated: true });

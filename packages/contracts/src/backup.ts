@@ -3,12 +3,13 @@ import { z } from 'zod';
 
 export const BACKUP_FORMAT = 'pfm-backup' as const;
 export const BACKUP_FORMAT_VERSION = 1 as const;
-export const BACKUP_LATEST_SCHEMA_VERSION = 6 as const;
+export const BACKUP_LATEST_SCHEMA_VERSION = 7 as const;
 
 export const BACKUP_ALLOWED_SETTINGS_KEYS = [
   'onboarding_complete',
   'budget_banner_dismissed_v1',
   'pinned_wallet_ids_v1',
+  'excluded_total_balance_wallet_ids_v1',
 ] as const;
 
 export type BackupAllowedSettingKey =
@@ -136,6 +137,7 @@ export const BackupTransactionRowSchema = z
     original_currency: z.enum(['VND', 'USD']).optional(),
     original_amount_minor: z.number().int().safe().nullable().optional(),
     booking_rate: z.number().finite().positive().nullable().optional(),
+    affects_wallet_balance: SqliteBoolSchema.optional(),
     created_at: z.string().min(1),
     updated_at: z.string().min(1),
   })

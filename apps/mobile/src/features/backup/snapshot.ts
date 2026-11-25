@@ -249,6 +249,7 @@ export async function buildSnapshot(
       `SELECT id, kind, amount, wallet_id, to_wallet_id, category_id, debt_id,
               occurred_on, occurred_at, note, source, recurring_rule_id,
               original_currency, original_amount_minor, booking_rate,
+              COALESCE(affects_wallet_balance, 1) AS affects_wallet_balance,
               created_at, updated_at
        FROM transactions
        ORDER BY id ASC`,

@@ -11,6 +11,7 @@ import { archiveGoal, restoreGoal, listGoals, saveGoal } from './goals';
 import { readDashboard, readDailyTotals } from './dashboard';
 import { createDebt, repayDebt, listDebts, updateDebt } from './debts';
 import {
+  deleteRecurringRule,
   saveRecurringRule,
   setRecurringActive,
   generateRecurring,
@@ -58,6 +59,8 @@ import {
   reorderWallets,
   requireActiveWallet,
   readPinnedWalletIds,
+  readExcludedTotalBalanceWalletIds,
+  setWalletIncludedInTotalBalance,
   setWalletPinned,
   prioritizePinnedWallets,
 } from './wallets';
@@ -2883,9 +2886,10 @@ it('upgrades version 1 notes in bounded batches without changing original transa
       original_currency: 'VND',
       original_amount_minor: row.amount,
       booking_rate: null,
+      affects_wallet_balance: 1,
     })),
   );
-  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(6);
+  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(7);
   await migrate(db);
   expect(
     sqlite.prepare('SELECT * FROM transactions ORDER BY id').all(),
@@ -4115,7 +4119,7 @@ it('migrates once, seeds exactly 25 categories and one cash wallet twice', async
   expect(sqlite.prepare('SELECT count(*) n FROM wallets').get()?.n).toBe(1);
   expect(
     sqlite.prepare('SELECT count(*) n FROM schema_migrations').get()?.n,
-  ).toBe(6);
+  ).toBe(7);
   expect(
     sqlite
       .prepare('SELECT count(*) n FROM categories WHERE parent_id IS NOT NULL')
@@ -4429,4 +4433,122 @@ it('calculates spent correctly for custom date range budgets and monthly reset b
   // Monthly budget in December auto-resets: only counts December expense (400,000)
   expect(monthlyDec?.spent).toBe(400000);
   expect(Boolean(monthlyDec?.in_period)).toBe(true);
+});
+
+
+it('excludes selected wallets from dashboard total balance without archiving them', async () => {
+  await migrate(db);
+  await seed(db, '2026-10-27T00:00:00Z');
+  const savingsId = randomUUID();
+  await createWallet(
+    db,
+    savingsId,
+    { name: 'Tiết kiệm', kind: 'savings', initialBalance: 5_000_000 },
+    '2026-10-27T00:00:00Z',
+  );
+  await createTransaction(
+    db,
+    randomUUID(),
+    {
+      kind: 'income',
+      amount: 1_000_000,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-27',
+      occurredAt: '2026-10-27T09:00:00+07:00',
+    },
+    '2026-10-27T09:00:00Z',
+  );
+
+  expect((await readDashboard(db, '2026-10')).balance).toBe(6_000_000);
+  await setWalletIncludedInTotalBalance(db, savingsId, false);
+  expect(await readExcludedTotalBalanceWalletIds(db)).toEqual([savingsId]);
+  expect((await readDashboard(db, '2026-10')).balance).toBe(1_000_000);
+
+  await setWalletIncludedInTotalBalance(db, savingsId, true);
+  expect(await readExcludedTotalBalanceWalletIds(db)).toEqual([]);
+  expect((await readDashboard(db, '2026-10')).balance).toBe(6_000_000);
+});
+
+it('deletes a recurring rule while keeping previously generated transactions', async () => {
+  await migrate(db);
+  await seed(db, '2026-10-27T00:00:00Z');
+  const ruleId = randomUUID();
+  await saveRecurringRule(
+    db,
+    ruleId,
+    {
+      kind: 'expense',
+      amount: 50_000,
+      walletId: DEFAULT_WALLET_ID,
+      frequency: 'monthly',
+      intervalCount: 1,
+      startOn: '2026-10-01',
+      endOn: null,
+      note: 'Netflix',
+    },
+    '2026-10-01T00:00:00Z',
+    false,
+  );
+  await generateRecurring(db, '2026-10-15', '2026-10-15T00:00:00Z', randomUUID);
+  expect((await listTransactions(db)).length).toBe(1);
+
+  await deleteRecurringRule(db, ruleId);
+  expect(await listRecurringRules(db)).toEqual([]);
+  const remaining = await listTransactions(db);
+  expect(remaining.length).toBe(1);
+  expect(remaining[0].recurring_rule_id).toBeNull();
+  expect(remaining[0].note).toBe('Netflix');
+});
+
+it('tracks debt creation and repayment without changing wallet balance when affectsWalletBalance is false', async () => {
+  await migrate(db);
+  await seed(db, '2026-10-27T00:00:00Z');
+  const debtId = randomUUID();
+  await createDebt(
+    db,
+    debtId,
+    randomUUID(),
+    {
+      counterpartyLabel: 'Minh',
+      direction: 'borrowed',
+      amount: 1_000_000,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-27',
+      affectsWalletBalance: false,
+    },
+    '2026-10-27T09:00:00Z',
+  );
+
+  expect((await readDashboard(db, '2026-10')).balance).toBe(0);
+  expect((await listDebts(db, debtId))[0].outstanding).toBe(1_000_000);
+
+  await repayDebt(
+    db,
+    debtId,
+    randomUUID(),
+    {
+      amount: 400_000,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-28',
+      affectsWalletBalance: false,
+    },
+    '2026-10-28T09:00:00Z',
+  );
+  expect((await readDashboard(db, '2026-10')).balance).toBe(0);
+  expect((await listDebts(db, debtId))[0].outstanding).toBe(600_000);
+
+  await repayDebt(
+    db,
+    debtId,
+    randomUUID(),
+    {
+      amount: 600_000,
+      walletId: DEFAULT_WALLET_ID,
+      occurredOn: '2026-10-29',
+      affectsWalletBalance: true,
+    },
+    '2026-10-29T09:00:00Z',
+  );
+  expect((await readDashboard(db, '2026-10')).balance).toBe(-600_000);
+  expect((await listDebts(db, debtId))[0].status).toBe('closed');
 });

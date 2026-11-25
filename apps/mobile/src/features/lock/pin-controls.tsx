@@ -108,7 +108,7 @@ function ActivePinSettings() {
           mode={mode}
           onDone={() => {
             setMode(null);
-            setSaved(true);
+
           }}
           onCancel={() => setMode(null)}
         />

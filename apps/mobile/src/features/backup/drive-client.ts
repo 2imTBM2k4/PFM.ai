@@ -110,40 +110,73 @@ function buildMultipartBody(
     `--${boundary}\r\n` +
     'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
     `${jsonContent}\r\n` +
-    `--${boundary}--`;
+    `--${boundary}--\r\n`;
   return {
     body,
     contentType: `multipart/related; boundary=${boundary}`,
   };
 }
 
-async function isStorageQuotaExceededResponse(
+async function classifyDrive403Response(
   response: Response,
-): Promise<boolean> {
+): Promise<
+  'drive_quota_exceeded' | 'needs_reauth' | 'not_configured' | 'upload_failed'
+> {
   try {
     const text = await response.clone().text();
-    if (text.includes('storageQuotaExceeded')) {
-      return true;
-    }
-    const parsed: unknown = JSON.parse(text);
-    if (parsed && typeof parsed === 'object') {
-      const errObj = (parsed as Record<string, unknown>).error;
-      if (errObj && typeof errObj === 'object') {
-        const errors = (errObj as Record<string, unknown>).errors;
-        if (Array.isArray(errors)) {
-          return errors.some(
-            (e) =>
-              e &&
-              typeof e === 'object' &&
-              (e as Record<string, unknown>).reason === 'storageQuotaExceeded',
-          );
+    const reasons: string[] = [];
+    let message = text;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === 'object') {
+        const errObj = (parsed as Record<string, unknown>).error;
+        if (errObj && typeof errObj === 'object') {
+          const errRec = errObj as Record<string, unknown>;
+          if (typeof errRec.message === 'string') {
+            message = errRec.message;
+          }
+          if (typeof errRec.status === 'string') {
+            reasons.push(errRec.status);
+          }
+          if (Array.isArray(errRec.errors)) {
+            for (const entry of errRec.errors) {
+              if (entry && typeof entry === 'object') {
+                const reason = (entry as Record<string, unknown>).reason;
+                if (typeof reason === 'string') reasons.push(reason);
+              }
+            }
+          }
         }
       }
+    } catch {
+      // Fallback to raw text checks below
+    }
+    const combined = (reasons.join(' ') + ' ' + message).toLowerCase();
+    if (
+      reasons.includes('storageQuotaExceeded') ||
+      combined.includes('storagequotaexceeded')
+    ) {
+      return 'drive_quota_exceeded';
+    }
+    if (
+      reasons.includes('insufficientPermissions') ||
+      combined.includes('insufficientpermissions') ||
+      combined.includes('access_token_scope_insufficient') ||
+      combined.includes('insufficient authentication scopes')
+    ) {
+      return 'needs_reauth';
+    }
+    if (
+      reasons.includes('accessNotConfigured') ||
+      combined.includes('accessnotconfigured') ||
+      combined.includes('drive api has not been used')
+    ) {
+      return 'not_configured';
     }
   } catch {
     // Ignore parse errors
   }
-  return false;
+  return 'upload_failed';
 }
 
 function selectNewestFile(files: DriveFileResource[]): DriveFileResource {
@@ -237,10 +270,8 @@ export function createDriveClient(
       }
 
       if (response.status === 403) {
-        if (await isStorageQuotaExceededResponse(response)) {
-          return { ok: false, errorCode: 'drive_quota_exceeded' };
-        }
-        return { ok: false, errorCode: 'upload_failed' };
+        const errorCode = await classifyDrive403Response(response);
+        return { ok: false, errorCode };
       }
 
       if (

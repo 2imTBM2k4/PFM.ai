@@ -43,7 +43,6 @@ import {
   listChatMessages,
   listChatSessions,
   deleteChatSessions,
-  saveChatMessage,
   readChatSourceMessages,
   type ChatRow,
   type ChatSessionRow,
@@ -84,26 +83,7 @@ import { detectCorrection } from '@/services/correction-detection';
 import { commitCorrection } from '@/services/correction-commit';
 import type { AdviceHistoryItem } from '@pfm/contracts';
 
-const INTRO_SUGGESTION_CHIPS = [
-  {
-    id: 'budget-planner',
-    label: vi.aiChipBudgetPlanner,
-    icon: 'chart-pie' as const,
-    prompt: vi.aiPromptBudgetPlanner,
-  },
-  {
-    id: 'goal-tracker',
-    label: vi.aiChipGoalTracker,
-    icon: 'bullseye-arrow' as const,
-    prompt: vi.aiPromptGoalTracker,
-  },
-  {
-    id: 'spending-insights',
-    label: vi.aiChipSpendingInsights,
-    icon: 'chart-bar' as const,
-    prompt: vi.aiPromptSpendingInsights,
-  },
-] as const;
+
 
 function SwipeDeleteAction({
   progress,
@@ -507,33 +487,7 @@ export default function Chat({
       setMessages((current) => current.filter((message) => message.id !== id));
   }, []);
 
-  const handleSuggestionChipPress = useCallback(
-    async (prompt: string) => {
-      if (typingForId) return;
-      const message: ChatRow = {
-        id: uuid.v4(),
-        text: prompt,
-        created_at: new Date().toISOString(),
-      };
-      try {
-        await withDatabase((db) =>
-          saveChatMessage(
-            db,
-            message.id,
-            message.text,
-            message.created_at,
-            activeSessionId,
-          ),
-        );
-        if (!mounted.current) return;
-        onMessage(message, activeSessionId);
-        void triggerAIReply(message, activeSessionId);
-      } catch {
-        if (mounted.current) setLoadError(true);
-      }
-    },
-    [activeSessionId, onMessage, triggerAIReply, typingForId],
-  );
+
 
   const closeHistory = useCallback(() => {
     setHistoryOpen(false);
@@ -996,24 +950,7 @@ export default function Chat({
                     {quotaBanner}
                   </Text>
                 )}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={localStyles.topChipsScroll}
-                >
-                  {INTRO_SUGGESTION_CHIPS.map((chip) => (
-                    <Pill
-                      key={chip.id}
-                      label={chip.label}
-                      icon={chip.icon}
-                      tone="glass"
-                      size="sm"
-                      onPress={() =>
-                        void handleSuggestionChipPress(chip.prompt)
-                      }
-                    />
-                  ))}
-                </ScrollView>
+
               </View>
 
               <FlatList

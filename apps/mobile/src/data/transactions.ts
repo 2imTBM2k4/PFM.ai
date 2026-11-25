@@ -18,6 +18,7 @@ export interface TransactionRow {
   original_amount_minor: number | null;
   original_currency: 'VND' | 'USD';
   booking_rate: number | null;
+  affects_wallet_balance?: number;
   wallet_id: string;
   to_wallet_id: string | null;
   category_id: string | null;
@@ -172,8 +173,8 @@ export async function insertTransaction(
   if (value.recurringRuleId || value.source === 'recurring')
     throw new Error('TRANSACTION_FEATURE_PENDING');
   await transaction.runAsync(
-    `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search,original_currency,original_amount_minor,booking_rate)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search,original_currency,original_amount_minor,booking_rate,affects_wallet_balance)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     id,
     value.kind,
     value.amount,
@@ -193,6 +194,7 @@ export async function insertTransaction(
     value.originalCurrency,
     value.originalAmountMinor,
     value.bookingRate,
+    value.affectsWalletBalance === false ? 0 : 1,
   );
   if (value.debtId) await reconcileDebt(transaction, value.debtId, timestamp);
 }
@@ -278,8 +280,8 @@ export async function undoDeleteTransaction(db: Database, row: TransactionRow) {
   // Restore the trusted local deletion snapshot exactly, including archived references.
   await db.transaction(async (transaction) => {
     await transaction.runAsync(
-      `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search,original_currency,original_amount_minor,booking_rate)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO transactions (id,kind,amount,wallet_id,to_wallet_id,category_id,debt_id,occurred_on,occurred_at,note,source,recurring_rule_id,raw_input,created_at,updated_at,note_search,original_currency,original_amount_minor,booking_rate,affects_wallet_balance)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       row.id,
       row.kind,
       row.amount,
@@ -299,6 +301,7 @@ export async function undoDeleteTransaction(db: Database, row: TransactionRow) {
       row.original_currency,
       row.original_amount_minor,
       row.booking_rate,
+      row.affects_wallet_balance ?? 1,
     );
     if (row.debt_id)
       await reconcileDebt(transaction, row.debt_id, new Date().toISOString());

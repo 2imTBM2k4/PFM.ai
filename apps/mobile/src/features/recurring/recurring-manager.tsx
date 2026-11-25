@@ -2,17 +2,17 @@ import {
   FieldFeedback,
   FocusAwareTextInput,
 } from '@/components/field-feedback';
-import { amountError, dateError, endDateError } from '@/utils/form-validation';
+import { amountError } from '@/utils/form-validation';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
-import { today } from '@pfm/domain';
+import { addDays, daysInMonth, today } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { RecurringInputSchema, type RecurringInput } from '@pfm/contracts';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { BackHandler, Platform, View } from 'react-native';
+import { Alert, BackHandler, Platform, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -31,13 +31,14 @@ import {
 } from '@/components/screen';
 import {
   AppleMenuPicker,
-  DateField,
+
   MoneyInput,
   SegmentedOptionPicker,
 } from '@/components/ui';
 import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
+  deleteRecurringRule,
   listRecurringRules,
   saveRecurringRule,
   setRecurringActive,
@@ -72,6 +73,99 @@ const KINDS = [
 ] as const;
 const localDate = () =>
   today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
+
+const WEEKDAYS = [
+  { value: '1', label: 'Thứ 2' },
+  { value: '2', label: 'Thứ 3' },
+  { value: '3', label: 'Thứ 4' },
+  { value: '4', label: 'Thứ 5' },
+  { value: '5', label: 'Thứ 6' },
+  { value: '6', label: 'Thứ 7' },
+  { value: '7', label: 'Chủ nhật' },
+] as const;
+
+const MONTHS = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1),
+  label: `Tháng ${index + 1}`,
+}));
+
+function isoWeekdayOfDate(dateStr: string): number {
+  const jsDay = new Date(`${dateStr}T12:00:00Z`).getUTCDay();
+  return jsDay === 0 ? 7 : jsDay;
+}
+
+function parseScheduleParts(dateStr: string): {
+  dayOfWeek: string;
+  dayOfMonth: string;
+  monthOfYear: string;
+} {
+  const [, monthStr = '1', dayStr = '1'] = dateStr.split('-');
+  return {
+    dayOfWeek: String(isoWeekdayOfDate(dateStr)),
+    dayOfMonth: String(Number(dayStr) || 1),
+    monthOfYear: String(Number(monthStr) || 1),
+  };
+}
+
+function computeStartOnFromSchedule(
+  frequency: RecurringInput['frequency'],
+  dayOfWeekStr: string,
+  dayOfMonthStr: string,
+  monthOfYearStr: string,
+  referenceDate: string,
+): string {
+  if (frequency === 'daily') return referenceDate;
+  if (frequency === 'weekly') {
+    const targetDow = Math.min(7, Math.max(1, Number(dayOfWeekStr) || 1));
+    const currentDow = isoWeekdayOfDate(referenceDate);
+    const diff = (targetDow - currentDow + 7) % 7;
+    return addDays(referenceDate, diff);
+  }
+  const [refYear, refMonth] = referenceDate.split('-').map(Number);
+  const pad2 = (n: number) => String(n).padStart(2, '0');
+  if (frequency === 'monthly') {
+    const targetDay = Math.min(31, Math.max(1, Number(dayOfMonthStr) || 1));
+    const currentMonthDay = Math.min(targetDay, daysInMonth(refYear, refMonth));
+    const currentCandidate = `${refYear}-${pad2(refMonth)}-${pad2(currentMonthDay)}`;
+    if (currentCandidate >= referenceDate && currentMonthDay === targetDay) {
+      return currentCandidate;
+    }
+    let nextYear = refYear;
+    let nextMonth = refMonth + (currentCandidate >= referenceDate ? 0 : 1);
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+    const clampedDay = Math.min(targetDay, daysInMonth(nextYear, nextMonth));
+    return `${nextYear}-${pad2(nextMonth)}-${pad2(clampedDay)}`;
+  }
+  const targetMonth = Math.min(12, Math.max(1, Number(monthOfYearStr) || 1));
+  const targetDay = Math.min(31, Math.max(1, Number(dayOfMonthStr) || 1));
+  const thisYearDay = Math.min(targetDay, daysInMonth(refYear, targetMonth));
+  const thisYearCandidate = `${refYear}-${pad2(targetMonth)}-${pad2(thisYearDay)}`;
+  if (thisYearCandidate >= referenceDate) {
+    return thisYearCandidate;
+  }
+  const nextYear = refYear + 1;
+  const nextYearDay = Math.min(targetDay, daysInMonth(nextYear, targetMonth));
+  return `${nextYear}-${pad2(targetMonth)}-${pad2(nextYearDay)}`;
+}
+
+function formatRecurringSummary(row: RecurringRow): string {
+  const freqLabel =
+    FREQUENCIES.find((f) => f.value === row.frequency)?.label ?? row.frequency;
+  const parts = parseScheduleParts(row.start_on);
+  if (row.frequency === 'daily') return freqLabel;
+  if (row.frequency === 'weekly') {
+    const dowLabel =
+      WEEKDAYS.find((d) => d.value === parts.dayOfWeek)?.label ?? '';
+    return `${freqLabel} · ${dowLabel}`;
+  }
+  if (row.frequency === 'monthly') {
+    return `${freqLabel} · Ngày ${parts.dayOfMonth}`;
+  }
+  return `${freqLabel} · ${parts.dayOfMonth.padStart(2, '0')}/${parts.monthOfYear.padStart(2, '0')}`;
+}
 
 export function RecurringManager({ onClose }: { onClose(): void }) {
   const [rows, setRows] = useState<RecurringRow[]>([]),
@@ -346,12 +440,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
                     KINDS.find((kind) => kind.value === row.kind)?.label}
                 </Text>
                 <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-                  {FREQUENCIES.find((f) => f.value === row.frequency)?.label}
-                  {row.interval_count > 1
-                    ? ` · ${row.interval_count} ${vi.recurringLegacyInterval}`
-                    : ''}{' '}
-                  · {row.start_on}
-                  {row.end_on ? ` → ${row.end_on}` : ''}
+                  {formatRecurringSummary(row)}
                 </Text>
               </View>
             </View>
@@ -433,6 +522,33 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
             >
               {row.is_active ? vi.recurringPause : vi.recurringResume}
             </Button>
+            <Button
+              hitSlop={4}
+              compact
+              mode="text"
+              textColor={colors.error}
+              icon="trash-can-outline"
+              accessibilityLabel={vi.recurringDelete}
+              disabled={busy || loading}
+              onPress={() => {
+                const runDelete = () =>
+                  void mutate((db) => deleteRecurringRule(db, row.id));
+                if (Platform.OS === 'web') {
+                  if (window.confirm(vi.recurringDeleteConfirm)) runDelete();
+                  return;
+                }
+                Alert.alert(vi.recurringDelete, vi.recurringDeleteConfirm, [
+                  { text: vi.cancel, style: 'cancel' },
+                  {
+                    text: vi.deleteTransaction,
+                    style: 'destructive',
+                    onPress: runDelete,
+                  },
+                ]);
+              }}
+            >
+              {vi.deleteTransaction}
+            </Button>
           </View>
         </View>
       ))}
@@ -447,9 +563,10 @@ interface Fields {
   destination: string;
   category: string;
   note: string;
-  start: string;
-  end: string;
   frequency: RecurringInput['frequency'];
+  dayOfWeek: string;
+  dayOfMonth: string;
+  monthOfYear: string;
 }
 function RecurringForm({
   row,
@@ -468,17 +585,21 @@ function RecurringForm({
   onBack(): void;
   onSave(input: RecurringInput): Promise<void>;
 }) {
-  const [initialValues] = useState<Fields>(() => ({
-    kind: row?.kind ?? 'expense',
-    amount: row ? formatAmountInput(String(row.amount)) : '',
-    wallet: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
-    destination: row?.to_wallet_id ?? '',
-    category: row?.category_id ?? '',
-    note: row?.note ?? '',
-    start: row?.start_on ?? localDate(),
-    end: row?.end_on ?? '',
-    frequency: row?.frequency ?? 'monthly',
-  }));
+  const [initialValues] = useState<Fields>(() => {
+    const baseParts = parseScheduleParts(row?.start_on ?? localDate());
+    return {
+      kind: row?.kind ?? 'expense',
+      amount: row ? formatAmountInput(String(row.amount)) : '',
+      wallet: row?.wallet_id ?? wallets.find((w) => !w.is_archived)?.id ?? '',
+      destination: row?.to_wallet_id ?? '',
+      category: row?.category_id ?? '',
+      note: row?.note ?? '',
+      frequency: row?.frequency ?? 'monthly',
+      dayOfWeek: baseParts.dayOfWeek,
+      dayOfMonth: baseParts.dayOfMonth,
+      monthOfYear: baseParts.monthOfYear,
+    };
+  });
   const {
     control,
     handleSubmit,
@@ -496,11 +617,13 @@ function RecurringForm({
     destination: watched.destination ?? initialValues.destination,
     category: watched.category ?? initialValues.category,
     note: watched.note ?? initialValues.note,
-    start: watched.start ?? initialValues.start,
-    end: watched.end ?? initialValues.end,
     frequency: watched.frequency ?? initialValues.frequency,
+    dayOfWeek: watched.dayOfWeek ?? initialValues.dayOfWeek,
+    dayOfMonth: watched.dayOfMonth ?? initialValues.dayOfMonth,
+    monthOfYear: watched.monthOfYear ?? initialValues.monthOfYear,
   };
   const kind = currentValues.kind;
+  const frequency = currentValues.frequency;
   const [invalid, setInvalid] = useState(false);
   const disabled = busy || isSubmitting;
   const relevantKeys: (keyof Fields)[] =
@@ -511,9 +634,10 @@ function RecurringForm({
           'wallet',
           'destination',
           'note',
-          'start',
-          'end',
           'frequency',
+          'dayOfWeek',
+          'dayOfMonth',
+          'monthOfYear',
         ]
       : [
           'kind',
@@ -521,9 +645,10 @@ function RecurringForm({
           'wallet',
           'category',
           'note',
-          'start',
-          'end',
           'frequency',
+          'dayOfWeek',
+          'dayOfMonth',
+          'monthOfYear',
         ];
   const dirty = haveFieldsChanged(initialValues, currentValues, {
     moneyKeys: ['amount'],
@@ -745,78 +870,141 @@ function RecurringForm({
           { backgroundColor: palette.surface, borderColor: palette.border },
         ]}
       >
-        {(
-          [
-            { name: 'amount', label: vi.transactionAmount, icon: 'cash' },
-            { name: 'start', label: vi.recurringStart, icon: 'calendar-start' },
-            { name: 'end', label: vi.recurringEnd, icon: 'calendar-end' },
-            {
-              name: 'note',
-              label: vi.transactionNote,
-              icon: 'note-text-outline',
-            },
-          ] as const
-        ).map((item) => (
+        <Controller
+          control={control}
+          name="amount"
+          rules={{ validate: (value) => amountError(value) }}
+          render={({ field, fieldState }) => (
+            <FieldFeedback
+              fieldRef={field.ref}
+              message={fieldState.error?.message}
+            >
+              <MoneyInput
+                error={!!fieldState.error}
+                label={vi.transactionAmount}
+                accessibilityLabel={vi.transactionAmount}
+                value={field.value}
+                onBlur={field.onBlur}
+                disabled={disabled}
+                left={<TextInput.Icon icon="cash" />}
+                onChangeText={field.onChange}
+              />
+            </FieldFeedback>
+          )}
+        />
+        {frequency === 'weekly' && (
           <Controller
-            key={item.name}
             control={control}
-            name={item.name}
-            rules={{
-              validate: (value) =>
-                item.name === 'amount'
-                  ? amountError(value)
-                  : item.name === 'start'
-                    ? dateError(value)
-                    : item.name === 'end'
-                      ? endDateError(value, getValues('start'), true)
-                      : true,
-            }}
-            render={({ field, fieldState }) => (
-              <FieldFeedback
-                fieldRef={field.ref}
-                message={fieldState.error?.message}
-              >
-                {item.name === 'start' || item.name === 'end' ? (
-                  <DateField
-                    error={!!fieldState.error}
-                    label={item.label}
-                    value={field.value}
-                    onChange={field.onChange}
-                    disabled={disabled}
-                    allowClear={item.name === 'end'}
-                  />
-                ) : item.name === 'amount' ? (
-                  <MoneyInput
-                    error={!!fieldState.error}
-                    label={item.label}
-                    accessibilityLabel={item.label}
-                    value={field.value}
-                    onBlur={field.onBlur}
-                    disabled={disabled}
-                    left={<TextInput.Icon icon={item.icon} />}
-                    onChangeText={field.onChange}
-                  />
-                ) : (
-                  <FocusAwareTextInput
-                    error={!!fieldState.error}
-                    mode="outlined"
-                    label={item.label}
-                    accessibilityLabel={item.label}
-                    value={field.value}
-                    onBlur={field.onBlur}
-                    disabled={disabled}
-                    left={<TextInput.Icon icon={item.icon} />}
-                    keyboardType="default"
-                    onChangeText={field.onChange}
-                  />
-                )}
-              </FieldFeedback>
+            name="dayOfWeek"
+            render={({ field }) => (
+              <AppleMenuPicker
+                label={vi.recurringDayOfWeek}
+                value={field.value}
+                options={WEEKDAYS.map((item) => ({
+                  value: item.value,
+                  label: item.label,
+                  icon: 'calendar-week',
+                  iconBg: palette.primarySoft,
+                  iconColor: palette.primaryInk,
+                }))}
+                disabled={disabled}
+                onSelect={field.onChange}
+              />
             )}
           />
-        ))}
-        <Text variant="bodySmall" style={{ color: palette.textMuted }}>
-          {vi.recurringFormHint}
-        </Text>
+        )}
+        {frequency === 'monthly' && (
+          <Controller
+            control={control}
+            name="dayOfMonth"
+            render={({ field }) => (
+              <AppleMenuPicker
+                label={vi.recurringDayOfMonth}
+                value={field.value}
+                options={Array.from({ length: 31 }, (_, index) => ({
+                  value: String(index + 1),
+                  label: `Ngày ${index + 1}`,
+                  icon: 'calendar-month',
+                  iconBg: palette.primarySoft,
+                  iconColor: palette.primaryInk,
+                }))}
+                disabled={disabled}
+                onSelect={field.onChange}
+              />
+            )}
+          />
+        )}
+        {frequency === 'yearly' && (
+          <View style={{ gap: 12 }}>
+            <Controller
+              control={control}
+              name="monthOfYear"
+              render={({ field }) => (
+                <AppleMenuPicker
+                  label={vi.recurringMonthOfYear}
+                  value={field.value}
+                  options={MONTHS.map((item) => ({
+                    value: item.value,
+                    label: item.label,
+                    icon: 'calendar',
+                    iconBg: palette.primarySoft,
+                    iconColor: palette.primaryInk,
+                  }))}
+                  disabled={disabled}
+                  onSelect={(nextMonth) => {
+                    field.onChange(nextMonth);
+                    const maxDay = daysInMonth(2024, Number(nextMonth) || 1);
+                    if (Number(getValues('dayOfMonth')) > maxDay) {
+                      setValue('dayOfMonth', String(maxDay));
+                    }
+                  }}
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="dayOfMonth"
+              render={({ field }) => {
+                const maxDay = daysInMonth(
+                  2024,
+                  Number(currentValues.monthOfYear) || 1,
+                );
+                return (
+                  <AppleMenuPicker
+                    label={vi.recurringDayOfMonth}
+                    value={field.value}
+                    options={Array.from({ length: maxDay }, (_, index) => ({
+                      value: String(index + 1),
+                      label: `Ngày ${index + 1}`,
+                      icon: 'calendar-today',
+                      iconBg: palette.primarySoft,
+                      iconColor: palette.primaryInk,
+                    }))}
+                    disabled={disabled}
+                    onSelect={field.onChange}
+                  />
+                );
+              }}
+            />
+          </View>
+        )}
+        <Controller
+          control={control}
+          name="note"
+          render={({ field }) => (
+            <FocusAwareTextInput
+              mode="outlined"
+              label={vi.transactionNote}
+              accessibilityLabel={vi.transactionNote}
+              value={field.value}
+              onBlur={field.onBlur}
+              disabled={disabled}
+              left={<TextInput.Icon icon="note-text-outline" />}
+              keyboardType="default"
+              onChangeText={field.onChange}
+            />
+          )}
+        />
         {row && row.interval_count > 1 && (
           <Text variant="bodySmall" style={{ color: palette.textMuted }}>
             {vi.recurringLegacyHint}: {row.interval_count}{' '}
@@ -852,8 +1040,14 @@ function RecurringForm({
                 note: fields.note,
                 frequency: fields.frequency,
                 intervalCount: row?.interval_count ?? 1,
-                startOn: fields.start.trim(),
-                endOn: fields.end.trim() || null,
+                startOn: computeStartOnFromSchedule(
+                  fields.frequency,
+                  fields.dayOfWeek,
+                  fields.dayOfMonth,
+                  fields.monthOfYear,
+                  localDate(),
+                ),
+                endOn: null,
               });
             } catch {
               setInvalid(true);

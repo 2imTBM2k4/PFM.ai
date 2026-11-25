@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import {
   formatAmountInput,
   parseAmountInput,
+  extractVietnamTime,
   manualOccurredAt,
   isFutureDate,
 } from './form';
@@ -67,4 +68,11 @@ it('keeps today timestamp, uses noon for other dates, and warns from tomorrow in
   expect(isFutureDate('2026-10-28', now)).toBe(true);
   expect(isFutureDate('2026-10-26', now)).toBe(false);
   expect(() => manualOccurredAt('2026-02-30', now)).toThrow();
+});
+
+it('uses explicit HH:mm for past dates and extracts Vietnam time cleanly', () => {
+  const now = new Date('2026-10-27T08:15:00Z'); // 15:15 VN
+  expect(manualOccurredAt('2026-10-27', now, '09:30')).toBe(now.toISOString());
+  expect(manualOccurredAt('2026-10-26', now, '09:30')).toBe('2026-10-26T09:30:00+07:00');
+  expect(extractVietnamTime('2026-10-26T09:30:00+07:00')).toBe('09:30');
 });

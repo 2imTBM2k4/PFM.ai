@@ -30,6 +30,7 @@ import {
   Text,
   TextInput,
   useTheme,
+  Switch,
 } from 'react-native-paper';
 import {
   EmptyStateCard,
@@ -730,6 +731,7 @@ interface Fields {
   date: string;
   due: string;
   note: string;
+  affectsWalletBalance: boolean;
 }
 function DebtForm({
   mode,
@@ -756,6 +758,7 @@ function DebtForm({
     date: today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
     due: debt?.due_on ?? '',
     note: mode === 'metadata' ? (debt?.note ?? '') : '',
+    affectsWalletBalance: true,
   }));
   const {
     control,
@@ -774,6 +777,8 @@ function DebtForm({
     date: watched.date ?? initialValues.date,
     due: watched.due ?? initialValues.due,
     note: watched.note ?? initialValues.note,
+    affectsWalletBalance:
+      watched.affectsWalletBalance ?? initialValues.affectsWalletBalance,
   };
   const date = currentValues.date;
   const disabled = busy || isSubmitting,
@@ -799,8 +804,8 @@ function DebtForm({
     mode === 'metadata'
       ? ['name', 'due', 'note']
       : mode === 'repay'
-        ? ['amount', 'wallet', 'date', 'note']
-        : ['name', 'direction', 'amount', 'wallet', 'date', 'due', 'note'];
+        ? ['amount', 'wallet', 'date', 'note', 'affectsWalletBalance']
+        : ['name', 'direction', 'amount', 'wallet', 'date', 'due', 'note', 'affectsWalletBalance'];
   const dirty = haveFieldsChanged(initialValues, currentValues, {
     moneyKeys: ['amount'],
     keys: relevantKeys,
@@ -892,6 +897,7 @@ function DebtForm({
                     walletId: fields.wallet,
                     occurredOn: fields.date.trim(),
                     note: fields.note,
+                    affectsWalletBalance: fields.affectsWalletBalance,
                   }),
                 };
               else
@@ -905,6 +911,7 @@ function DebtForm({
                     occurredOn: fields.date.trim(),
                     dueOn: fields.due.trim() || null,
                     note: fields.note,
+                    affectsWalletBalance: fields.affectsWalletBalance,
                   }),
                 };
             } catch {
@@ -972,6 +979,30 @@ function DebtForm({
                   ]}
                 />
               </FieldFeedback>
+            )}
+          />
+        )}
+        {mode !== 'metadata' && (
+          <Controller
+            control={control}
+            name="affectsWalletBalance"
+            render={({ field }) => (
+              <View style={styles.row}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text variant="bodyMedium" style={{ fontWeight: '600', color: palette.text }}>
+                    {vi.debtAffectsWallet}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: palette.textMuted }}>
+                    {vi.debtAffectsWalletHelp}
+                  </Text>
+                </View>
+                <Switch
+                  value={field.value}
+                  disabled={disabled}
+                  accessibilityLabel={vi.debtAffectsWallet}
+                  onValueChange={field.onChange}
+                />
+              </View>
             )}
           />
         )}

@@ -61,6 +61,12 @@ export interface ResponsiveLayout {
   width: number;
   height: number;
   isDuoClosedPortrait: boolean;
+  isCompactPhone: boolean;
+}
+
+/** Detects compact phones such as iPhone SE 3 (375x667) where tighter density improves scanability. */
+export function isCompactPhoneViewport(width: number, height: number): boolean {
+  return width <= 380 || height <= 700;
 }
 
 /**
@@ -105,5 +111,6 @@ export function useResponsiveLayout(): ResponsiveLayout {
     width,
     height,
     isDuoClosedPortrait: isDuoClosedPortraitViewport(width, height),
+    isCompactPhone: isCompactPhoneViewport(width, height),
   };
 }

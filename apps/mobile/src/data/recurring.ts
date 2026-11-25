@@ -132,6 +132,26 @@ export async function setRecurringActive(
   });
 }
 
+/** Deletes a recurring rule while preserving previously generated transactions. */
+export async function deleteRecurringRule(db: Database, id: string) {
+  await db.transaction(async (tx) => {
+    const row = await tx.getFirstAsync<{ id: string }>(
+      'SELECT id FROM recurring_rules WHERE id=?',
+      id,
+    );
+    if (!row) throw new Error('RECURRING_NOT_FOUND');
+    await tx.runAsync(
+      'UPDATE transactions SET recurring_rule_id=NULL WHERE recurring_rule_id=?',
+      id,
+    );
+    await tx.runAsync(
+      'DELETE FROM recurring_skips WHERE recurring_rule_id=?',
+      id,
+    );
+    await tx.runAsync('DELETE FROM recurring_rules WHERE id=?', id);
+  });
+}
+
 export async function generateRecurring(
   db: Database,
   date: string,

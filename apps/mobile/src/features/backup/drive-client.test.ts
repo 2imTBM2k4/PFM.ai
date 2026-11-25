@@ -437,4 +437,60 @@ describe('Google Drive Client (B4)', () => {
       'ya29.SECRET_ACCESS_TOKEN_DO_NOT_LOG',
     );
   });
+
+  it('classifies 403 insufficientPermissions as needs_reauth and accessNotConfigured as not_configured', async () => {
+    const authService: GoogleAuthService = {
+      isSupportedRuntime: () => true,
+      signIn: vi.fn(),
+      getAccessToken: vi.fn(async () => ({
+        ok: true as const,
+        accessToken: 'ya29.test-token',
+      })),
+      signOut: vi.fn(),
+    };
+
+    const fetchInsufficient = vi.fn(async () =>
+      jsonResponse(
+        {
+          error: {
+            code: 403,
+            message: 'Request had insufficient authentication scopes.',
+            errors: [{ reason: 'insufficientPermissions' }],
+          },
+        },
+        403,
+      ),
+    );
+    const client1 = createDriveClient({
+      authService,
+      fetchImpl: fetchInsufficient as unknown as typeof fetch,
+      sleep: async () => {},
+    });
+    expect(await client1.fetchRemoteBackupMetadata()).toEqual({
+      ok: false,
+      errorCode: 'needs_reauth',
+    });
+
+    const fetchNotConfigured = vi.fn(async () =>
+      jsonResponse(
+        {
+          error: {
+            code: 403,
+            message: 'Google Drive API has not been used in project.',
+            errors: [{ reason: 'accessNotConfigured' }],
+          },
+        },
+        403,
+      ),
+    );
+    const client2 = createDriveClient({
+      authService,
+      fetchImpl: fetchNotConfigured as unknown as typeof fetch,
+      sleep: async () => {},
+    });
+    expect(await client2.fetchRemoteBackupMetadata()).toEqual({
+      ok: false,
+      errorCode: 'not_configured',
+    });
+  });
 });

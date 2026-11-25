@@ -357,8 +357,8 @@ export async function applySnapshot(
     await runBatchedInsert(
       tx,
       upgradedTables.transactions,
-      `INSERT INTO transactions (id, kind, amount, wallet_id, to_wallet_id, category_id, debt_id, occurred_on, occurred_at, note, note_search, source, recurring_rule_id, raw_input, original_currency, original_amount_minor, booking_rate, created_at, updated_at)`,
-      '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)',
+      `INSERT INTO transactions (id, kind, amount, wallet_id, to_wallet_id, category_id, debt_id, occurred_on, occurred_at, note, note_search, source, recurring_rule_id, raw_input, original_currency, original_amount_minor, booking_rate, affects_wallet_balance, created_at, updated_at)`,
+      '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)',
       (t) => [
         t.id,
         t.kind,
@@ -376,6 +376,7 @@ export async function applySnapshot(
         t.original_currency ?? 'VND',
         t.original_amount_minor ?? t.amount,
         t.booking_rate ?? null,
+        t.affects_wallet_balance ?? 1,
         t.created_at,
         t.updated_at,
       ],

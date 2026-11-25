@@ -58,6 +58,23 @@ export const MIGRATIONS: Migration[] = [
       updated_at TEXT NOT NULL
     );`,
   },
+  {
+    version: 7,
+    description: 'Allow debt and repayment transactions to optionally skip wallet balance adjustment',
+    sql: `ALTER TABLE transactions ADD COLUMN affects_wallet_balance INTEGER NOT NULL DEFAULT 1 CHECK(affects_wallet_balance IN (0, 1));
+DROP VIEW IF EXISTS v_wallet_balance;
+CREATE VIEW v_wallet_balance AS
+SELECT w.id AS wallet_id,
+       w.initial_balance + COALESCE(SUM(CASE
+         WHEN COALESCE(t.affects_wallet_balance, 1) = 0 THEN 0
+         WHEN t.wallet_id = w.id AND t.kind IN ('income','debt_borrow','debt_repay_received') THEN t.amount
+         WHEN t.wallet_id = w.id AND t.kind IN ('expense','debt_lend','debt_repay_paid','transfer') THEN -t.amount
+         WHEN t.to_wallet_id = w.id AND t.kind = 'transfer' THEN t.amount
+         ELSE 0 END), 0) AS balance
+FROM wallets w
+LEFT JOIN transactions t ON t.wallet_id = w.id OR t.to_wallet_id = w.id
+GROUP BY w.id;`,
+  },
 ];
 
 export async function checkIntegrity(db: Queries) {

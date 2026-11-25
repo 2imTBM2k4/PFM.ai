@@ -18,6 +18,7 @@ import {
   DesignSpacing,
   useDesignTheme,
 } from '@/constants/theme';
+import { useResponsiveLayout } from '@/constants/responsive-layout';
 
 export interface GlassCardProps extends PropsWithChildren {
   variant?: 'default' | 'elevated' | 'subtle' | 'accent';
@@ -36,12 +37,15 @@ export function GlassCard({
   children,
   variant = 'default',
   radius = 'lg',
-  padding = DesignSpacing.lg,
+  padding,
   style,
   onPress,
   accessibilityLabel,
 }: GlassCardProps) {
   const theme = useDesignTheme();
+  const { isCompactPhone } = useResponsiveLayout();
+  const resolvedPadding =
+    padding ?? (isCompactPhone ? 14 : DesignSpacing.lg);
   const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
 
@@ -68,8 +72,8 @@ export function GlassCard({
     {
       backgroundColor,
       borderColor,
-      borderRadius,
-      padding,
+      borderRadius: isCompactPhone && radius === 'xl' ? DesignRadius.lg : borderRadius,
+      padding: resolvedPadding,
     },
     style,
   ];

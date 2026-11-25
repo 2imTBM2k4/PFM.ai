@@ -276,4 +276,80 @@ describe('Google Auth & Backup State Persistence (B3)', () => {
       reason: 'not_configured',
     });
   });
+
+  it('requests drive.file via addScopes when initial signIn returns only basic scopes', async () => {
+    const addScopes = vi.fn(async () => ({
+      type: 'success',
+      data: {
+        user: { email: 'user@example.com' },
+        scopes: ['email', 'profile', GOOGLE_DRIVE_FILE_SCOPE],
+      },
+    }));
+    const driver: NativeGoogleSignInDriver = {
+      configure: vi.fn(),
+      hasPlayServices: vi.fn(async () => true),
+      signIn: vi.fn(async () => ({
+        type: 'success',
+        data: {
+          user: { email: 'user@example.com' },
+          scopes: ['email', 'profile'],
+        },
+      })),
+      addScopes,
+      getTokens: vi.fn(async () => ({ accessToken: 'tok-with-drive' })),
+      signOut: vi.fn(async () => null),
+    };
+
+    const auth = createGoogleAuthService({
+      isExpoGo: () => false,
+      getWebClientId: () => undefined,
+      getIosClientId: () => 'ios-client',
+      loadDriver: () => driver,
+    });
+
+    const res = await auth.signIn();
+    expect(addScopes).toHaveBeenCalledWith({
+      scopes: [GOOGLE_DRIVE_FILE_SCOPE],
+    });
+    expect(res).toEqual({
+      ok: true,
+      email: 'user@example.com',
+      accessToken: 'tok-with-drive',
+    });
+  });
+
+  it('returns needs_reauth if user denies drive.file scope in addScopes', async () => {
+    const driver: NativeGoogleSignInDriver = {
+      configure: vi.fn(),
+      hasPlayServices: vi.fn(async () => true),
+      signIn: vi.fn(async () => ({
+        type: 'success',
+        data: {
+          user: { email: 'user@example.com' },
+          scopes: ['email'],
+        },
+      })),
+      addScopes: vi.fn(async () => ({
+        type: 'success',
+        data: {
+          user: { email: 'user@example.com' },
+          scopes: ['email'],
+        },
+      })),
+      getTokens: vi.fn(async () => ({ accessToken: 'tok-no-drive' })),
+      signOut: vi.fn(async () => null),
+    };
+
+    const auth = createGoogleAuthService({
+      isExpoGo: () => false,
+      getWebClientId: () => undefined,
+      getIosClientId: () => 'ios-client',
+      loadDriver: () => driver,
+    });
+
+    expect(await auth.signIn()).toEqual({
+      ok: false,
+      reason: 'needs_reauth',
+    });
+  });
 });

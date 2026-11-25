@@ -49,6 +49,7 @@ import {
 import {
   AppleMenuPicker,
   DateField,
+  TimeField,
   GlassCard,
   MoneyInput,
   Pill,
@@ -105,6 +106,7 @@ import { formatDisplayDate } from '@/utils/display';
 import {
   formatAmountInput,
   parseAmountInput,
+  extractVietnamTime,
   manualOccurredAt,
   isFutureDate,
 } from './form';
@@ -314,7 +316,7 @@ export function TransactionManager({
         recurringVersion: s.recurringVersion + 1,
       }));
       setMode({ type: 'list' });
-      setNotice(vi.transactionSaved);
+
       void useApp.getState().refreshRecurring(true);
     } catch (failure) {
       if (committed) {
@@ -574,7 +576,7 @@ export function TransactionManager({
         onBack={leaveSubView}
         onNaturalSaved={async () => {
           setMode({ type: 'list' });
-          setNotice(vi.quickSaved);
+
           useApp.setState((s) => ({
             recurringVersion: s.recurringVersion + 1,
           }));
@@ -1094,7 +1096,7 @@ const TransactionItem = memo(function TransactionItem({
                 />
               </View>
               <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-                {formatDisplayDate(row.occurred_on)} ·{' '}
+                {formatDisplayDate(row.occurred_on)}, {extractVietnamTime(row.occurred_at)} ·{' '}
                 {displayWalletName(
                   wallets.find((w) => w.id === row.wallet_id)?.name,
                 )}
@@ -1180,6 +1182,7 @@ interface Fields {
   toWalletId: string;
   categoryId: string;
   date: string;
+  time: string;
   note: string;
 }
 
@@ -1245,6 +1248,7 @@ export function TransactionForm({
       row?.occurred_on ??
       initialDate ??
       today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
+    time: extractVietnamTime(row?.occurred_at),
     note: row?.note ?? '',
   }));
 
@@ -1265,18 +1269,21 @@ export function TransactionForm({
     toWalletId: watched.toWalletId ?? initialValues.toWalletId,
     categoryId: watched.categoryId ?? initialValues.categoryId,
     date: watched.date ?? initialValues.date,
+    time: watched.time ?? initialValues.time,
     note: watched.note ?? initialValues.note,
   };
   const kind = currentValues.kind;
   const walletId = currentValues.walletId;
   const date = currentValues.date;
   const disabled = busy || isSubmitting || naturalBusy;
+  const todayStr = today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
+  const isPastDate = date < todayStr;
   const relevantKeys: (keyof Fields)[] =
     kind === 'transfer'
-      ? ['kind', 'amount', 'walletId', 'toWalletId', 'date', 'note']
+      ? ['kind', 'amount', 'walletId', 'toWalletId', 'date', 'time', 'note']
       : row?.debt_id
-        ? ['amount', 'walletId', 'date', 'note']
-        : ['kind', 'amount', 'walletId', 'categoryId', 'date', 'note'];
+        ? ['amount', 'walletId', 'date', 'time', 'note']
+        : ['kind', 'amount', 'walletId', 'categoryId', 'date', 'time', 'note'];
   const dirty =
     naturalText.trim().length > 0 ||
     haveFieldsChanged(initialValues, currentValues, {
@@ -1340,6 +1347,7 @@ export function TransactionForm({
           return {
             value: w.id,
             label: `${displayWalletName(w.name, language)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+            subtitle: formatVnd(w.balance),
             icon: visual.icon,
             iconBg: visual.bg,
             iconColor: visual.fg,
@@ -1360,6 +1368,7 @@ export function TransactionForm({
           return {
             value: w.id,
             label: `${displayWalletName(w.name, language)}${w.is_archived ? ` · ${vi.transactionArchivedReference}` : ''}`,
+            subtitle: formatVnd(w.balance),
             icon: visual.icon,
             iconBg: visual.bg,
             iconColor: visual.fg,
@@ -1512,9 +1521,15 @@ export function TransactionForm({
                     : values.categoryId || null,
                 occurredOn: values.date,
                 occurredAt:
-                  row && values.date === row.occurred_on
+                  row &&
+                  values.date === row.occurred_on &&
+                  values.time === initialValues.time
                     ? row.occurred_at
-                    : manualOccurredAt(values.date, new Date()),
+                    : manualOccurredAt(
+                        values.date,
+                        new Date(),
+                        values.date < todayStr ? values.time : undefined,
+                      ),
                 note: values.note,
               }),
             ),
@@ -1870,6 +1885,20 @@ export function TransactionForm({
             />
           )}
         />
+        {isPastDate && (
+          <Controller
+            control={control}
+            name="time"
+            render={({ field }) => (
+              <TimeField
+                label={vi.transactionTime}
+                value={field.value}
+                onChange={field.onChange}
+                disabled={disabled}
+              />
+            )}
+          />
+        )}
         {future && (
           <View
             style={[

@@ -3,6 +3,8 @@ import type { Database, Queries } from './migrate';
 import type { WalletRow } from './repository';
 
 export const PINNED_WALLETS_SETTING_KEY = 'pinned_wallet_ids_v1';
+export const EXCLUDED_TOTAL_BALANCE_WALLETS_SETTING_KEY =
+  'excluded_total_balance_wallet_ids_v1';
 
 /** Prioritizes pins while preserving the existing order within both groups. */
 export function prioritizePinnedWallets<T extends { id: string }>(
@@ -52,6 +54,49 @@ export async function setWalletPinned(
       'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
       PINNED_WALLETS_SETTING_KEY,
       JSON.stringify([...ids]),
+    );
+  });
+}
+
+/** Reads wallet IDs excluded from the overview total balance while ignoring malformed settings. */
+export async function readExcludedTotalBalanceWalletIds(
+  db: Queries,
+): Promise<string[]> {
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM settings WHERE key = ?',
+    EXCLUDED_TOTAL_BALANCE_WALLETS_SETTING_KEY,
+  );
+  try {
+    const value: unknown = JSON.parse(row?.value ?? '[]');
+    return Array.isArray(value)
+      ? [
+          ...new Set(
+            value.filter(
+              (id): id is string => typeof id === 'string' && id.length > 0,
+            ),
+          ),
+        ]
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Includes or excludes an active wallet from the overview total balance. */
+export async function setWalletIncludedInTotalBalance(
+  db: Database,
+  id: string,
+  included: boolean,
+) {
+  await db.transaction(async (tx) => {
+    await requireActiveWallet(tx, id);
+    const excluded = new Set(await readExcludedTotalBalanceWalletIds(tx));
+    if (included) excluded.delete(id);
+    else excluded.add(id);
+    await tx.runAsync(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+      EXCLUDED_TOTAL_BALANCE_WALLETS_SETTING_KEY,
+      JSON.stringify([...excluded]),
     );
   });
 }

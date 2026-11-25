@@ -142,6 +142,7 @@ export interface NativeGoogleSignInDriver {
     showPlayServicesUpdateDialog?: boolean;
   }): Promise<boolean>;
   signIn(): Promise<unknown>;
+  addScopes?(options: { scopes: string[] }): Promise<unknown>;
   signInSilently?(): Promise<unknown>;
   getTokens(): Promise<{ accessToken: string; idToken?: string }>;
   clearCachedAccessToken?(accessToken: string): Promise<null | void>;
@@ -304,6 +305,23 @@ function extractEmailFromSignInResult(result: unknown): {
   return { cancelled: false, email: null };
 }
 
+function extractGrantedScopes(result: unknown): string[] | null {
+  if (!result || typeof result !== 'object') {
+    return null;
+  }
+  const obj = result as Record<string, unknown>;
+  if (obj.data && typeof obj.data === 'object') {
+    const data = obj.data as Record<string, unknown>;
+    if (Array.isArray(data.scopes)) {
+      return data.scopes.filter((s): s is string => typeof s === 'string');
+    }
+  }
+  if (Array.isArray(obj.scopes)) {
+    return obj.scopes.filter((s): s is string => typeof s === 'string');
+  }
+  return null;
+}
+
 export type GoogleSignInResult =
   | {
       ok: true;
@@ -388,6 +406,32 @@ export function createGoogleAuthService(
         }
         if (!email) {
           return { ok: false, reason: 'unknown' };
+        }
+        const grantedScopes = extractGrantedScopes(signInResponse);
+        if (
+          grantedScopes !== null &&
+          !grantedScopes.includes(GOOGLE_DRIVE_FILE_SCOPE)
+        ) {
+          if (typeof driver.addScopes !== 'function') {
+            return { ok: false, reason: 'needs_reauth' };
+          }
+          const addedRes = await driver.addScopes({
+            scopes: [GOOGLE_DRIVE_FILE_SCOPE],
+          });
+          if (
+            addedRes &&
+            typeof addedRes === 'object' &&
+            (addedRes as Record<string, unknown>).type === 'cancelled'
+          ) {
+            return { ok: false, reason: 'cancelled' };
+          }
+          const updatedScopes = extractGrantedScopes(addedRes);
+          if (
+            updatedScopes !== null &&
+            !updatedScopes.includes(GOOGLE_DRIVE_FILE_SCOPE)
+          ) {
+            return { ok: false, reason: 'needs_reauth' };
+          }
         }
         const tokens = await driver.getTokens();
         if (!tokens?.accessToken) {

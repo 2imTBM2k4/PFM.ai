@@ -170,12 +170,12 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
         const parent = next.find((r) => r.id === mode.defaultParentId);
         if (parent) {
           setMode({ type: 'subcategories', parent });
-          setSaved(true);
+
           return;
         }
       }
       setMode({ type: 'list' });
-      setSaved(true);
+
     } catch (failure) {
       if (committed) {
         setMode({ type: 'list' });

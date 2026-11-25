@@ -41,11 +41,36 @@ export function parseAmountInput(value: string, currency: 'VND' | 'USD' = 'VND')
   return amount;
 }
 
-export function manualOccurredAt(date: string, now: Date) {
+const TIME_HM_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const VN_TIME_FORMATTER = new Intl.DateTimeFormat('vi-VN', {
+  timeZone: 'Asia/Ho_Chi_Minh',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+/** Extracts HH:mm in Vietnam timezone from an ISO timestamp (or falls back to current time). */
+export function extractVietnamTime(
+  occurredAt: string | null | undefined,
+  fallbackNow: Date = new Date(),
+): string {
+  const parsed = occurredAt ? new Date(occurredAt) : fallbackNow;
+  const target = Number.isNaN(parsed.getTime()) ? fallbackNow : parsed;
+  const parts = VN_TIME_FORMATTER.formatToParts(target);
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '12';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+}
+
+export function manualOccurredAt(date: string, now: Date, time?: string) {
   validateDate(date);
-  return date === today({ now: () => now, timeZone: 'Asia/Ho_Chi_Minh' })
-    ? now.toISOString()
-    : `${date}T12:00:00+07:00`;
+  if (date === today({ now: () => now, timeZone: 'Asia/Ho_Chi_Minh' })) {
+    return now.toISOString();
+  }
+  if (time && TIME_HM_PATTERN.test(time)) {
+    return `${date}T${time}:00+07:00`;
+  }
+  return `${date}T12:00:00+07:00`;
 }
 
 export function isFutureDate(date: string, now: Date) {

@@ -204,7 +204,7 @@ export function BudgetManager({
         });
         if (request === loadRequest.current) setRows(next);
         setMode({ type: 'list' });
-        setNotice(vi.budgetSaved);
+
         useApp.setState((s) => ({ recurringVersion: s.recurringVersion + 1 }));
         void checkBudgetAlerts();
       } catch {

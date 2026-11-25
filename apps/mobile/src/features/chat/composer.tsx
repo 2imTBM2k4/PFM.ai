@@ -337,7 +337,7 @@ export function ChatComposer({
           setReceipt(focused.current ? saved : null);
           setSession(null);
           clearInput();
-          setNotice(vi.quickSaved);
+
           if (saved.chatMessage)
             onMessage(saved.chatMessage, session.chatSessionId);
           logAppEvent('debug', {
@@ -419,7 +419,7 @@ export function ChatComposer({
           if (receipt.chatMessage)
             onMessageRemoved(receipt.chatMessage.id, chatSessionId);
           setReceipt(null);
-          setNotice(vi.quickUndone);
+
         },
         load,
       );
