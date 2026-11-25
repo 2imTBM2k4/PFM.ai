@@ -215,37 +215,61 @@ it.each([
     '10000000',
   ],
 ] as const)(
-  'keeps %s on SQLite with one read and no model call in each mode',
+  'routes %s to the AI Coach endpoint when the agent flag is on while keeping legacy SQLite reply when off',
   async (_kind, prompt, history, amount) => {
-    const fetchMock = vi.fn<typeof fetch>();
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      new Response(
+        `event: delta\ndata: {"seq":1,"text":"Chi tiêu: ${amount}","verification":"segment_passed"}\n\nevent: done\ndata: {"incomplete":false,"verification":"passed"}\n\n`,
+        { headers: { 'content-type': 'text/event-stream' } },
+      ),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const remote = new RemoteAIService({ baseUrl: 'https://proxy.invalid' });
     const send = vi
       .spyOn(defaultAIService, 'sendMessage')
       .mockImplementation(remote.sendMessage.bind(remote));
-    for (const enabled of [false, true]) {
-      const read = vi.spyOn(db, 'getFirstAsync');
-      flags.useAgentLoop = enabled;
-      const result = await runAdvice({
-        prompt,
-        userMessageId: 'current',
-        history: [...history],
-        context: {
-          balance: 0,
-          monthlyIncome: 0,
-          monthlyExpense: 0,
-          monthlyNet: 0,
-          topCategories: [],
-          budgetsCount: 0,
-          goalsCount: 0,
-        },
-      });
-      expect(result.replyText).toContain(amount);
-      expect(read).toHaveBeenCalledOnce();
-      read.mockRestore();
-    }
+
+    flags.useAgentLoop = false;
+    const legacyResult = await runAdvice({
+      prompt,
+      userMessageId: 'current',
+      history: [...history],
+      context: {
+        balance: 0,
+        monthlyIncome: 0,
+        monthlyExpense: 0,
+        monthlyNet: 0,
+        topCategories: [],
+        budgetsCount: 0,
+        goalsCount: 0,
+      },
+    });
+    expect(legacyResult.replyText).toContain(amount);
     expect(send).toHaveBeenCalledOnce();
     expect(fetchMock).not.toHaveBeenCalled();
+
+    flags.useAgentLoop = true;
+    const agentResult = await runAdvice({
+      prompt,
+      userMessageId: 'current',
+      history: [...history],
+      baseUrl: 'https://proxy.invalid',
+      fetchFn: fetchMock,
+      context: {
+        balance: 0,
+        monthlyIncome: 0,
+        monthlyExpense: 18_000_000,
+        monthlyNet: -18_000_000,
+        topCategories: [{ name: 'Ăn uống', amount: 3_500_000 }],
+        budgetsCount: 1,
+        goalsCount: 0,
+      },
+    });
+    expect(agentResult.replyText).toContain(amount);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://proxy.invalid/v1/advice/coach',
+    );
   },
 );
 

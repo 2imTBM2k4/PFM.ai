@@ -957,8 +957,9 @@ export async function classifyLocally(input: {
   userMessageId: string;
   history?: AdviceHistoryItem[];
   createdAt?: string;
+  skipFactual?: boolean;
 }): Promise<LocalAdviceRoute> {
-  const { prompt, userMessageId, history = [] } = input;
+  const { prompt, userMessageId, history = [], skipFactual = false } = input;
   const createdAt = input.createdAt ?? new Date().toISOString();
   const id = `ai-${userMessageId}`;
   const strings = pickStrings(usePreferences.getState().language);
@@ -990,13 +991,15 @@ export async function classifyLocally(input: {
     return reply(strings.aiReplyOutOfScope);
   if (scopeDecision.status === 'restricted')
     return reply(strings.aiReplyRestricted);
-  // Factual questions must be resolved before the ambiguous fallback, as in the legacy service.
-  const factualReply = await tryFactualAdvice({
-    prompt,
-    history,
-    userMessageId,
-  });
-  if (factualReply) return { requiresTool: false, localReply: factualReply };
+  if (!skipFactual) {
+    // Factual questions must be resolved before the ambiguous fallback, as in the legacy service.
+    const factualReply = await tryFactualAdvice({
+      prompt,
+      history,
+      userMessageId,
+    });
+    if (factualReply) return { requiresTool: false, localReply: factualReply };
+  }
   return { requiresTool: scopeDecision.status !== 'ambiguous' };
 }
 

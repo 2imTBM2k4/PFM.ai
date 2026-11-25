@@ -263,3 +263,47 @@ it('retains partial coaching text when aborted mid-stream', async () => {
     verification: 'incomplete',
   });
 });
+
+it.each([
+  'Lập kế hoạch ngân sách 50/30/20 cho tháng này',
+  'Kiểm tra tiến độ mục tiêu tiết kiệm của tôi',
+  'Phân tích tỷ trọng chi tiêu theo danh mục',
+  'Tháng này tôi chi bao nhiêu?',
+  'Ngân sách tháng này của tôi thế nào?',
+])(
+  'routes suggestion chips and natural financial questions to /v1/advice/coach instead of legacy local templates: %s',
+  async (prompt) => {
+    const requests: { url: string; body: Record<string, unknown> }[] = [];
+    const fetchFn = vi.fn<typeof fetch>(async (url, init) => {
+      requests.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return new Response(
+        'event: delta\ndata: {"seq":1,"text":"Phân tích từ AI Agent Coach.","verification":"segment_passed"}\n\nevent: done\ndata: {"incomplete":false,"verification":"passed"}\n\n',
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    });
+    const reply = await send(`chip-${++counter}`, prompt, fetchFn, {
+      context: {
+        balance: 12_000_000,
+        monthlyIncome: 15_000_000,
+        monthlyExpense: 5_000_000,
+        monthlyNet: 10_000_000,
+        topCategories: [{ name: 'Ăn uống', amount: 3_000_000 }],
+        budgetsCount: 2,
+        goalsCount: 1,
+      },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe('https://example.test/v1/advice/coach');
+    expect(requests[0].body.snapshot).toMatchObject({
+      topCategories: [{ name: 'Ăn uống', amount: 3_000_000 }],
+      budgetsCount: 2,
+      goalsCount: 1,
+    });
+    expect(reply).toMatchObject({
+      incomplete: false,
+      verification: 'passed',
+    });
+    expect(reply.replyText).toContain('Phân tích từ AI Agent Coach.');
+    expect(reply.chartItems).toBeUndefined();
+  },
+);

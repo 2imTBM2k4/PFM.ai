@@ -42,6 +42,19 @@ const CoachRequestSchema = z
         monthsWithData: z.number().int().min(0).max(120).nullable().optional(),
         currentMonthIncome: finiteMoney.optional(),
         currentMonthExpense: finiteMoney.optional(),
+        topCategories: z
+          .array(
+            z
+              .object({
+                name: z.string().trim().min(1).max(80),
+                amount: finiteMoney,
+              })
+              .strict(),
+          )
+          .max(10)
+          .optional(),
+        budgetsCount: z.number().int().min(0).max(500).optional(),
+        goalsCount: z.number().int().min(0).max(500).optional(),
         currency: z.enum(['VND', 'USD']),
         period: z
           .object({

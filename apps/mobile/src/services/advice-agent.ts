@@ -102,12 +102,64 @@ function isDataRefusal(prompt: string): boolean {
   );
 }
 
+function isExplicitToolReadWithMissingParams(
+  prompt: string,
+  decisionFields?: readonly string[],
+): boolean {
+  if (!decisionFields?.length) return false;
+  const text = foldText(prompt);
+  if (
+    decisionFields.includes('snapshotMonths') &&
+    /\btrung binh\b/.test(text)
+  ) {
+    return true;
+  }
+  if (
+    (decisionFields.includes('category_id') ||
+      decisionFields.includes('observationRange') ||
+      decisionFields.includes('transactionLimit') ||
+      decisionFields.includes('transactionKind')) &&
+    /\b(?:liet ke|danh sach|(?:xem\s+)?\d+\s+(?:giao dich|khoan chi|khoan thu))\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (
+    decisionFields.includes('budget_id') &&
+    /\bngan sach\s+.+?\bthang\s+\d{1,2}\/\d{4}\b/.test(text)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const COACH_DIRECT_CLARIFICATION_FIELDS = new Set([
+  'toolIntent',
+  'budgetMonth',
+  'budget_id',
+  'snapshotMonths',
+  'category_id',
+  'observationRange',
+  'transactionLimit',
+  'transactionKind',
+]);
+
 function canUseCoachTurn(
   prompt: string,
   scope: ReturnType<typeof classifyAdviceScope>,
   history?: AdviceHistoryItem[],
+  decisionFields?: readonly string[],
 ): boolean {
   if (isDataRefusal(prompt)) return false;
+  if (isExplicitToolReadWithMissingParams(prompt, decisionFields)) return false;
+  if (
+    decisionFields &&
+    (!decisionFields.length ||
+      decisionFields.some((field) => !COACH_DIRECT_CLARIFICATION_FIELDS.has(field)))
+  ) {
+    return false;
+  }
   if (scope.status === 'allowed') return true;
   if (
     scope.status === 'ambiguous' &&
@@ -130,6 +182,22 @@ async function readCoachSnapshot(params: {
   context: AIServiceContext;
   now: () => number;
 }) {
+  const topCategories = (params.context.topCategories ?? [])
+    .filter((item) => item.name && Number.isFinite(item.amount) && item.amount > 0)
+    .slice(0, 6)
+    .map((item) => ({
+      name: item.name.slice(0, 80),
+      amount: Math.trunc(item.amount),
+    }));
+  const extraSnapshot = {
+    ...(topCategories.length ? { topCategories } : {}),
+    ...(typeof params.context.budgetsCount === 'number'
+      ? { budgetsCount: params.context.budgetsCount }
+      : {}),
+    ...(typeof params.context.goalsCount === 'number'
+      ? { goalsCount: params.context.goalsCount }
+      : {}),
+  };
   try {
     const result = await executeTool(
       'get_financial_snapshot',
@@ -165,6 +233,7 @@ async function readCoachSnapshot(params: {
         currentMonthExpense: params.context.monthlyExpense,
         period: data.period,
         currency: data.currency,
+        ...extraSnapshot,
       };
     }
   } catch {
@@ -175,6 +244,7 @@ async function readCoachSnapshot(params: {
     currentMonthIncome: params.context.monthlyIncome,
     currentMonthExpense: params.context.monthlyExpense,
     currency: params.currency,
+    ...extraSnapshot,
   };
 }
 
@@ -317,7 +387,7 @@ export async function runAdviceTurn(
   if (scope.status === 'out_of_scope') return reply(strings.aiReplyOutOfScope);
   if (scope.status === 'restricted') return reply(strings.aiReplyRestricted);
   if (!(updated && state?.activeScenario.topic === 'savings_plan')) {
-    const route = await classifyLocally(input);
+    const route = await classifyLocally({ ...input, skipFactual: true });
     if (route.localReply) return route.localReply;
   }
   const clarify = async (fields: string[]) => {
@@ -339,11 +409,38 @@ export async function runAdviceTurn(
     question = language === 'vi' ? 'Tính kế hoạch tiết kiệm giúp tôi' : 'Calculate my savings plan';
     decision = policyFor(question);
   }
+  if (decision.status === 'allowed') {
+    const onlySavingsGoal =
+      decision.policy.grants.length === 1 &&
+      decision.policy.grants[0].name === 'plan_savings_goal';
+    const text = foldText(input.prompt);
+    const isGeneralGoalProgressCheck =
+      onlySavingsGoal &&
+      (!state || state.activeScenario.topic !== 'savings_plan') &&
+      /\b(?:kiem tra|xem)\s+tien do\s+muc tieu\b|\bmuc tieu\s+cua\s+toi\s+the nao\b/.test(
+        text,
+      ) &&
+      !/\b(?:tinh|moi thang|hang thang|bao nhieu)\b/.test(text);
+    if (
+      isGeneralGoalProgressCheck &&
+      canUseCoachTurn(input.prompt, scope, input.history)
+    ) {
+      return runCoachTurn({
+        input,
+        sessionId,
+        stateRevision: state?.revision ?? 0,
+        language,
+        currency,
+        strings,
+        now,
+        generateId,
+        reply,
+      });
+    }
+  }
   if (decision.status === 'needs_clarification') {
     if (
-      decision.fields.length === 1 &&
-      decision.fields[0] === 'toolIntent' &&
-      canUseCoachTurn(input.prompt, scope, input.history)
+      canUseCoachTurn(input.prompt, scope, input.history, decision.fields)
     ) {
       return runCoachTurn({
         input,
