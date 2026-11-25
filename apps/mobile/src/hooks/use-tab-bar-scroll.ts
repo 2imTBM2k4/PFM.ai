@@ -7,6 +7,7 @@ export interface UseTabBarScrollOptions {
   threshold?: number;
   topClearance?: number;
   showAtBottom?: boolean;
+  showOnlyAtTop?: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export function createTabBarScrollHandler(
     threshold = 10,
     topClearance = 24,
     showAtBottom = true,
+    showOnlyAtTop = false,
   } = options;
 
   return (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -72,7 +74,7 @@ export function createTabBarScrollHandler(
       // Scrolling down past top clearance -> hide navbar
       setTabBarVisible(false);
       scrollDistance = 0;
-    } else if (scrollDistance < -threshold) {
+    } else if (!showOnlyAtTop && scrollDistance < -threshold) {
       // Scrolling up -> show navbar
       setTabBarVisible(true);
       scrollDistance = 0;

@@ -10,8 +10,10 @@ const units: Record<string, { multiplier: bigint; confidence: Confidence }> = {
   trieu: { multiplier: 1000000n, confidence: 'high' },
   m: { multiplier: 1000000n, confidence: 'medium' },
   cu: { multiplier: 1000000n, confidence: 'medium' },
+  chai: { multiplier: 1000000n, confidence: 'medium' },
   ty: { multiplier: 1000000000n, confidence: 'high' },
   ti: { multiplier: 1000000000n, confidence: 'high' },
+  // Monetary slang: one "lít" means VND 100,000; this is not a volume-to-price conversion.
   lit: { multiplier: 100000n, confidence: 'low' },
   d: { multiplier: 1n, confidence: 'medium' },
   vnd: { multiplier: 1n, confidence: 'medium' },
@@ -29,13 +31,18 @@ export interface AmountMatch {
 }
 
 // Parse complete numeric tokens; invalid separators must never yield a partial amount.
-export function extractAmounts(text: string, defaultCurrency: 'VND' | 'USD' = 'VND'): AmountMatch[] {
+export function extractAmounts(
+  text: string,
+  defaultCurrency: 'VND' | 'USD' = 'VND',
+): AmountMatch[] {
   const view = matchingText(text);
   const results: AmountMatch[] = [];
-  for (const match of view.folded.matchAll(/\d+(?:[.,]+\d+)*/g)) {
+  let consumedThrough = 0;
+  for (const match of view.folded.matchAll(/\bzero\b|\d+(?:[.,]+\d+)*/g)) {
     const start = match.index;
-    const literal = match[0];
-    const afterNumber = start + literal.length;
+    if (start < consumedThrough) continue;
+    const literal = match[0] === 'zero' ? '0' : match[0];
+    const afterNumber = start + match[0].length;
     const previous = view.folded[start - 1] ?? '';
     if (
       /[a-z0-9.,/\-]/.test(previous) ||
@@ -44,6 +51,7 @@ export function extractAmounts(text: string, defaultCurrency: 'VND' | 'USD' = 'V
       continue;
     const suffix = view.folded.slice(afterNumber);
     const unitMatch =
+      /^ ?(chai)(?: ?(\d+))?(?: (ruoi))?(?![a-z0-9])/.exec(suffix) ??
       /^ ?(trieu|nghin|ngan|dong|dollars|dollar|usd|vnd|lit|tr|ty|ti|cu|k|m|d|₫)(\d+)?(?: (ruoi))?(?![a-z0-9])/.exec(
         suffix,
       );
@@ -51,20 +59,38 @@ export function extractAmounts(text: string, defaultCurrency: 'VND' | 'USD' = 'V
       unitMatch && !(unitMatch[1] === 'm' && unitMatch[0].startsWith(' '))
         ? unitMatch
         : null;
+    // Unsupported monetary slang must not fall back to an assumed thousand.
+    if (!validUnit && /^ ?(?:xi|l)(?![a-z0-9])/.test(suffix)) continue;
+    // Bottle counts before beverage names are quantities, not monetary slang.
+    if (
+      validUnit?.[1] === 'chai' &&
+      /^ (?:nuoc|bia|ruou|sua)(?![a-z])/.test(suffix.slice(validUnit[0].length))
+    )
+      continue;
     const dollarPrefix = /\$\s*$/.exec(view.folded.slice(0, start));
     const usdUnit = validUnit && /^(usd|dollar|dollars)$/.test(validUnit[1]);
-    const isUsd = Boolean(dollarPrefix || usdUnit || (!validUnit && defaultCurrency === 'USD'));
+    const isUsd = Boolean(
+      dollarPrefix || usdUnit || (!validUnit && defaultCurrency === 'USD'),
+    );
     if (!validUnit && /^[a-z0-9/]/.test(suffix)) continue;
     const unit = validUnit ? units[validUnit[1]] : null;
     if (isUsd) {
       const normalized = literal.replace(/,/g, '');
       const valid = /^(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{1,2})?$/.test(literal);
       const [whole, fraction = ''] = normalized.split('.');
-      const cents = valid ? BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0') || '0') : 0n;
-      const span = view.span(start - (dollarPrefix?.[0].length ?? 0), afterNumber + (validUnit?.[0].length ?? 0));
+      const cents = valid
+        ? BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0') || '0')
+        : 0n;
+      const roundsToZero = !valid && /^0\.00[0-4]\d*$/.test(literal);
+      const span = view.span(
+        start - (dollarPrefix?.[0].length ?? 0),
+        afterNumber + (validUnit?.[0].length ?? 0),
+      );
+      consumedThrough = afterNumber + (validUnit?.[0].length ?? 0);
       results.push({
         amount: {
-          value: valid && cents > 0n && cents <= BigInt(MAX_AMOUNT_VND) ? Number(cents) : null,
+          value:
+            valid && cents <= BigInt(MAX_AMOUNT_VND) ? Number(cents) : null,
           currency: 'USD',
           confidence: valid ? 'high' : 'low',
           matchedText: text.slice(span.start, span.end),
@@ -72,14 +98,24 @@ export function extractAmounts(text: string, defaultCurrency: 'VND' | 'USD' = 'V
         span,
         marked: Boolean(dollarPrefix || usdUnit),
         quantity: false,
-        warnings: !valid ? ['NON_INTEGER_VND'] : cents === 0n ? ['ZERO_AMOUNT'] : cents > BigInt(MAX_AMOUNT_VND) ? ['AMOUNT_TOO_LARGE'] : [],
+        warnings: !valid
+          ? roundsToZero
+            ? ['NON_INTEGER_VND', 'ZERO_AMOUNT']
+            : ['NON_INTEGER_VND']
+          : cents === 0n
+            ? ['ZERO_AMOUNT']
+            : cents > BigInt(MAX_AMOUNT_VND)
+              ? ['AMOUNT_TOO_LARGE']
+              : [],
         rule: 'amount.usd',
       });
       continue;
     }
-    const grouped = /^\d{1,3}(?:[.,]\d{3})+$/.test(literal);
     const plain = /^\d+$/.test(literal);
-    const decimal = /^(\d+)[.,](\d{1,2})$/.exec(literal);
+    const decimal =
+      /^(\d+)[.,](\d{1,2})$/.exec(literal) ??
+      (unit && unit.multiplier > 1n ? /^(0)[.,](\d{3})$/.exec(literal) : null);
+    const grouped = !decimal && /^\d{1,3}(?:[.,]\d{3})+$/.test(literal);
     let confidence: Confidence = unit?.confidence ?? 'medium';
     const warnings: ParseWarning[] = [];
     let value: number | null = null;
@@ -130,15 +166,23 @@ export function extractAmounts(text: string, defaultCurrency: 'VND' | 'USD' = 'V
       }
       if (numerator > BigInt(MAX_AMOUNT_VND) * denominator)
         warnings.push('AMOUNT_TOO_LARGE');
-      else if (rounded === 0n) warnings.push('ZERO_AMOUNT');
-      else value = Number(rounded);
+      else if (rounded === 0n) {
+        warnings.push('ZERO_AMOUNT');
+        if (numerator === 0n) {
+          value = 0;
+          confidence = 'high';
+        }
+      } else value = Number(rounded);
     }
     const end = afterNumber + (validUnit?.[0].length ?? 0);
+    consumedThrough = end;
     const span = view.span(start, end);
     results.push({
       amount: {
         value,
-        ...(validUnit && defaultCurrency === 'USD' ? { currency: 'VND' as const } : {}),
+        ...(validUnit && defaultCurrency === 'USD'
+          ? { currency: 'VND' as const }
+          : {}),
         confidence,
         matchedText: text.slice(span.start, span.end),
       },

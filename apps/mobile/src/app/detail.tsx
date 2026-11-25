@@ -2,6 +2,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { NativeRouteGuard } from '@/components/native-route-guard';
 import { WalletManager } from '@/features/wallets/wallet-manager';
 import { GoalManager } from '@/features/goals/goal-manager';
+import { BudgetManager } from '@/features/budgets/budget-manager';
+import { CashFlowTrendView } from '@/features/stats/cash-flow-trend-view';
+import { StatsCalendarView } from '@/features/stats/stats-calendar-view';
 import { RecurringManager } from '@/features/recurring/recurring-manager';
 import { DebtManager } from '@/features/debts/debt-manager';
 import { CategoryManager } from '@/features/categories/category-manager';
@@ -53,14 +56,24 @@ function DetailTabBar({ routeKey }: { routeKey: string }) {
 
 /** Reuses existing managers while letting the native stack own drill-down navigation. */
 export default function Detail() {
-  const { screen } = useLocalSearchParams<{ screen: string }>();
+  const { screen, from } = useLocalSearchParams<{
+    screen: string;
+    from?: string;
+  }>();
   const router = useRouter();
   const onClose = () => router.back();
+  const goalRouteKey = from === 'budgets' ? 'budgets' : 'index';
   const content =
     screen === 'wallets' ? (
       <WalletManager onClose={onClose} />
     ) : screen === 'goals' ? (
-      <GoalManager guardRouteKey="index" onClose={onClose} />
+      <GoalManager guardRouteKey={goalRouteKey} onClose={onClose} />
+    ) : screen === 'budgets' ? (
+      <BudgetManager onClose={onClose} />
+    ) : screen === 'stats-trend' ? (
+      <CashFlowTrendView onClose={onClose} />
+    ) : screen === 'stats-calendar' ? (
+      <StatsCalendarView onClose={onClose} />
     ) : screen === 'recurring' ? (
       <RecurringManager onClose={onClose} />
     ) : screen === 'debts' ? (
@@ -79,11 +92,16 @@ export default function Detail() {
       <NotificationsView onClose={onClose} />
     );
   const routeKey =
-    screen === 'wallets' || screen === 'goals' || screen === 'alerts'
-      ? 'index'
-      : screen === 'recurring' || screen === 'debts'
-        ? 'transactions'
-        : 'settings';
+    screen === 'stats-trend' ||
+    screen === 'stats-calendar' ||
+    screen === 'budgets' ||
+    (screen === 'goals' && from === 'budgets')
+      ? 'budgets'
+      : screen === 'wallets' || screen === 'goals' || screen === 'alerts'
+        ? 'index'
+        : screen === 'recurring' || screen === 'debts'
+          ? 'transactions'
+          : 'settings';
   return (
     <View style={{ flex: 1 }}>
       <NativeRouteGuard routeKey={routeKey} />

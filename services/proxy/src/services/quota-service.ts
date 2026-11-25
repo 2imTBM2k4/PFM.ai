@@ -1,4 +1,5 @@
 import { config } from '../config';
+import { aiContext } from '../middleware/logging';
 
 export interface QuotaStatus {
   allowed: boolean;
@@ -35,7 +36,10 @@ export class QuotaService {
     return `${dateStr}T00:00:00+07:00`;
   }
 
-  checkQuota(deviceId: string): QuotaStatus {
+  checkQuota(
+    deviceId: string,
+    mode: 'guest' | 'authenticated' = 'guest',
+  ): QuotaStatus {
     if (config.unlimitedAiTesting)
       return {
         allowed: true,
@@ -44,7 +48,7 @@ export class QuotaService {
         resetAt: this.getNextResetIso(),
       };
     const dateKey = this.getVietnamDateKey();
-    const key = `${deviceId}:${dateKey}`;
+    const key = JSON.stringify([mode, deviceId, dateKey]);
     const used = this.counters.get(key) ?? 0;
     const remaining = Math.max(0, config.dailyLimitPerDevice - used);
 
@@ -56,20 +60,67 @@ export class QuotaService {
     };
   }
 
-  consumeQuota(deviceId: string): void {
+  consumeQuota(
+    deviceId: string,
+    mode: 'guest' | 'authenticated' = 'guest',
+  ): void {
+    if (aiContext.getStore()?.consumeReservedQuota?.()) return;
     if (config.unlimitedAiTesting) return;
     const dateKey = this.getVietnamDateKey();
-    const key = `${deviceId}:${dateKey}`;
+    const key = JSON.stringify([mode, deviceId, dateKey]);
     const used = this.counters.get(key) ?? 0;
     this.counters.set(key, used + 1);
   }
 
-  consumeQuestionOnce(deviceId: string, requestId: string): void {
+  /** Reserve before calling a model; settle once against the original day's counter. */
+  reserveQuota(
+    deviceId: string,
+    mode: 'guest' | 'authenticated' = 'guest',
+    requestId?: string,
+  ): { allowed: false } | { allowed: true; finish(success: boolean): void } {
+    const day = this.getVietnamDateKey();
+    const completedKey = requestId
+      ? JSON.stringify([mode, deviceId, day, requestId])
+      : null;
+    if (
+      config.unlimitedAiTesting ||
+      (completedKey && this.completed.has(completedKey))
+    )
+      return { allowed: true, finish() {} };
+    const key = JSON.stringify([mode, deviceId, day]);
+    const used = this.counters.get(key) ?? 0;
+    if (used >= config.dailyLimitPerDevice) return { allowed: false };
+    this.counters.set(key, used + 1);
+    let settled = false;
+    return {
+      allowed: true,
+      finish: (success) => {
+        if (settled) return;
+        settled = true;
+        if (!success)
+          this.counters.set(
+            key,
+            Math.max(0, (this.counters.get(key) ?? 0) - 1),
+          );
+      },
+    };
+  }
+
+  consumeQuestionOnce(
+    deviceId: string,
+    requestId: string,
+    mode: 'guest' | 'authenticated' = 'guest',
+  ): void {
     if (config.unlimitedAiTesting) return;
-    const key = `${deviceId}:${this.getVietnamDateKey()}:${requestId}`;
+    const key = JSON.stringify([
+      mode,
+      deviceId,
+      this.getVietnamDateKey(),
+      requestId,
+    ]);
     if (this.completed.has(key)) return;
     this.completed.add(key);
-    this.consumeQuota(deviceId);
+    this.consumeQuota(deviceId, mode);
   }
 
   resetForTesting(): void {

@@ -21,7 +21,15 @@ export function parseEntry(
 ): ParseResult {
   const text = normalizeText(input);
   const date = extractDate(text, ctx.clock);
-  const amounts = extractAmounts(withoutSpans(text, date.excluded, true), ctx.currency);
+  // extractAmounts preserves explicit zero for advice; transaction entry rejects zero by converting it back to null.
+  const amounts = extractAmounts(
+    withoutSpans(text, date.excluded, true),
+    ctx.currency,
+  ).map((match) =>
+    match.amount.value === 0
+      ? { ...match, amount: { ...match.amount, value: null } }
+      : match,
+  );
   const warnings: ParseWarning[] = [
     ...date.warnings,
     ...amounts.flatMap((match) => match.warnings),

@@ -67,6 +67,25 @@ it('handles openChatWithReceipt and consumes receipt asset exactly once', () => 
   expect(usePreferences.getState().consumeReceiptAsset()).toBeNull();
 });
 
+it('stores and consumes a preselected calendar transaction date once', () => {
+  usePreferences.getState().openAddTransaction('manual', '2026-10-04');
+  expect(usePreferences.getState().isAddTransactionOpen).toBe(true);
+  expect(usePreferences.getState().consumeTransactionDate()).toBe('2026-10-04');
+  expect(usePreferences.getState().consumeTransactionDate()).toBeNull();
+});
+
+it('stores and consumes a chat analysis prompt once without setting receipt prompt action', () => {
+  usePreferences
+    .getState()
+    .openChatWithPrompt('Phân tích chi tiêu tháng 10/2026');
+  expect(usePreferences.getState().isChatOpen).toBe(true);
+  expect(usePreferences.getState().pendingChatAction).toBeNull();
+  expect(usePreferences.getState().consumeChatPrompt()).toBe(
+    'Phân tích chi tiêu tháng 10/2026',
+  );
+  expect(usePreferences.getState().consumeChatPrompt()).toBeNull();
+});
+
 it('switches catalog language and persists the selection', async () => {
   await usePreferences.getState().setLanguage('en');
   expect(messages.overview).toBe('Overview');

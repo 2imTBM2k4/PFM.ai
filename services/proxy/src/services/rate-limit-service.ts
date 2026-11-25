@@ -29,13 +29,6 @@ export class RateLimitService {
   }
 
   checkRateLimit(ip: string): RateLimitStatus {
-    if (config.unlimitedAiTesting)
-      return {
-        allowed: true,
-        remaining: Number.MAX_SAFE_INTEGER,
-        limit: Number.MAX_SAFE_INTEGER,
-        resetInMs: 0,
-      };
     const currentTime = this.now();
     const record = this.records.get(ip);
 
@@ -63,7 +56,6 @@ export class RateLimitService {
   }
 
   consumeRateLimit(ip: string): void {
-    if (config.unlimitedAiTesting) return;
     const currentTime = this.now();
     const record = this.records.get(ip);
 

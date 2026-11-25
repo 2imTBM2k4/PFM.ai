@@ -40,7 +40,8 @@ import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { getProxyBaseUrl } from '@/services/ai-service';
 import { getOrCreateDeviceId } from '@/services/device-id';
-import { logAppEvent } from '@/services/logger';
+import { logAppEvent, logLocalAIEntry } from '@/services/logger';
+import { readAIAuth } from '@/services/ai-auth';
 import { scanReceipt } from '@/services/receipt-service';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
@@ -133,6 +134,8 @@ export function ChatComposer({
   const language = usePreferences((state) => state.language);
   const pendingChatAction = usePreferences((state) => state.pendingChatAction);
   const consumeChatAction = usePreferences((state) => state.consumeChatAction);
+  const pendingChatPrompt = usePreferences((state) => state.pendingChatPrompt);
+  const consumeChatPrompt = usePreferences((state) => state.consumeChatPrompt);
   const pendingReceiptAsset = usePreferences(
     (state) => state.pendingReceiptAsset,
   );
@@ -237,6 +240,9 @@ export function ChatComposer({
       route: 'entry',
       status: 'ready',
       action: 'confirm_open',
+    });
+    void readAIAuth(chatSessionId).then(auth => logLocalAIEntry(uuid.v4(), auth.mode)).catch(() => {
+      // Optional diagnostics must not prevent opening the editable draft.
     });
     setSession({
       result: preview.parsed,
@@ -624,6 +630,21 @@ export function ChatComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consumeChatAction, context, disabled, loading, pendingChatAction]);
 
+  useEffect(() => {
+    if (!pendingChatPrompt || !mounted.current) return;
+    const frame = requestAnimationFrame(() => {
+      const prompt = consumeChatPrompt();
+      if (prompt) {
+        setText(prompt);
+        setChosenRoute('advice');
+        setPreview(null);
+        setChoosing(false);
+        setError('');
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [consumeChatPrompt, pendingChatPrompt]);
+
   const ready =
     !busy &&
     !loading &&
@@ -774,6 +795,8 @@ export function ChatComposer({
               preview.route !== 'ambiguous' && (
                 <Pressable
                   accessibilityRole="button"
+                  hitSlop={10}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
                   onPress={() => setChoosing(true)}
                 >
                   <Text

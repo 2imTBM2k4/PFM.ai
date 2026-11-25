@@ -5,6 +5,7 @@ export interface ProxyConfig {
   routerBaseUrl: string;
   routerApiKey: string;
   modelChainFree: string[];
+  agentModelAllowlist: string[];
   dailyLimitPerDevice: number;
   ipRateLimitMax: number;
   ipRateLimitWindowMs: number;
@@ -14,6 +15,7 @@ export interface ProxyConfig {
   approxToleranceBps: number;
   receiptVisionModel: string;
   unlimitedAiTesting: boolean;
+  disableChatRateLimit: boolean;
 }
 
 export const config: ProxyConfig = {
@@ -23,12 +25,22 @@ export const config: ProxyConfig = {
   routerBaseUrl: process.env.ROUTER_BASE_URL ?? 'http://127.0.0.1:20128/v1',
   routerApiKey: process.env.ROUTER_API_KEY ?? '',
   modelChainFree: (
-    process.env.MODEL_CHAIN_FREE ??
-    'gemini-2.0-flash,llama-3.3-70b-versatile'
+    process.env.MODEL_CHAIN_FREE ?? 'gemini-2.0-flash,llama-3.3-70b-versatile'
   )
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  agentModelAllowlist: [
+    ...new Set(
+      (
+        process.env.AGENT_MODEL_ALLOWLIST ??
+        `cx/gpt-5.6-sol,${process.env.MODEL_CHAIN_FREE ?? 'gemini-2.0-flash,llama-3.3-70b-versatile'}`
+      )
+        .split(',')
+        .map((model) => model.trim())
+        .filter(Boolean),
+    ),
+  ],
   dailyLimitPerDevice: parseInt(
     process.env.AI_DAILY_LIMIT_PER_DEVICE ?? '10',
     10,
@@ -46,6 +58,8 @@ export const config: ProxyConfig = {
   approxToleranceBps: parseInt(process.env.APPROX_TOLERANCE_BPS ?? '500', 10),
   receiptVisionModel: process.env.RECEIPT_VISION_MODEL ?? '',
   unlimitedAiTesting:
-    process.env.NODE_ENV !== 'production' &&
-    process.env.UNLIMITED_AI_TESTING !== 'false',
+    process.env.UNLIMITED_AI_TESTING === 'true' ||
+    (process.env.NODE_ENV !== 'production' &&
+      process.env.UNLIMITED_AI_TESTING !== 'false'),
+  disableChatRateLimit: process.env.DISABLE_CHAT_RATE_LIMIT === 'true',
 };

@@ -103,7 +103,8 @@ export function areEntryDraftsChanged(
       base.debtId !== draft.debtId ||
       base.counterpartyLabel !== draft.counterpartyLabel ||
       base.date !== draft.date ||
-      base.note !== draft.note
+      base.note !== draft.note ||
+      base.merchant !== draft.merchant
     ) {
       return true;
     }

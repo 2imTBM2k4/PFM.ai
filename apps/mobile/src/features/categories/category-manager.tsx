@@ -9,6 +9,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, Platform, FlatList, Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Button,
@@ -27,7 +28,11 @@ import {
   styles,
 } from '@/components/screen';
 import { AppleMenuPicker } from '@/components/ui';
-import { useDesignTheme, useFinancePalette } from '@/constants/theme';
+import {
+  DesignSpacing,
+  useDesignTheme,
+  useFinancePalette,
+} from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
 import {
@@ -67,6 +72,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
   const working = useRef(false);
   const { colors } = useTheme();
   const palette = useFinancePalette();
+  const insets = useSafeAreaInsets();
 
   const leaveFormMode = useCallback(() => {
     if (working.current) return;
@@ -321,7 +327,10 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
               }
             />
           )}
-          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+          contentContainerStyle={{
+            gap: 12,
+            paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
+          }}
           contentInsetAdjustmentBehavior="automatic"
           ListEmptyComponent={
             <EmptyStateCard
@@ -491,7 +500,10 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
               />
             );
           }}
-          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+          contentContainerStyle={{
+            gap: 12,
+            paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
+          }}
           contentInsetAdjustmentBehavior="automatic"
           ListEmptyComponent={
             <EmptyStateCard icon="shape-outline" message={vi.categoriesEmpty} />

@@ -481,7 +481,10 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
           }
           expect(bar.props.isInteractive).toBe(true);
           expect(bar.props.colorScheme).toBe(mode);
+          expect(style.height).toBe(48);
+          expect(flattenStyle(action).height).toBe(48);
           if (glass) {
+            expect(style.paddingVertical).toBe(2);
             for (const key of [
               'backgroundColor',
               'borderColor',
@@ -495,6 +498,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
             }
           } else {
             expect(style).toMatchObject({
+              paddingVertical: 1,
               backgroundColor: DesignColors[mode].tabBar.pillBackground,
               borderColor: DesignColors[mode].tabBar.pillBorder,
               borderWidth: 1,
@@ -519,6 +523,7 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
                     ? 'SymbolView'
                     : 'MaterialCommunityIcons'),
               )[0]!;
+              expect(icon.props.size).toBe(18);
               expect(icon.props.name).toBe(
                 platform === 'ios'
                   ? symbols[index]![active ? 1 : 0]
@@ -535,6 +540,18 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
               );
             }
           });
+          const iconOnly = collectElements(
+            TabIconButton({
+              item: APP_TAB_ITEMS[0]!,
+              active: true,
+              showLabel: false,
+              onPress: vi.fn(),
+            }),
+            (el) =>
+              el.type ===
+              (platform === 'ios' ? 'SymbolView' : 'MaterialCommunityIcons'),
+          )[0]!;
+          expect(iconOnly.props.size).toBe(22);
         });
       }
     }
@@ -595,6 +612,8 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
             (el) => el.props.accessibilityRole === 'tablist',
           )[0]!;
           expect(flattenStyle(bar).flexDirection).toBe(duo ? 'column' : 'row');
+          expect(flattenStyle(bar).height).toBe(duo ? 222 : 48);
+          expect(flattenStyle(action).height).toBe(48);
           const controls = collectElements(
             bar,
             (el) => el.type === 'Pressable',

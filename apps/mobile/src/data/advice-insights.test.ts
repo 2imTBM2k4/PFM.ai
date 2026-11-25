@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { readCashFlow, readExpenseByCategory } from './advice-insights';
+import {
+  readCashFlow,
+  readExpenseByCategory,
+  readScheduledDue,
+  readClassificationStatus,
+} from './advice-insights';
 import { migrate, type Database } from './migrate';
 import { seed } from './seed';
 
@@ -57,6 +62,131 @@ describe('advice insights SQLite integration', () => {
     if (!row) throw new Error(`missing category ${systemKey}`);
     return row.id;
   }
+
+  it('reads due today and overdue schedules without claiming unpaid or mutating any rows', async () => {
+    const createRule = async (
+      id: string,
+      start: string,
+      active = 1,
+      end: string | null = null,
+      category: string | null = null,
+      wallet = WALLET,
+    ) =>
+      db.runAsync(
+        `INSERT INTO recurring_rules (id,kind,amount,wallet_id,category_id,frequency,interval_count,start_on,end_on,is_active,created_at,updated_at) VALUES (?,'expense',100,?,?,'monthly',1,?,?,?,'2026-01-01','2026-01-01')`,
+        id,
+        wallet,
+        category,
+        start,
+        end,
+        active,
+      );
+    await createRule('today', '2026-11-14');
+    await createRule('overdue', '2026-11-13');
+    await createRule('future', '2026-11-20');
+    await createRule('paused', '2026-11-14', 0);
+    await createRule('expired', '2026-10-14', 1, '2026-11-01');
+    sqlite.exec('PRAGMA foreign_keys = OFF');
+    await createRule('missing-category', '2026-11-14', 1, null, 'deleted');
+    await createRule('missing-wallet', '2026-11-14', 1, null, null, 'deleted');
+    sqlite.exec('PRAGMA foreign_keys = ON');
+    const before = sqlite.prepare('SELECT total_changes() AS n').get();
+    for (let i = 0; i < 10; i++) {
+      expect(await readScheduledDue(db, '2026-11-14', '2026-11-20')).toEqual({
+        kind: 'scheduled_due',
+        asOf: '2026-11-14',
+        through: '2026-11-20',
+        totalCount: 3,
+        items: [
+          {
+            kind: 'expense',
+            amount: 100,
+            dueOn: '2026-11-13',
+            status: 'scheduled',
+            paymentStatus: 'unknown',
+          },
+          {
+            kind: 'expense',
+            amount: 100,
+            dueOn: '2026-11-14',
+            status: 'scheduled',
+            paymentStatus: 'unknown',
+          },
+          {
+            kind: 'expense',
+            amount: 100,
+            dueOn: '2026-11-20',
+            status: 'scheduled',
+            paymentStatus: 'unknown',
+          },
+        ],
+      });
+    }
+    expect(sqlite.prepare('SELECT total_changes() AS n').get()).toEqual(before);
+    expect(
+      await db.getFirstAsync('SELECT COUNT(*) AS n FROM transactions'),
+    ).toEqual({ n: 0 });
+    expect(
+      await db.getFirstAsync('SELECT COUNT(*) AS n FROM recurring_rules'),
+    ).toEqual({ n: 7 });
+  });
+
+  it('keeps missing classification and local day/week/month boundaries at UTC+7', async () => {
+    await addTransaction({
+      kind: 'expense',
+      amount: 100,
+      occurredOn: '2026-10-31',
+    });
+    await db.runAsync(
+      "UPDATE transactions SET occurred_at='2026-10-31T23:59:00+07:00'",
+    );
+    await addTransaction({
+      kind: 'expense',
+      amount: 200,
+      occurredOn: '2026-11-01',
+    });
+    await addTransaction({
+      kind: 'expense',
+      amount: 400,
+      occurredOn: '2026-11-02',
+    });
+    expect(
+      (await readCashFlow(db, '2026-10-31', '2026-10-31')).totalExpense,
+    ).toBe(100);
+    expect(
+      (await readCashFlow(db, '2026-10-26', '2026-11-01')).totalExpense,
+    ).toBe(300);
+    expect(
+      (await readCashFlow(db, '2026-11-01', '2026-11-30')).totalExpense,
+    ).toBe(600);
+    expect(
+      await readClassificationStatus(db, '2026-11-01', '2026-11-30'),
+    ).toEqual({
+      expenseCount: 2,
+      expenseAmount: 600,
+      incomeCount: 0,
+      incomeAmount: 0,
+    });
+  });
+
+  it('does not present skipped or already generated occurrences as pending schedules', async () => {
+    await db.runAsync(
+      `INSERT INTO recurring_rules (id,kind,amount,wallet_id,frequency,interval_count,start_on,created_at,updated_at) VALUES ('skip-rule','expense',100,?,'daily',1,'2026-11-13','2026-01-01','2026-01-01')`,
+      WALLET,
+    );
+    await db.runAsync(
+      "INSERT INTO recurring_skips (recurring_rule_id,occurred_on) VALUES ('skip-rule','2026-11-13')",
+    );
+    await addTransaction({
+      kind: 'expense',
+      amount: 100,
+      occurredOn: '2026-11-14',
+    });
+    await db.runAsync("UPDATE transactions SET recurring_rule_id='skip-rule'");
+    expect(
+      await readScheduledDue(db, '2026-11-14', '2026-11-15'),
+    ).toMatchObject({ totalCount: 1, items: [{ dueOn: '2026-11-15' }] });
+  });
 
   async function addCategory(
     name: string,

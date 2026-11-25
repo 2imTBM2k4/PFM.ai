@@ -30,6 +30,9 @@ export function AddTransactionModal({
     onClose();
   };
 
+  const [initialDate] = useState<string | undefined>(
+    () => usePreferences.getState().consumeTransactionDate() ?? undefined,
+  );
   const [wallets, setWallets] = useState<WalletRow[] | null>(null);
   const [categories, setCategories] = useState<CategoryRow[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,7 +97,9 @@ export function AddTransactionModal({
           error={error}
           onBack={close}
           hideHeader={false}
+          inModal
           guardScope="modal"
+          initialDate={initialDate}
           onNaturalSaved={async () => {
             void useApp.getState().refreshWallets();
             useApp.setState((s) => ({

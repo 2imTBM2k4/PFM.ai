@@ -138,6 +138,7 @@ export function Pill({
             name={toSfSymbol(icon)!}
             size={18}
             tintColor={colors.fg}
+            style={{ width: 18, height: 18 }}
           />
         ) : (
           <MaterialCommunityIcons
@@ -169,7 +170,7 @@ export function Pill({
     return (
       <View
         accessibilityLabel={accessibilityLabel ?? label}
-        style={[containerStyle, { minHeight: 44, minWidth: 44 }]}
+        style={containerStyle}
       >
         {content}
       </View>
@@ -179,7 +180,7 @@ export function Pill({
   return (
     <Animated.View
       layout={reduceMotion ? undefined : LinearTransition.duration(180)}
-      style={[animatedStyle, compact && { padding: 6 }]}
+      style={animatedStyle}
     >
       <Pressable
         accessibilityRole="button"

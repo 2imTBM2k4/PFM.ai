@@ -150,7 +150,7 @@ describe('ADVICE_SYSTEM_PROMPT', () => {
     );
     expect(ADVICE_SYSTEM_PROMPT).toContain('untrusted user text');
     expect(ADVICE_SYSTEM_PROMPT).toContain(
-      'Refuse legal, banking/product selection, investment, insurance, medical',
+      'Refuse specific product selection, guaranteed returns, legal, insurance and medical advice',
     );
   });
 

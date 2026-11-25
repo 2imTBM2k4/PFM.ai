@@ -28,6 +28,7 @@ import {
   TextInput as RNTextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Button,
@@ -146,6 +147,7 @@ export function TransactionManager({
     () =>
       createTabBarScrollHandler((expanded) => setControlsCollapsed(!expanded), {
         showAtBottom: false,
+        showOnlyAtTop: true,
       }),
     [],
   );
@@ -169,6 +171,7 @@ export function TransactionManager({
   const focused = useRef(false);
   const hasLoadedOnce = useRef(false);
   const tabBarScroll = useTabBarScroll();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const theme = useDesignTheme();
@@ -652,11 +655,84 @@ export function TransactionManager({
       </Screen>
     );
 
+  const kindPills = (
+    <>
+      <Pill
+        label={vi.txFilterAll}
+        icon={controlsCollapsed ? 'view-grid-outline' : undefined}
+        compact={controlsCollapsed}
+        tone="primary"
+        selected={quickKind === 'all'}
+        size="sm"
+        onPress={() => setQuickKind('all')}
+      />
+      <Pill
+        label={vi.transactionExpense}
+        icon={controlsCollapsed ? 'arrow-top-right' : undefined}
+        compact={controlsCollapsed}
+        tone="expense"
+        selected={quickKind === 'expense'}
+        size="sm"
+        onPress={() => setQuickKind('expense')}
+      />
+      <Pill
+        label={vi.transactionIncome}
+        icon={controlsCollapsed ? 'arrow-bottom-left' : undefined}
+        compact={controlsCollapsed}
+        tone="income"
+        selected={quickKind === 'income'}
+        size="sm"
+        onPress={() => setQuickKind('income')}
+      />
+      <Pill
+        label={vi.transactionTransfer}
+        icon={controlsCollapsed ? 'swap-horizontal' : undefined}
+        compact={controlsCollapsed}
+        tone="neutral"
+        selected={quickKind === 'transfer'}
+        size="sm"
+        onPress={() => setQuickKind('transfer')}
+      />
+    </>
+  );
+
+  const quickTiles = (
+    <>
+      <QuickTile
+        compact={controlsCollapsed}
+        icon="tune-variant"
+        label={vi.filterAdvanced}
+        bg={hasFilters ? palette.warningSoft : palette.primarySoft}
+        fg={hasFilters ? palette.warningInk : palette.primaryInk}
+        disabled={busy || loading}
+        onPress={() => setMode({ type: 'filters' })}
+      />
+      <QuickTile
+        icon="calendar-sync-outline"
+        compact={controlsCollapsed}
+        label={vi.recurringTitle}
+        bg={palette.tealSoft}
+        fg={palette.tealInk}
+        disabled={busy || loading}
+        onPress={onManageRecurring}
+      />
+      <QuickTile
+        icon="handshake-outline"
+        compact={controlsCollapsed}
+        label={vi.debtsTitle}
+        bg={palette.purpleSoft}
+        fg={palette.purpleInk}
+        disabled={busy || loading}
+        onPress={onManageDebts}
+      />
+    </>
+  );
+
   return (
     <Screen title={vi.transactions} scroll={false}>
       <Animated.View
         layout={LinearTransition.duration(220)}
-        style={{ gap: controlsCollapsed ? 2 : 10 }}
+        style={{ gap: controlsCollapsed ? 8 : 10 }}
       >
         {/* Instant Search Input Bar */}
         {!controlsCollapsed && (
@@ -687,6 +763,9 @@ export function TransactionManager({
             {!!quickQuery && (
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={vi.clear}
+                hitSlop={10}
+                style={localStyles.searchClearButton}
                 onPress={() => setQuickQuery('')}
               >
                 <MaterialCommunityIcons
@@ -699,88 +778,45 @@ export function TransactionManager({
           </Animated.View>
         )}
 
-        {/* Kind Filter Pills + Add Transaction CTA */}
+        {/* Kind Filter Pills; merges with quick actions into 1 row when scrolled */}
         <Animated.View
           layout={LinearTransition.duration(220)}
           style={localStyles.filterPillsRow}
         >
           <ScrollView
+            testID={controlsCollapsed ? 'collapsed-controls-row' : undefined}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8 }}
+            contentContainerStyle={
+              controlsCollapsed
+                ? localStyles.collapsedControlsContent
+                : localStyles.expandedPillsContent
+            }
           >
-            <Pill
-              label={vi.txFilterAll}
-              icon={controlsCollapsed ? 'view-grid-outline' : undefined}
-              compact={controlsCollapsed}
-              tone="primary"
-              selected={quickKind === 'all'}
-              size="sm"
-              onPress={() => setQuickKind('all')}
-            />
-            <Pill
-              label={vi.transactionExpense}
-              icon={controlsCollapsed ? 'arrow-top-right' : undefined}
-              compact={controlsCollapsed}
-              tone="expense"
-              selected={quickKind === 'expense'}
-              size="sm"
-              onPress={() => setQuickKind('expense')}
-            />
-            <Pill
-              label={vi.transactionIncome}
-              icon={controlsCollapsed ? 'arrow-bottom-left' : undefined}
-              compact={controlsCollapsed}
-              tone="income"
-              selected={quickKind === 'income'}
-              size="sm"
-              onPress={() => setQuickKind('income')}
-            />
-            <Pill
-              label={vi.transactionTransfer}
-              icon={controlsCollapsed ? 'swap-horizontal' : undefined}
-              compact={controlsCollapsed}
-              tone="neutral"
-              selected={quickKind === 'transfer'}
-              size="sm"
-              onPress={() => setQuickKind('transfer')}
-            />
+            {kindPills}
+            {controlsCollapsed && (
+              <>
+                <View
+                  style={[
+                    localStyles.collapsedDivider,
+                    { backgroundColor: theme.card.border },
+                  ]}
+                />
+                {quickTiles}
+              </>
+            )}
           </ScrollView>
         </Animated.View>
 
         {/* Quick Navigation Row for Advanced Filters, Recurring, Debts */}
-        <Animated.View
-          layout={LinearTransition.duration(220)}
-          style={localStyles.quickRow}
-        >
-          <QuickTile
-            compact={controlsCollapsed}
-            icon="tune-variant"
-            label={vi.filterAdvanced}
-            bg={hasFilters ? palette.warningSoft : palette.primarySoft}
-            fg={hasFilters ? palette.warningInk : palette.primaryInk}
-            disabled={busy || loading}
-            onPress={() => setMode({ type: 'filters' })}
-          />
-          <QuickTile
-            icon="calendar-sync-outline"
-            compact={controlsCollapsed}
-            label={vi.recurringTitle}
-            bg={palette.tealSoft}
-            fg={palette.tealInk}
-            disabled={busy || loading}
-            onPress={onManageRecurring}
-          />
-          <QuickTile
-            icon="handshake-outline"
-            compact={controlsCollapsed}
-            label={vi.debtsTitle}
-            bg={palette.purpleSoft}
-            fg={palette.purpleInk}
-            disabled={busy || loading}
-            onPress={onManageDebts}
-          />
-        </Animated.View>
+        {!controlsCollapsed && (
+          <Animated.View
+            layout={LinearTransition.duration(220)}
+            style={localStyles.quickRow}
+          >
+            {quickTiles}
+          </Animated.View>
+        )}
       </Animated.View>
 
       {hasFilters && (
@@ -893,7 +929,7 @@ export function TransactionManager({
             renderItem={renderItem}
             contentContainerStyle={{
               gap: 12,
-              paddingBottom: DesignSpacing.bottomTabClearance,
+              paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
             }}
             ListEmptyComponent={
               <EmptyStateCard
@@ -1024,8 +1060,13 @@ const TransactionItem = memo(function TransactionItem({
         onPress={() => onPress(row)}
         style={{ minHeight: 44, gap: 10 }}
       >
-        <View style={styles.row}>
-          <View style={[styles.inlineRow, { flex: 1 }]}>
+        <View style={[styles.row, { alignItems: 'flex-start' }]}>
+          <View
+            style={[
+              styles.inlineRow,
+              { flex: 1, flexWrap: 'nowrap', alignItems: 'flex-start' },
+            ]}
+          >
             <IconBadge
               icon={badgeIcon}
               bg={badgeBg}
@@ -1158,8 +1199,10 @@ export function TransactionForm({
   onNaturalSaved,
   onSave,
   hideHeader = false,
+  inModal,
   guardScope = 'tab',
   guardRouteKey = 'transactions',
+  initialDate,
 }: {
   row: TransactionRow | null;
   wallets: WalletRow[];
@@ -1170,8 +1213,10 @@ export function TransactionForm({
   onNaturalSaved?(): Promise<void>;
   onSave(input: TransactionInput): Promise<void>;
   hideHeader?: boolean;
+  inModal?: boolean;
   guardScope?: 'tab' | 'modal';
   guardRouteKey?: string;
+  initialDate?: string;
 }) {
   const selectedCurrency = usePreferences((state) => state.currency);
   const language = usePreferences((state) => state.language);
@@ -1198,6 +1243,7 @@ export function TransactionForm({
     categoryId: row?.category_id ?? '',
     date:
       row?.occurred_on ??
+      initialDate ??
       today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
     note: row?.note ?? '',
   }));
@@ -1480,20 +1526,25 @@ export function TransactionForm({
     </>
   );
 
+  const resolvedInModal = inModal ?? hideHeader;
+
   return (
     <Screen
       title={row ? vi.editTransaction : vi.addTransaction}
       onBack={requestLeave}
       backDisabled={disabled}
       hideHeader={hideHeader}
-      inModal={hideHeader}
-      hasTabBar={guardScope !== 'modal' && !hideHeader}
+      inModal={resolvedInModal}
+      hasTabBar={guardScope !== 'modal' && !resolvedInModal}
       footer={footer}
     >
       {/* Natural Language Quick-Entry toggle */}
       {!row && (
         <View style={{ gap: 8 }}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={vi.txNaturalToggle}
+            accessibilityState={{ expanded: showNatural }}
             onPress={() => setShowNatural((v) => !v)}
             style={[
               localStyles.naturalToggleBar,
@@ -1874,9 +1925,17 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: DesignRadius.pill,
     borderWidth: 1,
+    minHeight: 48,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 2,
     gap: 8,
+  },
+  searchClearButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -8,
   },
   searchInput: {
     flex: 1,
@@ -1886,6 +1945,20 @@ const localStyles = StyleSheet.create({
   filterPillsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  expandedPillsContent: {
+    gap: 8,
+  },
+  collapsedControlsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+  },
+  collapsedDivider: {
+    width: 1,
+    height: 24,
+    marginHorizontal: 2,
   },
   quickRow: {
     flexDirection: 'row',

@@ -12,36 +12,36 @@ import {
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import {
-  addMonths,
   budgetThresholds,
-  monthKey,
   today,
   validateDate,
 } from '@pfm/domain';
 import { formatMoney as formatVnd } from '@/utils/display-money';
 import { BudgetInputSchema, type BudgetInput } from '@pfm/contracts';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import {
   BackHandler,
-  Platform,
   FlatList,
+  Platform,
+  Pressable,
   StyleSheet,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Button,
   Divider,
-  IconButton,
   ProgressBar,
   Switch,
   Text,
   TextInput,
   useTheme,
 } from 'react-native-paper';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import {
   EmptyStateCard,
   IconBadge,
@@ -86,27 +86,40 @@ import { checkBudgetAlerts } from './mobile';
 type Mode =
   { type: 'list' } | { type: 'form'; row: BudgetRow | null; id: string };
 
+/**
+ * Splits budget rows into active in-period budgets for the current month and
+ * paused or out-of-period budgets shown in the collapsible inactive section.
+ */
+export function partitionBudgetsByActivity(rows: readonly BudgetRow[]): {
+  activeRows: BudgetRow[];
+  inactiveRows: BudgetRow[];
+} {
+  const activeRows: BudgetRow[] = [];
+  const inactiveRows: BudgetRow[] = [];
+  for (const row of rows) {
+    if (row.is_active && row.in_period) {
+      activeRows.push(row);
+    } else {
+      inactiveRows.push(row);
+    }
+  }
+  return { activeRows, inactiveRows };
+}
+
 export function BudgetManager({
   onSwitchToStats,
   onSwitchTab,
+  onClose,
 }: {
   onSwitchToStats?(): void;
   onSwitchTab?(tab: 'budgets' | 'goals' | 'stats'): void;
+  onClose?(): void;
 } = {}) {
   const currentDate = useCurrentDate();
-  const previousDate = useRef(currentDate);
-  const [month, setMonth] = useState(() =>
-    monthKey(today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' })),
-  );
-  useEffect(() => {
-    const previousMonth = previousDate.current.slice(0, 7);
-    setMonth((selected) =>
-      selected === previousMonth ? currentDate.slice(0, 7) : selected,
-    );
-    previousDate.current = currentDate;
-  }, [currentDate]);
+  const currentMonth = currentDate.slice(0, 7);
   const [rows, setRows] = useState<BudgetRow[]>([]),
     [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [showInactive, setShowInactive] = useState(false);
   const [mode, setMode] = useState<Mode>({ type: 'list' });
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -116,6 +129,7 @@ export function BudgetManager({
   const loadRequest = useRef(0);
   const hasLoadedOnce = useRef(false);
   const tabBarScroll = useTabBarScroll();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const load = useCallback(async () => {
@@ -126,7 +140,7 @@ export function BudgetManager({
     setError('');
     try {
       const data = await withDatabase(async (db) => ({
-        rows: await readBudgetMonth(db, month, undefined, currentDate),
+        rows: await readBudgetMonth(db, currentMonth, undefined, currentDate),
         categories: await listCategories(db, true),
       }));
       if (request !== loadRequest.current) return;
@@ -139,7 +153,7 @@ export function BudgetManager({
     } finally {
       if (request === loadRequest.current) setLoading(false);
     }
-  }, [month, currentDate]);
+  }, [currentDate, currentMonth]);
   useFocusEffect(
     useCallback(() => {
       const frame = requestAnimationFrame(() => {
@@ -160,17 +174,18 @@ export function BudgetManager({
       return;
     }
     leaveForm();
-  }, [mode.type, leaveForm]);
+    onClose?.();
+  }, [mode.type, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
-        if (mode.type === 'list') return false;
+        if (mode.type === 'list' && !onClose) return false;
         back();
         return true;
       });
       return () => listener.remove();
-    }, [mode.type, back]),
+    }, [mode.type, back, onClose]),
   );
   const mutate = useCallback(
     async (action: (db: Database) => Promise<void>) => {
@@ -185,7 +200,7 @@ export function BudgetManager({
         const next = await withDatabase(async (db) => {
           await action(db);
           committed = true;
-          return readBudgetMonth(db, month);
+          return readBudgetMonth(db, currentMonth, undefined, currentDate);
         });
         if (request === loadRequest.current) setRows(next);
         setMode({ type: 'list' });
@@ -201,7 +216,11 @@ export function BudgetManager({
         if (request === loadRequest.current) setLoading(false);
       }
     },
-    [month, setNotice],
+    [currentDate, currentMonth, setNotice],
+  );
+  const { activeRows, inactiveRows } = useMemo(
+    () => partitionBudgetsByActivity(rows),
+    [rows],
   );
   const edit = useCallback(
     (row: BudgetRow) => {
@@ -235,7 +254,7 @@ export function BudgetManager({
     return (
       <BudgetForm
         row={mode.row}
-        month={month}
+        month={currentMonth}
         categories={categories}
         busy={busy || loading}
         error={error}
@@ -250,7 +269,12 @@ export function BudgetManager({
       />
     );
   return (
-    <Screen title={vi.budgets} scroll={false}>
+    <Screen
+      title={vi.budgets}
+      onBack={onClose ? back : undefined}
+      backDisabled={busy}
+      scroll={false}
+    >
       {(!!onSwitchTab || !!onSwitchToStats) && mode.type === 'list' && (
         <SegmentedButtons
           value="budgets"
@@ -290,27 +314,29 @@ export function BudgetManager({
           { backgroundColor: palette.surface, borderColor: palette.border },
         ]}
       >
-        <IconButton
-          icon="chevron-left"
-          size={20}
-          accessibilityLabel={vi.budgetPreviousMonth}
-          style={{ margin: 0 }}
-          disabled={busy || loading || month === '0001-01'}
-          onPress={() => setMonth(monthKey(addMonths(`${month}-01`, -1)))}
-        />
-        <Text
-          variant="titleMedium"
-          style={[styles.number, { fontWeight: '700' }]}
-        >
-          {formatDisplayMonth(month)}
-        </Text>
-        <IconButton
-          icon="chevron-right"
-          size={20}
-          accessibilityLabel={vi.budgetNextMonth}
-          style={{ margin: 0 }}
-          disabled={busy || loading || month === '9999-12'}
-          onPress={() => setMonth(monthKey(addMonths(`${month}-01`, 1)))}
+        <View style={localStyles.monthLabelGroup}>
+          <MaterialCommunityIcons
+            name="calendar-month-outline"
+            size={18}
+            color={palette.primaryInk}
+          />
+          <Text
+            variant="titleMedium"
+            style={[styles.number, { fontWeight: '700' }]}
+          >
+            {vi.budgetCurrentMonthLabel.replace(
+              '{month}',
+              formatDisplayMonth(currentMonth),
+            )}
+          </Text>
+        </View>
+        <StatusPill
+          label={vi.budgetActiveCount.replace(
+            '{count}',
+            String(activeRows.length),
+          )}
+          bg={palette.primarySoft}
+          fg={palette.primaryInk}
         />
       </View>
 
@@ -376,15 +402,76 @@ export function BudgetManager({
           showsVerticalScrollIndicator={false}
           onScroll={tabBarScroll.onScroll}
           scrollEventThrottle={tabBarScroll.scrollEventThrottle}
-          data={rows}
+          data={activeRows}
           keyExtractor={(row) => row.id}
           renderItem={renderItem}
           contentContainerStyle={{
             gap: 14,
-            paddingBottom: DesignSpacing.bottomTabClearance,
+            paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
           }}
           ListEmptyComponent={
-            <EmptyStateCard icon="chart-arc" message={vi.budgetEmpty} />
+            <EmptyStateCard
+              icon="chart-arc"
+              message={
+                inactiveRows.length > 0 ? vi.budgetNoActive : vi.budgetEmpty
+              }
+            />
+          }
+          ListFooterComponent={
+            inactiveRows.length > 0 ? (
+              <View style={localStyles.inactiveSection}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showInactive }}
+                  accessibilityLabel={vi.budgetInactiveToggle.replace(
+                    '{count}',
+                    String(inactiveRows.length),
+                  )}
+                  onPress={() => setShowInactive((prev) => !prev)}
+                  style={({ pressed }) => [
+                    localStyles.inactiveToggle,
+                    {
+                      backgroundColor: palette.surfaceMuted,
+                      borderColor: palette.border,
+                    },
+                    pressed && { opacity: 0.78 },
+                  ]}
+                >
+                  <Text
+                    variant="labelLarge"
+                    style={{
+                      color: palette.textMuted,
+                      fontWeight: '700',
+                      flex: 1,
+                    }}
+                  >
+                    {vi.budgetInactiveToggle.replace(
+                      '{count}',
+                      String(inactiveRows.length),
+                    )}
+                  </Text>
+                  <MaterialCommunityIcons
+                    name={showInactive ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={palette.textMuted}
+                  />
+                </Pressable>
+                {showInactive && (
+                  <View style={localStyles.inactiveList}>
+                    {inactiveRows.map((item) => (
+                      <BudgetItem
+                        key={item.id}
+                        row={item}
+                        categories={categories}
+                        busy={busy || loading}
+                        onEdit={edit}
+                        onToggle={toggle}
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : undefined
           }
         />
       )}
@@ -1061,12 +1148,39 @@ function BudgetForm({
 const localStyles = StyleSheet.create({
   monthBar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minHeight: 44,
     borderRadius: 16,
     borderWidth: 1,
+  },
+  monthLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  inactiveSection: {
+    gap: 12,
+    marginTop: 4,
+  },
+  inactiveToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  inactiveList: {
+    gap: 14,
   },
   segmentLabel: {
     fontSize: 13,

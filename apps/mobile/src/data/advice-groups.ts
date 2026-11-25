@@ -1,5 +1,6 @@
 import {
   AdviceBudgetGroupSchema,
+  AdviceDataGroupSchema,
   AdviceExpenseGroupSchema,
   AdviceGoalsGroupSchema,
   AdviceIncomeSourcesGroupSchema,
@@ -16,7 +17,11 @@ import {
   type AdviceDateRange,
 } from '@pfm/domain';
 
-import { readExpenseByCategory } from './advice-insights';
+import {
+  readExpenseByCategory,
+  readScheduledDue,
+  readClassificationStatus,
+} from './advice-insights';
 import {
   readPersonalBaseline,
   readSpendingHabits,
@@ -86,6 +91,23 @@ export async function readAdviceGroups(
 
   const result: AdviceDataGroup[] = [];
   for (const group of groups) {
+    if (group.kind === 'scheduled_due') {
+      result.push(await readScheduledDue(db, currentDate, group.through));
+      continue;
+    }
+    if (group.kind === 'classification_status') {
+      const range = resolveAdviceRange(group.rangeKind, currentDate);
+      result.push(
+        AdviceDataGroupSchema.parse({
+          kind: group.kind,
+          rangeKind: range.kind,
+          from: range.from,
+          to: range.to,
+          ...(await readClassificationStatus(db, range.from, range.to)),
+        }),
+      );
+      continue;
+    }
     if (group.kind === 'expense_by_category') {
       const range = resolveAdviceRange(group.rangeKind, currentDate);
       const expenses = await readExpenseByCategory(db, range.from, range.to);
@@ -192,6 +214,8 @@ export async function readAdviceGroups(
       continue;
     }
 
+    if (group.kind !== 'budget_status')
+      throw new Error('ADVICE_GROUP_UNSUPPORTED');
     const budgets = await readBudgetMonth(db, currentMonth);
     const items = budgets
       .filter((row) => row.is_active === 1 && row.in_period === 1)

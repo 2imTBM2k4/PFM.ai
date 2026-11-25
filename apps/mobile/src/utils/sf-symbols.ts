@@ -109,6 +109,21 @@ const MATERIAL_TO_SF_SYMBOL: Record<string, SFSymbol> = {
   'pin-outline': 'pin',
   'pin-off-outline': 'pin.slash',
   'chart-donut': 'chart.pie',
+  'chart-bar': 'chart.bar',
+  'filter-variant': 'line.3.horizontal.decrease.circle',
+  'chevron-double-up': 'chevron.up',
+  'chevron-double-down': 'chevron.down',
+  'heart-pulse': 'heart',
+  'school-outline': 'graduationcap',
+  'gamepad-variant-outline': 'gamecontroller',
+  'gift-outline': 'gift',
+  'briefcase-outline': 'briefcase',
+  'sprout-outline': 'leaf',
+  'lightbulb-outline': 'lightbulb',
+  'arrow-down': 'arrow.down',
+  'swap-vertical': 'arrow.up.arrow.down',
+  'calendar-today': 'calendar',
+  minus: 'minus',
 };
 
 /**

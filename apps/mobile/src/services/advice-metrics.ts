@@ -3,7 +3,17 @@ import type {
   AdvicePlanSelection,
   AnalysisSummary,
 } from '@pfm/contracts';
-import { convertMoney, ratioBps, timeToAfford } from '@pfm/domain';
+import {
+  CALCULATION_VERSION,
+  calculateAdviceInputs,
+  normalizeAdviceInputs,
+  requiredMonthlySaving as domainRequiredMonthlySaving,
+  convertMoney,
+  ratioBps,
+  timeToAfford,
+  type AdviceInputContext,
+  type AdviceInputs,
+} from '@pfm/domain';
 
 const NON_MONEY_METRICS = new Set<AdviceMetric>([
   'months_with_data',
@@ -32,10 +42,174 @@ export function requiredMonthlySaving(
     scenario.savingsTarget !== undefined &&
     scenario.savingsMonths !== undefined
   ) {
-    const remaining = Math.max(0, scenario.savingsTarget - availableForGoals);
-    return Math.ceil(remaining / scenario.savingsMonths);
+    return domainRequiredMonthlySaving(
+      scenario.savingsTarget,
+      availableForGoals,
+      scenario.savingsMonths,
+    );
   }
   return null;
+}
+
+export type AdviceCacheScope = { conversationId: string } & (
+  { userId: string; deviceId?: never } | { deviceId: string; userId?: never }
+);
+
+function canonicalInput(value: unknown): string {
+  if (value === undefined) return 'undefined';
+  if (Array.isArray(value)) return `[${value.map(canonicalInput).join(',')}]`;
+  if (value !== null && typeof value === 'object')
+    return `{${Object.entries(value)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalInput(item)}`)
+      .join(',')}}`;
+  return JSON.stringify(value);
+}
+
+/** Keep only calculation results in memory; scope changes immediately discard the old window. */
+export function createAdviceCalculationCache(now: () => number = Date.now) {
+  let activeScope = '';
+  const entries = new Map<
+    number,
+    { input: string; createdAt: number; value: unknown }
+  >();
+  return {
+    clear() {
+      entries.clear();
+      activeScope = '';
+    },
+    getOrCompute<T>(
+      scope: AdviceCacheScope,
+      input: unknown,
+      calculate: () => T,
+      version = CALCULATION_VERSION,
+    ): T {
+      const identity =
+        scope.userId !== undefined
+          ? ['user', scope.userId]
+          : ['device', scope.deviceId];
+      if (!identity[1] || !scope.conversationId) return calculate();
+      const scopeKey = JSON.stringify([...identity, scope.conversationId]);
+      if (scopeKey !== activeScope) {
+        entries.clear();
+        activeScope = scopeKey;
+      }
+      const serialized = canonicalInput({ input, version });
+      let hash = 2166136261;
+      for (let i = 0; i < serialized.length; i++)
+        hash = Math.imul(hash ^ serialized.charCodeAt(i), 16777619) >>> 0;
+      const time = now();
+      for (const [key, entry] of entries)
+        if (time - entry.createdAt >= 300_000) entries.delete(key);
+      const hit = entries.get(hash);
+      const clone = <V>(value: V): V => JSON.parse(JSON.stringify(value)) as V;
+      // Check the canonical input too: a non-cryptographic hash collision must never reuse another result.
+      if (hit && hit.input === serialized) {
+        entries.delete(hash);
+        entries.set(hash, hit);
+        return clone(hit.value as T);
+      }
+      const value = calculate();
+      if (
+        value !== null &&
+        typeof value === 'object' &&
+        'ok' in value &&
+        value.ok === false
+      )
+        return value;
+      entries.set(hash, {
+        input: serialized,
+        createdAt: time,
+        value: clone(value),
+      });
+      while (entries.size > 32) entries.delete(entries.keys().next().value!);
+      return value;
+    },
+  };
+}
+
+export const adviceCalculationCache = createAdviceCalculationCache();
+
+/** Preserve the legacy metric interface while new fact-based callers receive explicit clarification. */
+export function resolveAdviceMetrics(
+  summary: AnalysisSummary | null,
+  selection: AdvicePlanSelection,
+  context: AdviceInputContext,
+  scope?: AdviceCacheScope,
+):
+  | {
+      ok: true;
+      result: {
+        metrics: Partial<Record<AdviceMetric, number | null>>;
+        inputs: AdviceInputs | null;
+      };
+    }
+  | { ok: false; needsClarification: string[] } {
+  const normalized =
+    selection.scenario.conversationFacts === undefined
+      ? null
+      : normalizeAdviceInputs(
+          selection.scenario.conversationFacts,
+          summary,
+          context,
+        );
+  if (normalized && !normalized.ok) return normalized;
+  const compute = () => {
+    if (selection.scenario.conversationFacts === undefined) {
+      return {
+        ok: true as const,
+        result: {
+          metrics: summary
+            ? computeAdviceMetrics(
+                summary,
+                selection,
+                context.currency,
+                context.vndPerUsd ?? null,
+              )
+            : {},
+          inputs: null,
+        },
+      };
+    }
+    const inputs = normalized!.ok ? normalized!.result : null;
+    if (!inputs)
+      return { ok: false as const, needsClarification: ['conversationFacts'] };
+    const calculation = calculateAdviceInputs(inputs);
+    const derived: Partial<Record<AdviceMetric, number | null>> = {
+      monthly_income_avg: inputs.income.amount,
+      monthly_expense_avg: inputs.expense.amount,
+      surplus_median: calculation.surplusBeforeGoal,
+      surplus_after_savings_goal: calculation.remainingAfterGoal,
+      savings_required_monthly: calculation.requiredMonthlySaving,
+      savings_target_remaining: inputs.goal
+        ? Math.max(0, inputs.goal.amount - inputs.savingsForGoal!.amount)
+        : null,
+      savings_months_given: context.savingsMonths ?? null,
+    };
+    const metrics = Object.fromEntries(
+      selection.metrics.map((metric) => [
+        metric,
+        derived[metric] === undefined
+          ? null
+          : context.currency === 'USD' &&
+              !NON_MONEY_METRICS.has(metric) &&
+              derived[metric] !== null
+            ? derived[metric]! / 100
+            : derived[metric],
+      ]),
+    );
+    return { ok: true as const, result: { metrics, inputs } };
+  };
+  return scope
+    ? adviceCalculationCache.getOrCompute(
+        scope,
+        {
+          inputs: normalized?.ok ? normalized.result : { summary, context },
+          selection,
+        },
+        compute,
+      )
+    : compute();
 }
 
 // Compute only the metrics selected by the planner; null marks insufficient local data.

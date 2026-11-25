@@ -54,6 +54,20 @@ function makeDraft(overrides: Partial<EntryDraft> = {}): EntryDraft {
 }
 
 describe('unsaved changes helpers', () => {
+  it('keeps an edited merchant protected by the existing discard guard', () => {
+    expect(
+      areEntryDraftsChanged(
+        [makeDraft({ merchant: 'Quán A' })],
+        [makeDraft({ merchant: 'Quán B' })],
+      ),
+    ).toBe(true);
+    expect(
+      areEntryDraftsChanged(
+        [makeDraft({ merchant: 'Quán A' })],
+        [makeDraft({ merchant: 'Quán A' })],
+      ),
+    ).toBe(false);
+  });
   it('keeps a transaction draft in its tab protected after a separate modal draft closes', () => {
     const tab = {
       id: 'transaction-form',

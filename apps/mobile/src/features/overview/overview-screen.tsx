@@ -48,18 +48,6 @@ import { BudgetBanner } from './budget-banner';
 import { formatRecentTransactionTime } from './transaction-time';
 
 /**
- * Converts integer basis points into a localized percentage delta label.
- */
-function changeLabel(bps: number | null) {
-  if (bps === null) return vi.overviewNew;
-  return `${bps > 0 ? '+' : bps < 0 ? '−' : ''}${(Math.abs(bps) / 100)
-    .toFixed(2)
-    .replace(/\.00$/, '')
-    .replace(/(\.\d)0$/, '$1')
-    .replace('.', ',')}%`;
-}
-
-/**
  * Home (Overview) screen matching the reference Pastel Sunset + Glassmorphism design.
  * Calculates total balance, month-over-month %, Income/Expenses/Savings cards,
  * AI Assistant Orb card, and Recent Transactions from real local SQLite data.
@@ -388,6 +376,8 @@ export function OverviewScreen({
                   return (
                     <Pressable
                       key={wallet.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${displayWalletName(wallet.name)}, ${hideBalance ? vi.overviewBalanceHidden : formatVnd(wallet.balance)}`}
                       onPress={onWallets}
                       style={({ pressed }) => [
                         localStyles.walletMiniCard,

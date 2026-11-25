@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseEntry } from './index';
+import { extractAmounts, parseEntry } from './index';
 import type { Clock } from '../dates';
 
 const clock: Clock = {
@@ -9,6 +9,109 @@ const clock: Clock = {
 const parse = (text: string, reference = clock) =>
   parseEntry(text, { clock: reference });
 
+describe('explicit zero versus missing or rounded amounts', () => {
+  it.each(['0', '0 đồng', '0k', '0 vnđ', '$0', 'zero', 'Thực ra 0'])(
+    'extracts verified explicit zero from %s',
+    (text) => {
+      const amounts = extractAmounts(text);
+      expect(amounts).toHaveLength(1);
+      expect(amounts[0].amount).toMatchObject({ value: 0, confidence: 'high' });
+      expect(amounts[0].warnings).toEqual(['ZERO_AMOUNT']);
+      if (text === '$0') expect(amounts[0].amount.currency).toBe('USD');
+    },
+  );
+
+  it.each(['0k0001', '$0.001'])(
+    'does not turn a rounded fractional amount into explicit zero: %s',
+    (text) => {
+      const amounts = extractAmounts(text);
+      expect(amounts).toHaveLength(1);
+      expect(amounts[0].amount).toMatchObject({
+        value: null,
+        confidence: 'low',
+      });
+      expect(amounts[0].warnings).toEqual(['NON_INTEGER_VND', 'ZERO_AMOUNT']);
+    },
+  );
+
+  it('reads the approved three-digit fractional thousand as one dong', () => {
+    const amounts = extractAmounts('0.001k');
+    expect(amounts).toHaveLength(1);
+    expect(amounts[0].amount).toMatchObject({ value: 1, confidence: 'high' });
+    expect(amounts[0].warnings).toEqual([]);
+  });
+
+  it.each(['chưa dành riêng đồng nào', 'không có tiền', ''])(
+    'does not invent a numeric zero from %s',
+    (text) => {
+      expect(extractAmounts(text)).toEqual([]);
+      expect(parse(text).candidates[0].amount.value).toBeNull();
+      expect(parse(text).warnings).not.toContain('ZERO_AMOUNT');
+    },
+  );
+
+  it.each(['ăn sáng 0k', '0 đồng', '$0', 'zero'])(
+    'keeps transaction entry incompatible with zero: %s',
+    (text) => {
+      const result = parse(text);
+      expect(result.candidates[0].amount.value).toBeNull();
+      expect(result.warnings).toContain('ZERO_AMOUNT');
+    },
+  );
+
+  it('keeps positive transaction amounts unchanged', () => {
+    expect(parse('ăn sáng 15k').candidates[0].amount.value).toBe(15000);
+  });
+});
+
+it.each([
+  ['2 chai', 2_000_000, 'medium'],
+  ['2 củ', 2_000_000, 'medium'],
+  ['2 chai rưỡi', 2_500_000, 'medium'],
+  ['2 chai 5', 2_500_000, 'medium'],
+  ['2 lít', 200_000, 'low'],
+  ['2 lít rưỡi', 250_000, 'low'],
+] as const)(
+  'parses the full monetary expression %s without guessing',
+  (text, value, confidence) => {
+    const amounts = extractAmounts(text);
+    expect(amounts).toHaveLength(1);
+    expect(amounts[0].amount).toMatchObject({
+      value,
+      confidence,
+      matchedText: text,
+    });
+    expect(amounts[0].warnings).toEqual([]);
+    expect(
+      parse(text).candidates.map((candidate) => candidate.amount.value),
+    ).toEqual([value]);
+  },
+);
+
+it.each(['2 xị', '2xị', '2xyz', '2 l'])(
+  'does not guess a monetary value for unsupported suffix %s',
+  (text) => {
+    expect(extractAmounts(text)).toEqual([]);
+    expect(parse(text).candidates[0].amount.value).toBeNull();
+    expect(parse(text).warnings).toContain('NO_AMOUNT');
+  },
+);
+
+it('keeps bottle quantities out of the money candidates', () => {
+  expect(
+    parse('mua 2 chai nước 20k').candidates.map(
+      (candidate) => candidate.amount.value,
+    ),
+  ).toEqual([20_000]);
+  expect(parse('mua 2 chai nước').candidates[0].amount.value).toBeNull();
+});
+
+it('does not absorb a separate currency amount as a slang fraction', () => {
+  expect(
+    extractAmounts('2 USD 5 VND').map(({ amount }) => amount.value),
+  ).toEqual([200, 5]);
+});
+
 it('parses English rent expenses in USD while respecting explicit VND', () => {
   const usd = parseEntry('spent $10.25 on rent', { clock, currency: 'USD' });
   expect(usd.candidates[0]).toMatchObject({
@@ -17,16 +120,36 @@ it('parses English rent expenses in USD while respecting explicit VND', () => {
     amount: { value: 1025, currency: 'USD' },
   });
   const implicit = parseEntry('spent 10 on rent', { clock, currency: 'USD' });
-  expect(implicit.candidates[0].amount).toMatchObject({ value: 1000, currency: 'USD' });
-  const vnd = parseEntry('spent 10,000 VND on rent', { clock, currency: 'USD' });
-  expect(vnd.candidates[0].amount).toMatchObject({ value: 10000, currency: 'VND' });
+  expect(implicit.candidates[0].amount).toMatchObject({
+    value: 1000,
+    currency: 'USD',
+  });
+  const vnd = parseEntry('spent 10,000 VND on rent', {
+    clock,
+    currency: 'USD',
+  });
+  expect(vnd.candidates[0].amount).toMatchObject({
+    value: 10000,
+    currency: 'VND',
+  });
 });
 
 it('classifies English quick-entry examples as food expenses and salary income', () => {
-  const breakfast = parseEntry('spent $10 on breakfast', { clock, currency: 'USD' });
-  expect(breakfast.candidates[0]).toMatchObject({ kind: 'expense', categoryKey: 'expense.food.eating_out', amount: { value: 1000, currency: 'USD' } });
+  const breakfast = parseEntry('spent $10 on breakfast', {
+    clock,
+    currency: 'USD',
+  });
+  expect(breakfast.candidates[0]).toMatchObject({
+    kind: 'expense',
+    categoryKey: 'expense.food.eating_out',
+    amount: { value: 1000, currency: 'USD' },
+  });
   const salary = parseEntry('salary $500', { clock, currency: 'USD' });
-  expect(salary.candidates[0]).toMatchObject({ kind: 'income', categoryKey: 'income.salary', amount: { value: 50_000, currency: 'USD' } });
+  expect(salary.candidates[0]).toMatchObject({
+    kind: 'income',
+    categoryKey: 'income.salary',
+    amount: { value: 50_000, currency: 'USD' },
+  });
 });
 
 describe('normative amounts', () => {

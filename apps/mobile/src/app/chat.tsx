@@ -1,8 +1,9 @@
 import { NativeRouteGuard } from '@/components/native-route-guard';
 import MaterialCommunityIcons from '@/components/platform-icon';
 import { uuid } from 'expo';
+import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -43,6 +44,7 @@ import {
   listChatSessions,
   deleteChatSessions,
   saveChatMessage,
+  readChatSourceMessages,
   type ChatRow,
   type ChatSessionRow,
 } from '@/data/repository';
@@ -51,11 +53,12 @@ import { ChatComposer } from '@/features/chat/composer';
 import { mergeChatMessages } from '@/features/chat/history';
 import { notifyAIReplyCompleted } from '@/features/notifications/notification-settings-service';
 import { vi } from '@/messages/vi';
+import { en } from '@/messages/en';
+import { flags } from '../../app.config';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
 import {
   ADVICE_CLOCK,
-  defaultAIService,
   buildAdviceHistory,
   fetchAIQuota,
   formatAIQuotaBanner,
@@ -65,6 +68,21 @@ import {
   type AIQuotaStatus,
   type AIResponsePayload,
 } from '@/services/ai-service';
+import { runAdvice } from '@/services/advice-agent';
+import {
+  readConversationState,
+  writeConversationState,
+} from '@/data/conversation-state';
+import {
+  buildAdviceContext,
+  adviceContextToHistory,
+  createInitialAdviceState,
+  getScenarioFactIds,
+} from '@/services/advice-context';
+import { validateConversationStateFacts } from '@/services/advice-state-validation';
+import { detectCorrection } from '@/services/correction-detection';
+import { commitCorrection } from '@/services/correction-commit';
+import type { AdviceHistoryItem } from '@pfm/contracts';
 
 const INTRO_SUGGESTION_CHIPS = [
   {
@@ -130,6 +148,52 @@ function SwipeDeleteAction({
   );
 }
 
+/** Render lightweight Markdown (**bold**, *italic*, ### headings) cleanly inside React Native Text. */
+function renderInlineMarkdown(line: string, keyPrefix: string): ReactNode {
+  const tokenPattern = /(\*\*[^*\n]+\*\*|\*[^\s*](?:[^*\n]*[^\s*])?\*)/g;
+  const parts = line.split(tokenPattern);
+  if (parts.length === 1) return line;
+  return parts.map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <Text key={`${keyPrefix}-b-${index}`} style={{ fontWeight: '700' }}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return (
+        <Text key={`${keyPrefix}-i-${index}`} style={{ fontStyle: 'italic' }}>
+          {part.slice(1, -1)}
+        </Text>
+      );
+    }
+    return part;
+  });
+}
+
+function renderChatText(text: string): ReactNode {
+  if (!/(?:^|\n)#{1,6}\s|\*/.test(text)) return text;
+  const lines = text.split('\n');
+  const nodes: ReactNode[] = [];
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) nodes.push('\n');
+    const heading = /^#{1,6}\s+(.+)$/.exec(line);
+    if (heading) {
+      nodes.push(
+        <Text key={`h-${lineIndex}`} style={{ fontWeight: '700' }}>
+          {renderInlineMarkdown(heading[1], `h-${lineIndex}`)}
+        </Text>,
+      );
+      return;
+    }
+    const inline = renderInlineMarkdown(line, `l-${lineIndex}`);
+    if (Array.isArray(inline)) nodes.push(...inline);
+    else nodes.push(inline);
+  });
+  return nodes;
+}
+
 /**
  * Renders both the AI Intro screen (large centered Skia AIOrb, title, 3 suggestion chips, input bar)
  * and the Chat AI conversation screen (right purple user bubbles, left AI bubbles with orb avatar
@@ -154,6 +218,7 @@ export default function Chat({
   const [deleting, setDeleting] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionRow[]>([]);
   const [typingForId, setTypingForId] = useState<string | null>(null);
+  const [streamingReply, setStreamingReply] = useState<{ sessionId: string; userMessageId: string; text: string } | null>(null);
   const [quota, setQuota] = useState<AIQuotaStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
@@ -162,6 +227,7 @@ export default function Chat({
   const cursor = useRef<ChatRow | undefined>(undefined);
   const paging = useRef(false);
   const mounted = useRef(true);
+  const activeTurnRef = useRef<{ controller: AbortController; sessionId: string; userMessageId: string } | null>(null);
   const screenFocused = useRef(true);
   const deletingRef = useRef(false);
   const historySessionId = useRef<string | null>(null);
@@ -172,7 +238,19 @@ export default function Chat({
   const router = useRouter();
   const activeSessionId = useApp((state) => state.chatSessionId);
   const language = usePreferences((state) => state.language);
+  const strings = language === 'en' ? en : vi;
   const quotaBanner = formatAIQuotaBanner(quota, language);
+
+  const cancelActiveTurn = useCallback(() => {
+    const turn = activeTurnRef.current;
+    if (!turn) return;
+    activeTurnRef.current = null;
+    turn.controller.abort();
+    if (mounted.current) {
+      setStreamingReply((current) => current?.userMessageId === turn.userMessageId && current.sessionId === turn.sessionId ? null : current);
+      setTypingForId((current) => current === turn.userMessageId ? null : current);
+    }
+  }, []);
 
   const refreshQuota = useCallback(async () => {
     const nextQuota = await fetchAIQuota();
@@ -186,8 +264,9 @@ export default function Chat({
     void refreshQuota();
     return () => {
       mounted.current = false;
+      cancelActiveTurn();
     };
-  }, [refreshQuota]);
+  }, [cancelActiveTurn, refreshQuota]);
 
   useFocusEffect(
     useCallback(() => {
@@ -264,45 +343,131 @@ export default function Chat({
 
   const triggerAIReply = useCallback(
     async (userMessage: ChatRow, sessionId: string) => {
+      cancelActiveTurn();
+      const controller = new AbortController();
+      activeTurnRef.current = { controller, sessionId, userMessageId: userMessage.id };
+      const isCurrent = () => mounted.current && !controller.signal.aborted && activeTurnRef.current?.controller === controller && useApp.getState().chatSessionId === sessionId;
       setTypingForId(userMessage.id);
       try {
         const [rows, replies] = await Promise.all([
           withDatabase((db) => listChatMessages(db, userMessage, sessionId)),
           withDatabase(loadPersistedAIReplyMap),
         ]);
-        const history = buildAdviceHistory(userMessage.text, rows, replies);
+        let history: AdviceHistoryItem[];
+        if (
+          !flags.useAgentLoop && Constants.expoConfig?.extra?.flags?.useStateBackedContext === true
+        ) {
+          try {
+            const options = usePreferences.getState();
+            let state = await readConversationState(sessionId);
+            const proposal = detectCorrection(
+              userMessage.text,
+              userMessage.id,
+              state,
+              options,
+            );
+            if (proposal && state) {
+              const result = await commitCorrection(state, proposal, {
+                now: new Date().toISOString(),
+                generateFactId: () => uuid.v4(),
+              });
+              if (result.status === 'rejected') {
+                console.warn('CORRECTION_SKIPPED', { reason: result.reason });
+                throw new Error('CORRECTION_REJECTED');
+              }
+              state = result.newState;
+              console.info('CORRECTION_COMMITTED', {
+                targetField: proposal.targetField,
+                factId: result.newFactId,
+              });
+            }
+            if (!state) {
+              if (classifyAdviceScope(userMessage.text).status !== 'allowed')
+                throw new Error('ADVICE_STATE_TOPIC_UNAVAILABLE');
+              state = await writeConversationState(
+                createInitialAdviceState(sessionId, userMessage.text, options),
+                { sourceMessageId: userMessage.id },
+              );
+            }
+            const referenced = getScenarioFactIds(state.activeScenario);
+            const sourceMessages = await withDatabase((db) =>
+              readChatSourceMessages(
+                db,
+                sessionId,
+                state.facts
+                  .filter((fact) => referenced.has(fact.id))
+                  .map((fact) => fact.source_message_id),
+              ),
+            );
+            const payload = buildAdviceContext(state, userMessage.text, {
+              ...options,
+              sourceMessages,
+            });
+            const validation = validateConversationStateFacts(
+              payload.activeFacts,
+              sourceMessages,
+              {
+                sessionId,
+                scenario: payload.scenario,
+              },
+            );
+            if (!validation.valid)
+              throw new Error('ADVICE_STATE_VALIDATION_FAILED');
+            // Phase 2.2a cannot populate facts yet; preserve follow-ups instead of dropping their history.
+            if (!payload.activeFacts.length && rows.length)
+              throw new Error('ADVICE_STATE_NOT_POPULATED');
+            // Phase 2.2a transports original evidence only; the structured protocol arrives in 2.3.
+            // The current message is sent separately; duplicating its ID makes source validation fail.
+            history = adviceContextToHistory(payload).filter(
+              (item) => item.id !== userMessage.id,
+            );
+          } catch {
+            console.warn('ADVICE_STATE_CONTEXT_FALLBACK');
+            history = buildAdviceHistory(userMessage.text, rows, replies);
+          }
+        } else {
+          history = buildAdviceHistory(userMessage.text, rows, replies);
+        }
         const context = await readAIServiceContext();
-        const reply = await defaultAIService.sendMessage(
-          userMessage.text,
+        if (!isCurrent()) return;
+        const reply = await runAdvice({
+          prompt: userMessage.text,
           context,
-          userMessage.id,
+          userMessageId: userMessage.id,
           history,
-        );
+          sessionId,
+          signal: controller.signal,
+          onDelta: (delta) => {
+            if (isCurrent()) setStreamingReply({ sessionId, userMessageId: userMessage.id, text: delta.verifiedText });
+          },
+        });
+        if (!isCurrent()) return;
         const saved = await withDatabase((db) =>
-          savePersistedAIReplyIfMessageExists(db, reply),
+          savePersistedAIReplyIfMessageExists(db, reply, sessionId),
         );
         if (!saved) return;
         const isAppBackground = AppState.currentState !== 'active';
         const isAwayFromChat = isModal
           ? !usePreferences.getState().isChatOpen || !mounted.current
           : !screenFocused.current || !mounted.current;
-        if (isAppBackground || isAwayFromChat) {
+        if ((isAppBackground || isAwayFromChat) && !reply.incomplete && isCurrent()) {
           void notifyAIReplyCompleted(reply.replyText);
         }
-        if (!mounted.current || useApp.getState().chatSessionId !== sessionId)
+        if (!isCurrent())
           return;
         setAiReplies((current) => ({
           ...current,
           [userMessage.id]: reply,
         }));
-      } catch {
+      } catch (error) {
+        if (controller.signal.aborted || (error as { name?: string })?.name === 'AbortError') return;
         if (__DEV__) console.warn('triggerAIReply failed');
-        if (!mounted.current || useApp.getState().chatSessionId !== sessionId)
+        if (!isCurrent())
           return;
         const errorReply: AIResponsePayload = {
           id: `ai-err-${userMessage.id}`,
           userMessageId: userMessage.id,
-          replyText: vi.chatLoadError,
+          replyText: strings.chatLoadError,
           createdAt: new Date().toISOString(),
         };
         setAiReplies((current) => ({
@@ -310,15 +475,19 @@ export default function Chat({
           [userMessage.id]: errorReply,
         }));
       } finally {
-        if (mounted.current) {
+        if (activeTurnRef.current?.controller === controller) {
+          activeTurnRef.current = null;
+          if (mounted.current) {
           setTypingForId((current) =>
             current === userMessage.id ? null : current,
           );
+          setStreamingReply((current) => current?.userMessageId === userMessage.id && current.sessionId === sessionId ? null : current);
           void refreshQuota();
+          }
         }
       }
     },
-    [isModal, refreshQuota],
+    [cancelActiveTurn, isModal, refreshQuota, strings],
   );
 
   const onMessage = useCallback((message: ChatRow, sessionId: string) => {
@@ -366,6 +535,14 @@ export default function Chat({
     [activeSessionId, onMessage, triggerAIReply, typingForId],
   );
 
+  const closeHistory = useCallback(() => {
+    setHistoryOpen(false);
+    setOpenSwipeId(null);
+    openSwipeIdRef.current = null;
+    setSelecting(false);
+    setSelectedIds([]);
+  }, []);
+
   const openHistory = useCallback(async () => {
     try {
       historySessionId.current = useApp.getState().chatSessionId;
@@ -387,6 +564,7 @@ export default function Chat({
       setHistoryOpen(false);
       return;
     }
+    cancelActiveTurn();
     setMessages([]);
     setAiReplies({});
     setTypingForId(null);
@@ -397,7 +575,7 @@ export default function Chat({
     paging.current = false;
     useApp.setState({ chatSessionId: sessionId });
     setHistoryOpen(false);
-  }, []);
+  }, [cancelActiveTurn]);
 
   const startNewChat = useCallback(() => {
     selectSession(uuid.v4());
@@ -406,6 +584,7 @@ export default function Chat({
   const deleteSessions = useCallback(
     async (ids: string[]) => {
       if (!ids.length || deletingRef.current) return;
+      if (activeTurnRef.current && ids.includes(activeTurnRef.current.sessionId)) cancelActiveTurn();
       const sessionToKeep = historySessionId.current ?? activeSessionId;
       const activeWasDeleted = ids.includes(sessionToKeep);
       deletingRef.current = true;
@@ -430,7 +609,7 @@ export default function Chat({
         setDeleting(false);
       }
     },
-    [activeSessionId, selectSession, startNewChat],
+    [activeSessionId, cancelActiveTurn, selectSession, startNewChat],
   );
 
   const confirmBulkDelete = useCallback(() => {
@@ -511,19 +690,20 @@ export default function Chat({
               <View
                 style={[
                   localStyles.aiBubble,
-                  localStyles.typingBubble,
+                  ...(streamingReply?.userMessageId === item.id && streamingReply.sessionId === activeSessionId && streamingReply.text ? [] : [localStyles.typingBubble]),
                   {
                     backgroundColor: theme.chat.aiBubble,
                     borderColor: theme.card.border,
                   },
                 ]}
               >
+                {streamingReply?.userMessageId === item.id && streamingReply.sessionId === activeSessionId && streamingReply.text ? <Text selectable variant="bodyMedium" style={{ color: theme.chat.aiText, lineHeight: 21 }}>{renderChatText(streamingReply.text)}</Text> : null}
                 <ActivityIndicator size={16} color={theme.brand.primary} />
                 <Text
                   variant="bodyMedium"
                   style={{ color: theme.text.secondary, fontWeight: '600' }}
                 >
-                  {vi.aiTyping}
+                  {strings.aiTyping}
                 </Text>
               </View>
             </View>
@@ -547,8 +727,9 @@ export default function Chat({
                   variant="bodyMedium"
                   style={{ color: theme.chat.aiText, lineHeight: 21 }}
                 >
-                  {reply.replyText}
+                  {renderChatText(reply.replyText)}
                 </Text>
+                {reply.incomplete && <Text accessibilityRole="text" accessibilityLabel={reply.verification === 'failed' ? strings.aiReplyVerificationFailedNote : strings.aiReplyIncompleteBadge} variant="bodySmall" style={{ color: theme.text.secondary }}>{reply.verification === 'failed' ? strings.aiReplyVerificationFailedNote : strings.aiReplyIncompleteBadge}</Text>}
                 {reply.chartItems && reply.chartItems.length > 0 && (
                   <AICategoryBarChart
                     title={reply.chartTitle}
@@ -561,7 +742,7 @@ export default function Chat({
         </View>
       );
     },
-    [activeSessionId, getReplyForMessage, theme, triggerAIReply, typingForId],
+    [activeSessionId, getReplyForMessage, streamingReply, strings, theme, triggerAIReply, typingForId],
   );
 
   return (
@@ -571,7 +752,9 @@ export default function Chat({
         <Screen
           title={vi.chat}
           scroll={false}
-          onBack={onClose ?? (() => router.back())}
+          onBack={
+            historyOpen ? closeHistory : (onClose ?? (() => router.back()))
+          }
           hideHeader={false}
           inModal={isModal}
           headerRight={
@@ -580,15 +763,11 @@ export default function Chat({
                 label={vi.aiHistory}
                 icon="history"
                 tone="primary"
+                selected={historyOpen}
                 size="sm"
                 onPress={() => {
-                  if (historyOpen) {
-                    setHistoryOpen(false);
-                    setOpenSwipeId(null);
-                    openSwipeIdRef.current = null;
-                    setSelecting(false);
-                    setSelectedIds([]);
-                  } else void openHistory();
+                  if (historyOpen) closeHistory();
+                  else void openHistory();
                 }}
               />
               {historyOpen && sessions.length > 0 ? (
@@ -614,51 +793,6 @@ export default function Chat({
             </View>
           }
         >
-          {isModal && (
-            <View
-              style={[
-                localStyles.modalSubheader,
-                { borderBottomColor: theme.card.border },
-              ]}
-            >
-              <Pill
-                label={historyOpen ? vi.back : vi.aiHistory}
-                icon={historyOpen ? 'arrow-left' : 'history'}
-                tone="primary"
-                size="sm"
-                onPress={() => {
-                  if (historyOpen) {
-                    setHistoryOpen(false);
-                    setOpenSwipeId(null);
-                    openSwipeIdRef.current = null;
-                    setSelecting(false);
-                    setSelectedIds([]);
-                  } else void openHistory();
-                }}
-              />
-              {historyOpen && sessions.length > 0 ? (
-                <Pill
-                  label={selecting ? vi.cancel : vi.aiSelectDelete}
-                  icon="checkbox-marked-outline"
-                  tone="glass"
-                  size="sm"
-                  onPress={() => {
-                    setSelecting(!selecting);
-                    setSelectedIds([]);
-                    setOpenSwipeId(null);
-                    openSwipeIdRef.current = null;
-                  }}
-                />
-              ) : !historyOpen && messages.length > 0 ? (
-                <IconButton
-                  icon="plus"
-                  size={20}
-                  accessibilityLabel={vi.aiNewChat}
-                  onPress={startNewChat}
-                />
-              ) : null}
-            </View>
-          )}
           {loadError && (
             <View style={styles.subtlePanel}>
               <Text accessibilityRole="alert" style={{ color: palette.danger }}>
@@ -713,6 +847,7 @@ export default function Chat({
                     variant="elevated"
                     radius="lg"
                     padding={DesignSpacing.md}
+                    accessibilityLabel={`${session.title}, ${session.updatedAt.slice(0, 10)}, ${session.messageCount} ${vi.aiHistoryMessages}`}
                     onPress={() => {
                       if (
                         deletingRef.current ||
@@ -947,17 +1082,10 @@ const localStyles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     gap: 8,
-  },
-  modalSubheader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    marginBottom: 6,
   },
   introContainer: {
     flexGrow: 1,

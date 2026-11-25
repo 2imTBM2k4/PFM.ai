@@ -17,23 +17,37 @@ export default function Budgets() {
 
   if (activeTab === 'goals') {
     return (
-      <GoalManager guardRouteKey="budgets" onSwitchTab={handleSwitchTab} />
+      <GoalManager
+        guardRouteKey="budgets"
+        onClose={() => handleSwitchTab('stats')}
+      />
     );
   }
 
   if (activeTab === 'stats') {
     return (
       <StatsView
-        onSwitchTab={handleSwitchTab}
-        onSwitchToBudgets={() => handleSwitchTab('budgets')}
+        onOpenTrend={() =>
+          router.push({ pathname: '/detail', params: { screen: 'stats-trend' } })
+        }
+        onOpenBudgets={() =>
+          router.push({ pathname: '/detail', params: { screen: 'budgets' } })
+        }
+        onOpenCalendar={() =>
+          router.push({
+            pathname: '/detail',
+            params: { screen: 'stats-calendar' },
+          })
+        }
+        onOpenGoals={() =>
+          router.push({
+            pathname: '/detail',
+            params: { screen: 'goals', from: 'budgets' },
+          })
+        }
       />
     );
   }
 
-  return (
-    <BudgetManager
-      onSwitchTab={handleSwitchTab}
-      onSwitchToStats={() => handleSwitchTab('stats')}
-    />
-  );
+  return <BudgetManager onClose={() => handleSwitchTab('stats')} />;
 }

@@ -86,6 +86,7 @@ export function Screen({
   onScroll,
   children,
   scroll = true,
+  maxWidth,
 }: PropsWithChildren<{
   title: string;
   subtitle?: string;
@@ -101,6 +102,7 @@ export function Screen({
   footer?: ReactNode;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scroll?: boolean;
+  maxWidth?: number;
 }>) {
   const palette = useFinancePalette();
   const reduceMotion = useReducedMotion();
@@ -201,6 +203,7 @@ export function Screen({
         style={[
           styles.column,
           scroll ? styles.scrollColumn : styles.fill,
+          maxWidth !== undefined && { maxWidth },
           {
             paddingLeft: horizontalPadding,
             paddingRight:
@@ -563,6 +566,7 @@ export function QuickTile({
           style,
           compact && {
             flex: 0,
+            flexGrow: 0,
             width: 44,
             minWidth: 44,
             height: 44,
@@ -574,7 +578,12 @@ export function QuickTile({
         ]}
       >
         {compact && Platform.OS === 'ios' ? (
-          <SymbolView name={toSfSymbol(icon)!} size={18} tintColor={fg} />
+          <SymbolView
+            name={toSfSymbol(icon)!}
+            size={18}
+            tintColor={fg}
+            style={{ width: 18, height: 18 }}
+          />
         ) : (
           <IconBadge
             icon={icon}
@@ -588,6 +597,8 @@ export function QuickTile({
           <Text
             variant="labelMedium"
             style={{
+              width: '100%',
+              flexShrink: 1,
               color: palette.text,
               fontWeight: '600',
               textAlign: 'center',
@@ -761,7 +772,8 @@ export const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   quickTile: {
-    flex: 1,
+    flexGrow: 1,
+    width: '100%',
     minWidth: 74,
     paddingVertical: 14,
     paddingHorizontal: 8,

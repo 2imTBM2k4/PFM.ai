@@ -256,9 +256,27 @@ describe('Screen sticky footer and tab bar clearance (D3 / 3-PA1)', () => {
         compact: false,
         onPress,
       });
-      expect(
-        collectElements(expanded, (element) => element.type === 'PaperText'),
-      ).toHaveLength(1);
+      const expandedButton = collectElements(
+        expanded,
+        (element) => element.type === 'Pressable',
+      )[0]!;
+      const expandedStyle = Object.assign(
+        {},
+        ...(
+          expandedButton.props.style as (state: { pressed: boolean }) => object[]
+        )({ pressed: false }),
+      );
+      expect(expandedStyle.flex).toBeUndefined();
+      expect(expandedStyle).toMatchObject({ flexGrow: 1, width: '100%' });
+      const expandedLabel = collectElements(
+        expanded,
+        (element) => element.type === 'PaperText',
+      );
+      expect(expandedLabel).toHaveLength(1);
+      expect(expandedLabel[0]!.props.style).toMatchObject({
+        width: '100%',
+        flexShrink: 1,
+      });
     },
   );
 

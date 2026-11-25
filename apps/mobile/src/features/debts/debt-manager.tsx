@@ -103,6 +103,7 @@ export function DebtManager({ onClose }: { onClose(): void }) {
   const load = useCallback(async () => {
     const token = ++request.current;
     setLoading(true);
+    setError('');
     try {
       const next = await withDatabase(async (db) => ({
         debts: await listDebts(db),
@@ -312,9 +313,22 @@ export function DebtManager({ onClose }: { onClose(): void }) {
         </View>
       )}
       {!!error && (
-        <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {error}
-        </Text>
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.dangerSoft,
+              borderColor: palette.danger,
+            },
+          ]}
+        >
+          <Text accessibilityRole="alert" style={{ color: colors.error }}>
+            {error}
+          </Text>
+          <Button hitSlop={4} disabled={loading || busy} onPress={() => void load()}>
+            {vi.retry}
+          </Button>
+        </View>
       )}
       {undo && (
         <View

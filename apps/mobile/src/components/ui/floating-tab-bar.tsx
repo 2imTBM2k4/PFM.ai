@@ -107,19 +107,19 @@ export function TabIconButton({
         {Platform.OS === 'ios' ? (
           <SymbolView
             name={active ? item.iosActiveIcon : item.iosIcon}
-            size={active && showLabel ? 19 : 22}
+            size={showLabel ? 18 : 22}
             tintColor={
               active ? theme.tabBar.activeIcon : theme.tabBar.inactiveIcon
             }
             style={{
-              width: active && showLabel ? 19 : 22,
-              height: active && showLabel ? 19 : 22,
+              width: showLabel ? 18 : 22,
+              height: showLabel ? 18 : 22,
             }}
           />
         ) : (
           <MaterialCommunityIcons
             name={iconName as never}
-            size={active && showLabel ? 19 : 22}
+            size={showLabel ? 18 : 22}
             color={active ? theme.tabBar.activeIcon : theme.tabBar.inactiveIcon}
           />
         )}
@@ -252,7 +252,9 @@ export function FloatingTabBarView({
               accessibilityRole="tablist"
               style={[
                 styles.liquidGlassBar,
-                { width: layout.pillWidth },
+                { width: layout.pillWidth, height: layout.pillHeight },
+                !isDuoClosedPortrait &&
+                  !liquidGlassAvailable && { paddingVertical: 1 },
                 !liquidGlassAvailable && createSoftShadow(theme.mode, 'lg'),
                 !liquidGlassAvailable && {
                   backgroundColor: solid
@@ -344,7 +346,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     borderRadius: DesignRadius.pill,
     paddingHorizontal: 6,
-    paddingVertical: 5,
+    paddingVertical: 2,
     overflow: 'hidden',
   },
   verticalLiquidGlassBar: {
@@ -365,8 +367,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   activeLabel: {
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 12,
     fontWeight: '700',
     flexShrink: 1,
     textAlign: 'center',

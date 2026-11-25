@@ -11,6 +11,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
 import { BackHandler, FlatList, Platform, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Button,
@@ -29,7 +30,11 @@ import {
   styles,
 } from '@/components/screen';
 import { AppleMenuPicker, MoneyInput } from '@/components/ui';
-import { useFinancePalette, walletKindVisual } from '@/constants/theme';
+import {
+  DesignSpacing,
+  useFinancePalette,
+  walletKindVisual,
+} from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import type { Database } from '@/data/migrate';
 import { listWallets, type WalletRow } from '@/data/repository';
@@ -75,6 +80,7 @@ export function WalletManager({ onClose }: { onClose(): void }) {
   const working = useRef(false);
   const { colors } = useTheme();
   const palette = useFinancePalette();
+  const insets = useSafeAreaInsets();
   const recurringVersion = useApp((state) => state.recurringVersion);
   const showRows = useCallback(
     (next: { rows: WalletRow[]; pinnedIds: string[] }) => {
@@ -302,7 +308,10 @@ export function WalletManager({ onClose }: { onClose(): void }) {
           renderItem={renderWallet}
           showsVerticalScrollIndicator={false}
           style={styles.fill}
-          contentContainerStyle={{ gap: 14, paddingBottom: 24 }}
+          contentContainerStyle={{
+            gap: 14,
+            paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
+          }}
           ListEmptyComponent={
             <EmptyStateCard
               icon="wallet-outline"

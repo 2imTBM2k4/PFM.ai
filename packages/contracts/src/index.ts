@@ -118,6 +118,13 @@ export {
   AdviceRiskFlagSchema,
   AdviceScenarioSchema,
   AdviceSpendingHabitsGroupSchema,
+  ConversationFactSchema,
+  DurationFactSchema,
+  EntryDraftSchema,
+  MoneyFactSchema,
+  isDurationFact,
+  isMoneyFact,
+  validateConversationFacts,
 } from './advice-flow';
 export type {
   AdviceBaselineRow,
@@ -143,6 +150,10 @@ export type {
   AdviceRiskFlag,
   AdviceScenario,
   AdviceSpendingHabitsGroup,
+  ConversationFact,
+  DurationFact,
+  EntryDraft,
+  MoneyFact,
 } from './advice-flow';
 export {
   BACKUP_ALLOWED_SETTINGS_KEYS,
@@ -179,3 +190,12 @@ export type {
   BackupTransactionRow,
   BackupWalletRow,
 } from './backup';
+export { ConversationStateSchema, scenarioAmountToMinor, minorToScenario } from './conversation-state';
+export type { ConversationState, Slot } from './conversation-state';
+export { CorrectionProposalSchema } from './correction';
+export type { CorrectionProposal } from './correction';
+export { AdviceValidationContextSchema, SourceMessageSchema } from './advice-validation-context';
+export type { AdviceValidationContext } from './advice-validation-context';
+export type { ToolErrorCode, ToolResult } from './advice-tools';
+export { AdviceToolContextSchema, GetTransactionsParamsSchema, CalculateBudgetStatusParamsSchema, PlanSavingsGoalParamsSchema, GetFinancialSnapshotParamsSchema } from './advice-tools';
+export type { GetTransactionsParams, CalculateBudgetStatusParams, PlanSavingsGoalParams, GetFinancialSnapshotParams } from './advice-tools';

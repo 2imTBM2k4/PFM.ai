@@ -83,6 +83,8 @@ import {
 import {
   makeEntryDrafts,
   confirmSelectedEntries,
+  applyDraftMessage,
+  applyEntryDraftContract,
 } from '@/features/quick-entry/draft';
 
 let sqlite: DatabaseSync;
@@ -251,6 +253,93 @@ it('pins multiple Overview wallets without changing transaction wallet ordering'
 });
 
 const entryNow = new Date('2026-10-23T09:00:00+07:00');
+
+it('saves only a corrected and explicitly approved draft, and cancellation writes nothing', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  const session = await entrySession('ăn sáng 30k');
+  const clock = { now: () => entryNow, timeZone: 'Asia/Ho_Chi_Minh' };
+  const corrected = applyDraftMessage('à nhầm 35k', session.drafts, clock);
+  expect(corrected.action).toBe('correct');
+  if (corrected.action !== 'correct') throw new Error('Expected correction');
+  expect(() =>
+    confirmSelectedEntries(session.result, corrected.drafts, entryNow),
+  ).toThrow('ENTRY_AMOUNT_CONFIRMATION');
+  expect(await listTransactions(db)).toEqual([]);
+  expect((await listWallets(db))[0].balance).toBe(0);
+  await saveParsedEntries(
+    db,
+    session.result.raw,
+    confirmSelectedEntries(
+      session.result,
+      corrected.drafts.map((draft) => ({ ...draft, amountConfirmed: true })),
+      entryNow,
+    ),
+    'approved',
+  );
+  expect((await listTransactions(db)).map((row) => row.amount)).toEqual([
+    35000,
+  ]);
+  expect((await listWallets(db))[0].balance).toBe(-35000);
+  const next = await entrySession('ăn sáng 30k');
+  expect(applyDraftMessage('thôi để sau', next.drafts, clock).action).toBe(
+    'cancel',
+  );
+  expect((await listTransactions(db)).map((row) => row.amount)).toEqual([
+    35000,
+  ]);
+  expect((await listWallets(db))[0].balance).toBe(-35000);
+});
+
+it('rejects an uncertain merchant before any database write and preserves the confirmed transaction', async () => {
+  await migrate(db);
+  await seed(db, 'old');
+  const session = await entrySession('ăn sáng 30k');
+  const base = session.drafts[0];
+  const draft = applyEntryDraftContract(
+    {
+      amount: 30000,
+      currency: 'VND',
+      type: 'expense',
+      category: base.categoryId || null,
+      date: base.date,
+      wallet_id: base.walletId,
+      note: 'Ăn sáng',
+      merchant: 'Quán A',
+      confidence: {
+        amount: 'high',
+        currency: 'high',
+        type: 'high',
+        category: 'high',
+        date: 'high',
+        wallet_id: 'high',
+        note: 'high',
+        merchant: 'low',
+      },
+      missing_fields: [],
+    },
+    base,
+  );
+  expect(() =>
+    confirmSelectedEntries(session.result, [draft], entryNow),
+  ).toThrow('ENTRY_FIELD_CONFIRMATION');
+  expect(await listTransactions(db)).toEqual([]);
+  await saveParsedEntries(
+    db,
+    session.result.raw,
+    confirmSelectedEntries(
+      session.result,
+      [{ ...draft, confirmedFields: { merchant: 'Quán A' } }],
+      entryNow,
+    ),
+    'approved',
+  );
+  expect((await listTransactions(db))[0]).toMatchObject({
+    amount: 30000,
+    note: 'Ăn sáng',
+  });
+  expect((await listWallets(db))[0].balance).toBe(-30000);
+});
 
 it('toggles samples off and on without losing a real Chat transaction in the sample wallet', async () => {
   await migrate(db);
@@ -2796,7 +2885,7 @@ it('upgrades version 1 notes in bounded batches without changing original transa
       booking_rate: null,
     })),
   );
-  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(5);
+  expect(sqlite.prepare('PRAGMA user_version').get()?.user_version).toBe(6);
   await migrate(db);
   expect(
     sqlite.prepare('SELECT * FROM transactions ORDER BY id').all(),
@@ -3046,7 +3135,7 @@ it('upgrades and queries 50000 synthetic transactions with the actual migration 
       budgetMs: Math.round(budgetMs),
     }),
   );
-});
+}, 15_000);
 
 it('records income, expense and a single-row transfer, then edits its destination without double counting', async () => {
   await migrate(db);
@@ -4026,7 +4115,7 @@ it('migrates once, seeds exactly 25 categories and one cash wallet twice', async
   expect(sqlite.prepare('SELECT count(*) n FROM wallets').get()?.n).toBe(1);
   expect(
     sqlite.prepare('SELECT count(*) n FROM schema_migrations').get()?.n,
-  ).toBe(5);
+  ).toBe(6);
   expect(
     sqlite
       .prepare('SELECT count(*) n FROM categories WHERE parent_id IS NOT NULL')

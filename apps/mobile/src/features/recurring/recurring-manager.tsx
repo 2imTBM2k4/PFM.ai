@@ -281,9 +281,26 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
         </Text>
       )}
       {(error || status.error) && (
-        <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {error || vi.recurringRunError}
-        </Text>
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.dangerSoft,
+              borderColor: palette.danger,
+            },
+          ]}
+        >
+          <Text accessibilityRole="alert" style={{ color: colors.error }}>
+            {error || vi.recurringRunError}
+          </Text>
+          <Button
+            hitSlop={4}
+            disabled={loading || busy}
+            onPress={() => void reload()}
+          >
+            {vi.retry}
+          </Button>
+        </View>
       )}
       {loading && (
         <View style={{ paddingVertical: 28, alignItems: 'center' }}>

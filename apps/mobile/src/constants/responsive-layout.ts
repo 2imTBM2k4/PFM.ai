@@ -38,10 +38,10 @@ export function getFloatingTabBarLayout(
   const activeWeight = 1;
   const inactiveTabWidth =
     Math.max(0, pillWidth - 14) / (Math.max(1, itemCount - 1) + activeWeight);
-  const tabHeight = vertical ? 48 : 64;
+  const tabHeight = vertical ? 48 : 44;
   const pillHeight = vertical
     ? itemCount * tabHeight + Math.max(0, itemCount - 1) * 4 + 18
-    : tabHeight + 12;
+    : addButtonSize;
   return {
     rowWidth: vertical ? 58 : rowWidth,
     rowHeight: vertical ? pillHeight + controlGap + addButtonSize : pillHeight,

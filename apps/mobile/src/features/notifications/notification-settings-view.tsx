@@ -357,6 +357,12 @@ export function NotificationSettingsView({ onClose }: { onClose(): void }) {
               return (
                 <Pressable
                   key={preset}
+                  accessibilityRole="button"
+                  accessibilityLabel={preset}
+                  accessibilityState={{
+                    selected: active,
+                    disabled: !notificationsEnabled,
+                  }}
                   disabled={!notificationsEnabled}
                   onPress={() => {
                     void setDailyExpenseReminderTime(preset).then(() =>
@@ -543,6 +549,8 @@ const localStyles = StyleSheet.create({
     gap: 8,
   },
   presetChip: {
+    minHeight: 44,
+    justifyContent: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: DesignRadius.pill,
