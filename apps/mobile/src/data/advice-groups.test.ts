@@ -74,6 +74,42 @@ describe('readAdviceGroups SQLite integration', () => {
     await seed(db, '2026-01-01T00:00:00Z');
   });
 
+  it('reads only the requested classification group and distinguishes no budget from zero', async () => {
+    await addExpense(123, '2026-11-14', null);
+    const groups = await readAdviceGroups(
+      db,
+      {
+        metrics: [],
+        scenario: {},
+        groups: [
+          { kind: 'classification_status', rangeKind: 'this_month' },
+          { kind: 'budget_status' },
+        ],
+      },
+      { todayIso: '2026-11-14', fallbackCategoryLabel: 'Chưa phân loại' },
+    );
+    expect(groups).toEqual([
+      {
+        kind: 'classification_status',
+        rangeKind: 'this_month',
+        from: '2026-11-01',
+        to: '2026-11-14',
+        expenseCount: 1,
+        expenseAmount: 123,
+        incomeCount: 0,
+        incomeAmount: 0,
+      },
+      { kind: 'budget_status', month: '2026-11', items: [] },
+    ]);
+    expect(
+      await readAdviceGroups(
+        db,
+        { metrics: ['months_with_data'], scenario: {} },
+        { fallbackCategoryLabel: 'Khác' },
+      ),
+    ).toEqual([]);
+  });
+
   async function categoryId(systemKey: string): Promise<string> {
     const row = await db.getFirstAsync<{ id: string }>(
       'SELECT id FROM categories WHERE system_key = ?',

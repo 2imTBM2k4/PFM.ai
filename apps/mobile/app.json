@@ -28,6 +28,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "./plugins/with-ios-26.cjs",
       "expo-router",
       [
         "expo-splash-screen",

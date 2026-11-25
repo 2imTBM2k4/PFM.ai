@@ -5,6 +5,7 @@ import {
 } from '@pfm/contracts';
 import {
   classifyAdviceScope,
+  isUnsafeAdviceAnswer,
   renderFallbackTemplate,
   verifyNumbers,
 } from '@pfm/domain';
@@ -12,9 +13,9 @@ import type { FastifyPluginAsync } from 'fastify';
 
 import { config } from '../config';
 import { AppError } from '../errors/app-error';
+import { authenticateGoogle, authUserId } from '../middleware/auth';
 import { scanPii } from '../services/pii-scanner';
 import { quotaService } from '../services/quota-service';
-import { rateLimitService } from '../services/rate-limit-service';
 import { upstreamAiService } from '../services/upstream-ai';
 
 // Extract all valid numbers from summary and calculations that the AI is permitted to mention.
@@ -97,130 +98,120 @@ function extractAllowedNumbers(
 }
 
 export const adviceRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.post('/v1/advice', async (request) => {
-    // 0. IP-level rate limiting to protect against spam / DoS
-    const clientIp = request.ip || '127.0.0.1';
-    const rateLimit = rateLimitService.checkRateLimit(clientIp);
-    if (!rateLimit.allowed) {
-      throw AppError.rateLimitExceeded();
-    }
-    rateLimitService.consumeRateLimit(clientIp);
+  fastify.post(
+    '/v1/advice',
+    { preHandler: authenticateGoogle },
+    async (request) => {
+      // 1. Strict Zod schema validation
+      const parsedRequest = AdviceRequestSchema.parse(request.body);
 
-    // 1. Strict Zod schema validation
-    const parsedRequest = AdviceRequestSchema.parse(request.body);
-
-    // 2. PII scan on question and chat history
-    const questionPii = scanPii(parsedRequest.question);
-    if (questionPii.hasPii) {
-      throw AppError.piiDetected();
-    }
-
-    for (const msg of parsedRequest.history) {
-      const historyPii = scanPii(msg.text);
-      if (historyPii.hasPii) {
+      // 2. PII scan on question and chat history
+      const questionPii = scanPii(parsedRequest.question);
+      if (questionPii.hasPii) {
         throw AppError.piiDetected();
       }
-    }
 
-    // 3. Scope validation for current question and user history items
-    const questionScope = classifyAdviceScope(parsedRequest.question);
-    if (questionScope.status === 'out_of_scope') {
-      throw AppError.outOfScope();
-    }
-    if (questionScope.status === 'restricted') {
-      throw AppError.restricted();
-    }
-    if (questionScope.status === 'ambiguous') {
-      throw AppError.ambiguous();
-    }
-
-    for (const msg of parsedRequest.history) {
-      if (msg.role === 'user') {
-        const histScope = classifyAdviceScope(msg.text);
-        if (histScope.status === 'out_of_scope') {
-          throw AppError.outOfScope();
-        }
-        if (histScope.status === 'restricted') {
-          throw AppError.restricted();
+      for (const msg of parsedRequest.history) {
+        const historyPii = scanPii(msg.text);
+        if (historyPii.hasPii) {
+          throw AppError.piiDetected();
         }
       }
-    }
 
-    // 4. Intent consistency: client intent must match clear classifier topic
-    if (
-      questionScope.topic !== null &&
-      questionScope.topic !== parsedRequest.intent
-    ) {
-      throw AppError.ambiguous(
-        'Ý định tư vấn không khớp với nội dung câu hỏi.',
-        'ADVICE_AMBIGUOUS',
+      // 3. Scope validation for current question and user history items
+      const questionScope = classifyAdviceScope(parsedRequest.question);
+      if (questionScope.status === 'out_of_scope') {
+        throw AppError.outOfScope();
+      }
+      if (questionScope.status === 'restricted') {
+        throw AppError.restricted();
+      }
+      if (questionScope.status === 'ambiguous') {
+        throw AppError.ambiguous();
+      }
+
+      for (const msg of parsedRequest.history) {
+        if (msg.role === 'user') {
+          const histScope = classifyAdviceScope(msg.text);
+          if (histScope.status === 'out_of_scope') {
+            throw AppError.outOfScope();
+          }
+          if (histScope.status === 'restricted') {
+            throw AppError.restricted();
+          }
+        }
+      }
+
+      // 4. Intent consistency: client intent must match clear classifier topic
+      if (
+        questionScope.topic !== null &&
+        questionScope.topic !== parsedRequest.intent
+      ) {
+        throw AppError.ambiguous(
+          'Ý định tư vấn không khớp với nội dung câu hỏi.',
+          'ADVICE_AMBIGUOUS',
+        );
+      }
+
+      // 5. Quota check (only allowed requests reach this point)
+      const deviceId = authUserId(request.auth);
+
+      const quota = quotaService.checkQuota(deviceId, request.auth.mode);
+      if (!quota.allowed) {
+        const fallback = renderFallbackTemplate({
+          intent: parsedRequest.intent,
+          calculations: parsedRequest.calculations,
+          summary: parsedRequest.summary,
+        });
+        throw AppError.quotaExceeded(
+          `Bạn đã dùng hết lượt hỏi AI hôm nay. Lượt mới có từ ${quota.resetAt}.`,
+          'QUOTA_EXCEEDED_DEVICE',
+          fallback,
+        );
+      }
+
+      // 6. Call Upstream LLM
+      const upstreamRes = await upstreamAiService.callModel(parsedRequest);
+      if (isUnsafeAdviceAnswer(upstreamRes.answer)) throw AppError.restricted();
+
+      // 7. Number verification guardrail
+      const allowedNumbers = extractAllowedNumbers(
+        parsedRequest.summary,
+        parsedRequest.calculations,
       );
-    }
 
-    // 5. Quota check (only allowed requests reach this point)
-    const deviceId =
-      (request.headers['x-device-id'] as string | undefined) ??
-      'anonymous-device';
+      const verification = verifyNumbers(
+        upstreamRes.answer,
+        allowedNumbers,
+        config.approxToleranceBps,
+      );
 
-    const quota = quotaService.checkQuota(deviceId);
-    if (!quota.allowed) {
-      const fallback = renderFallbackTemplate({
+      if (!verification.isValid) {
+        const fallback = renderFallbackTemplate({
+          intent: parsedRequest.intent,
+          calculations: parsedRequest.calculations,
+          summary: parsedRequest.summary,
+        });
+
+        throw AppError.answerUnverified(
+          'Câu trả lời từ trợ lý AI chưa được xác thực số liệu an toàn. Dưới đây là kết quả tính toán từ dữ liệu của bạn.',
+          fallback,
+        );
+      }
+
+      // 8. Commit quota unit upon verified response
+      quotaService.consumeQuota(deviceId, request.auth.mode);
+
+      return {
+        success: true,
+        message: 'OK',
+        code: 'OK',
+        requestId: parsedRequest.requestId,
         intent: parsedRequest.intent,
+        answer: upstreamRes.answer,
         calculations: parsedRequest.calculations,
-        summary: parsedRequest.summary,
-      });
-      throw AppError.quotaExceeded(
-        `Bạn đã dùng hết lượt hỏi AI hôm nay. Lượt mới có từ ${quota.resetAt}.`,
-        'QUOTA_EXCEEDED_DEVICE',
-        fallback,
-      );
-    }
-
-    // 6. Call Upstream LLM
-    const upstreamRes = await upstreamAiService.callModel(parsedRequest);
-
-    // 7. Number verification guardrail
-    const allowedNumbers = extractAllowedNumbers(
-      parsedRequest.summary,
-      parsedRequest.calculations,
-    );
-
-    const verification = verifyNumbers(
-      upstreamRes.answer,
-      allowedNumbers,
-      config.approxToleranceBps,
-    );
-
-    if (!verification.isValid) {
-      request.log.warn(
-        { violations: verification.violations },
-        'AI response contained hallucinated or unverified numbers; triggering fallback template.',
-      );
-
-      const fallback = renderFallbackTemplate({
-        intent: parsedRequest.intent,
-        calculations: parsedRequest.calculations,
-        summary: parsedRequest.summary,
-      });
-
-      throw AppError.answerUnverified(
-        'Câu trả lời từ trợ lý AI chưa được xác thực số liệu an toàn. Dưới đây là kết quả tính toán từ dữ liệu của bạn.',
-        fallback,
-      );
-    }
-
-    // 8. Commit quota unit upon verified response
-    quotaService.consumeQuota(deviceId);
-
-    return {
-      success: true,
-      message: 'OK',
-      code: 'OK',
-      requestId: parsedRequest.requestId,
-      intent: parsedRequest.intent,
-      answer: upstreamRes.answer,
-      calculations: parsedRequest.calculations,
-      model: upstreamRes.model,
-    };
-  });
+        model: upstreamRes.model,
+      };
+    },
+  );
 };

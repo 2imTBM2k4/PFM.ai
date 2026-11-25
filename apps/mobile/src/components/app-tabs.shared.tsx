@@ -54,6 +54,72 @@ export const APP_TAB_ITEMS: readonly TabBarItem[] = [
   },
 ] as const;
 
+const captureReceiptFromTab = async (source: 'camera' | 'library') => {
+  try {
+    if (source === 'camera') {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert?.alert?.(vi.receiptCameraDenied);
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        usePreferences.getState().openChatWithReceipt(result.assets[0]);
+      }
+    } else {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert?.alert?.(vi.receiptCameraDenied);
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+      });
+      if (!result.canceled && result.assets?.[0]) {
+        usePreferences.getState().openChatWithReceipt(result.assets[0]);
+      }
+    }
+  } catch {
+    Alert?.alert?.(vi.receiptScanFailed);
+  }
+};
+
+export const handleQuickAction = (action: 'manual' | 'camera' | 'chat') => {
+  if (isAnyGuardSaving()) {
+    return;
+  }
+  if (action === 'manual') {
+    usePreferences.getState().openAddTransaction('manual');
+    return;
+  }
+  if (action === 'camera') {
+    Alert?.alert?.(vi.receiptScan, vi.receiptChooseSource, [
+      { text: vi.cancel, style: 'cancel' },
+      {
+        text: vi.receiptTakePhoto,
+        onPress: () => {
+          void captureReceiptFromTab('camera');
+        },
+      },
+      {
+        text: vi.receiptChoosePhoto,
+        onPress: () => {
+          void captureReceiptFromTab('library');
+        },
+      },
+    ]);
+    return;
+  }
+  if (action === 'chat') {
+    usePreferences.getState().openChat();
+    return;
+  }
+};
+
 /**
  * Custom bottom tab bar adapter bridging Expo Router's BottomTabBarProps to FloatingTabBar.
  * Hides the floating tab bar on the 'chat' route (Option 1.B) so the AI composer sits flush at the bottom.
@@ -94,7 +160,9 @@ export function CustomBottomTabBar({
       usePreferences.getState().setTabBarVisible(true);
       const targetRoute = state.routes.find((r) => r.name === routeName);
       if (!targetRoute) {
-        router.navigate(routeName === 'index' ? '/' : (`/${routeName}` as never));
+        router.navigate(
+          routeName === 'index' ? '/' : (`/${routeName}` as never),
+        );
         return;
       }
       const event = emitter.emit({
@@ -106,72 +174,6 @@ export function CustomBottomTabBar({
         navigateToTab(targetRoute.key);
       }
     });
-  };
-
-  const captureReceiptFromTab = async (source: 'camera' | 'library') => {
-    try {
-      if (source === 'camera') {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) {
-          Alert?.alert?.(vi.receiptCameraDenied);
-          return;
-        }
-        const result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ['images'],
-        });
-        if (!result.canceled && result.assets?.[0]) {
-          usePreferences.getState().openChatWithReceipt(result.assets[0]);
-        }
-      } else {
-        const permission =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) {
-          Alert?.alert?.(vi.receiptCameraDenied);
-          return;
-        }
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          allowsMultipleSelection: false,
-        });
-        if (!result.canceled && result.assets?.[0]) {
-          usePreferences.getState().openChatWithReceipt(result.assets[0]);
-        }
-      }
-    } catch {
-      Alert?.alert?.(vi.receiptScanFailed);
-    }
-  };
-
-  const handleActionSelect = (action: 'manual' | 'camera' | 'chat') => {
-    if (isAnyGuardSaving()) {
-      return;
-    }
-    if (action === 'manual') {
-      usePreferences.getState().openAddTransaction('manual');
-      return;
-    }
-    if (action === 'camera') {
-      Alert?.alert?.(vi.receiptScan, vi.receiptChooseSource, [
-        { text: vi.cancel, style: 'cancel' },
-        {
-          text: vi.receiptTakePhoto,
-          onPress: () => {
-            void captureReceiptFromTab('camera');
-          },
-        },
-        {
-          text: vi.receiptChoosePhoto,
-          onPress: () => {
-            void captureReceiptFromTab('library');
-          },
-        },
-      ]);
-      return;
-    }
-    if (action === 'chat') {
-      usePreferences.getState().openChat();
-      return;
-    }
   };
 
   return (
@@ -191,7 +193,7 @@ export function CustomBottomTabBar({
       }))}
       activeKey={activeRouteName}
       onSelect={handleSelectTab}
-      onActionSelect={handleActionSelect}
+      onActionSelect={handleQuickAction}
       addAccessibilityLabel={vi.quickAddMenu}
       bottomInset={insets.bottom}
     />
@@ -209,7 +211,7 @@ export default function AppTabs() {
       tabBar={(props) => <CustomBottomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        animation: 'fade',
+        animation: 'none',
         sceneStyle: { backgroundColor: theme.sky.upperMid },
       }}
     >
@@ -225,13 +227,6 @@ export default function AppTabs() {
         options={{
           title: vi.statsTabTitle,
           tabBarAccessibilityLabel: vi.statsTabTitle,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: vi.chat,
-          tabBarAccessibilityLabel: vi.chat,
         }}
       />
       <Tabs.Screen

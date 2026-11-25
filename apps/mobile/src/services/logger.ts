@@ -75,3 +75,31 @@ export function createLogger(write: (entry: LogEntry) => void) {
 export const logAppEvent = createLogger((entry) => {
   if (typeof __DEV__ !== 'undefined' && __DEV__) console.info(entry);
 });
+
+/** Record a device-only draft event without transporting any financial data. */
+export function logLocalAIEntry(
+  requestId: string,
+  authMode: 'guest' | 'authenticated',
+): void {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      requestId,
+    ) ||
+    !['guest', 'authenticated'].includes(authMode)
+  )
+    throw new Error('LOG_FIELD_REJECTED');
+  if (typeof __DEV__ !== 'undefined' && __DEV__)
+    console.info(
+      JSON.stringify({
+        request_id: requestId,
+        model: null,
+        latency_ms: 0,
+        intent: 'entry',
+        tool_calls: [],
+        fallback_used: false,
+        bypass_used: false,
+        auth_mode: authMode,
+        error_code: null,
+      }),
+    );
+}

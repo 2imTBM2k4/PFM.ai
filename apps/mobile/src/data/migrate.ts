@@ -48,6 +48,16 @@ export const MIGRATIONS: Migration[] = [
     description: 'Add period_type, start_date, and end_date to budgets',
     sql: "ALTER TABLE budgets ADD COLUMN period_type TEXT NOT NULL DEFAULT 'monthly' CHECK(period_type IN ('monthly','custom')); ALTER TABLE budgets ADD COLUMN start_date TEXT; ALTER TABLE budgets ADD COLUMN end_date TEXT;",
   },
+  {
+    version: 6,
+    description: 'Store versioned local conversation state without backfilling sessions',
+    sql: `CREATE TABLE conversation_states (
+      session_id TEXT PRIMARY KEY NOT NULL,
+      revision INTEGER NOT NULL CHECK(revision >= 1),
+      state_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );`,
+  },
 ];
 
 export async function checkIntegrity(db: Queries) {

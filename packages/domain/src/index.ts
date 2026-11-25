@@ -1,5 +1,23 @@
-export { MAX_AMOUNT_VND, convertMoney, formatCompactVnd, formatVnd, toMoney } from './money';
+export {
+  MAX_AMOUNT_VND,
+  convertMoney,
+  formatCompactVnd,
+  formatVnd,
+  toMoney,
+} from './money';
 export type { Currency, Money } from './money';
+export {
+  CALCULATION_VERSION,
+  compoundInterest,
+  requiredMonthlySaving,
+} from './financial-calculations';
+export { normalizeAdviceInputs, calculateAdviceInputs } from './advice-inputs';
+export type {
+  AdviceInputs,
+  AdviceInputsResult,
+  AdviceInputContext,
+  AdviceInputAmount,
+} from './advice-inputs';
 export { ceilDiv, roundHalfUp, ratioBps } from './arithmetic';
 export {
   addDays,
@@ -88,7 +106,25 @@ export type {
   VerifyNumbersResult,
   FallbackTemplateContext,
 } from './guardrails';
-export { classifyAdviceScope } from './advice-scope';
+export {
+  classifyAdviceScope,
+  classifyFinancialIntent,
+  isUnsafeAdviceAnswer,
+} from './advice-scope';
+export { verifyAgentAnswer } from './guardrails/verify-agent-answer';
+export type {
+  AgentAnswerEvidence,
+  AgentAnswerContextEvidence,
+  AgentVerifiedToolRecord,
+  AgentVerificationViolationCode,
+  AgentAnswerVerificationResult,
+} from './guardrails/verify-agent-answer';
+export {
+  KNOWLEDGE_BASE,
+  selectTopics,
+  knowledgePrompt,
+} from './financial-knowledge';
+export type { KnowledgeTopic } from './financial-knowledge';
 export type {
   AdviceScopeStatus,
   AdviceTopic,
@@ -110,3 +146,17 @@ export type {
   AdviceQueryKind,
   AdviceRangeKind,
 } from './advice-query';
+export {
+  resolveAdviceToolPolicy,
+  checkAdviceToolBatch,
+} from './advice-tool-policy';
+export type {
+  AdviceToolBinding,
+  AdviceToolGrant,
+  AdviceToolPolicy,
+  AdviceToolPolicyInput,
+  AdviceToolPolicyDecision,
+  AdviceToolPolicyCall,
+  AdviceToolBatchDecision,
+  SnapshotField,
+} from './advice-tool-policy';

@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import type { BudgetBannerItem } from '@pfm/domain';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
@@ -81,7 +81,7 @@ export function BudgetBanner({ items, onPress, onDismiss }: BudgetBannerProps) {
         <MaterialCommunityIcons name={iconName} size={20} color={fg} />
         <Text
           variant="bodyMedium"
-          numberOfLines={1}
+
           style={[localStyles.messageText, { color: fg }]}
         >
           {message}

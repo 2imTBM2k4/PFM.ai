@@ -1,12 +1,22 @@
 import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
-import { AdvicePlanResponseSchema, type Intent } from '@pfm/contracts';
+import {
+  AdvicePlanResponseSchema,
+  AdviceValidationContextSchema,
+  validateConversationFacts,
+  type AdviceValidationContext,
+  type AdviceHistoryItem,
+  type Intent,
+} from '@pfm/contracts';
 import {
   classifyAdviceScope,
+  addDays,
+  addMonths,
   findPreviousFactQuery,
   monthKey,
   parseAdviceQuery,
   today,
+  type AdviceInputContext,
   type AdviceDateRange,
   type AdviceTopic,
 } from '@pfm/domain';
@@ -21,16 +31,106 @@ import { readAdviceGroups } from '@/data/advice-groups';
 import { withDatabase } from '@/data/connection';
 import { readDashboard } from '@/data/dashboard';
 import type { Database, Queries } from '@/data/migrate';
-import { AI_REPLIES_SETTING_KEY } from '@/data/repository';
+import {
+  AI_REPLIES_SETTING_KEY,
+  readChatSourceMessages,
+} from '@/data/repository';
+import { readConversationState } from '@/data/conversation-state';
+import { flags } from '../../app.config';
 import { foldSearchText } from '@/data/search-text';
 import { en } from '@/messages/en';
 import { vi } from '@/messages/vi';
 import { displayCategoryName, factsLabels } from '@/messages/seed-labels';
-import { getOrCreateDeviceId } from '@/services/device-id';
-import { computeAdviceMetrics } from '@/services/advice-metrics';
+import {
+  adviceCalculationCache,
+  computeAdviceMetrics,
+  resolveAdviceMetrics,
+  type AdviceCacheScope,
+} from '@/services/advice-metrics';
 import { buildFactualAdviceReply } from '@/services/advice-factual';
-import { tryAIBudgetSetup } from '@/services/ai-budget-setup';
+import { isBudgetSetupIntent } from '@/services/ai-budget-guidance';
 import { usePreferences } from '@/state/preferences';
+import { readAIAuth, aiAuthHeaders, type AIAuth } from './ai-auth';
+import { buildAdviceContext, adviceContextToHistory } from './advice-context';
+import { validateConversationStateFacts } from './advice-state-validation';
+
+let activeAIIdentity = '';
+
+/** Snapshot verified local evidence once so both endpoints receive the same revision. */
+async function readAdviceValidationContext(
+  sessionId: string,
+  question: string,
+  language: 'vi' | 'en',
+  currency: 'VND' | 'USD',
+): Promise<AdviceValidationContext | undefined> {
+  try {
+    const state = await readConversationState(sessionId);
+    if (!state) return undefined;
+    if (state.sessionId !== sessionId) throw new Error('SESSION_MISMATCH');
+    const ids = new Set<string>();
+    for (const slot of Object.values(state.activeScenario)) {
+      if (
+        typeof slot === 'object' &&
+        slot !== null &&
+        'status' in slot &&
+        slot.status === 'known'
+      )
+        for (const id of slot.sourceMessageIds) ids.add(id);
+    }
+    for (const fact of [
+      ...state.activeScenario.expenseItems,
+      ...state.activeScenario.debtMonthlyPayments,
+    ])
+      ids.add(fact.source_message_id);
+    if (ids.size > 8) throw new Error('SOURCE_LIMIT');
+    const sourceMessages = await withDatabase((db) =>
+      readChatSourceMessages(db, sessionId, [...ids]),
+    );
+    if (
+      sourceMessages.length !== ids.size ||
+      sourceMessages.some(
+        (message) => !ids.has(message.id) || message.sessionId !== sessionId,
+      )
+    )
+      throw new Error('SOURCE_MISSING');
+    const payload = buildAdviceContext(state, question, {
+      language,
+      currency,
+      sourceMessages,
+    });
+    const validation = validateConversationStateFacts(
+      payload.activeFacts,
+      sourceMessages,
+      { sessionId, scenario: payload.scenario },
+    );
+    if (!validation.valid) throw new Error('FACT_VALIDATION_FAILED');
+    const evidence = adviceContextToHistory(payload);
+    return AdviceValidationContextSchema.parse({
+      sessionId: payload.sessionId,
+      revision: payload.revision,
+      activeScenario: payload.scenario,
+      pendingFields: payload.pendingFields,
+      sourceMessages: evidence,
+    });
+  } catch {
+    console.warn('ADVICE_VALIDATION_CONTEXT_FALLBACK');
+    return undefined;
+  }
+}
+
+function aiAuthScope(auth: AIAuth, conversationId: string): AdviceCacheScope {
+  const identity = JSON.stringify([
+    auth.mode,
+    auth.mode === 'authenticated' ? auth.sub : auth.deviceId,
+  ]);
+  if (identity !== activeAIIdentity) {
+    adviceCalculationCache.clear();
+    activeAIIdentity = identity;
+  }
+  return auth.mode === 'authenticated'
+    ? { userId: auth.sub, conversationId }
+    : { deviceId: auth.deviceId, conversationId };
+}
 
 export interface AIChartItem {
   category: string;
@@ -43,6 +143,8 @@ export interface AIResponsePayload {
   id: string;
   userMessageId: string;
   replyText: string;
+  incomplete?: boolean;
+  verification?: 'passed' | 'failed' | 'incomplete';
   chartTitle?: string;
   chartItems?: AIChartItem[];
   createdAt: string;
@@ -56,6 +158,8 @@ export interface AIServiceContext {
   topCategories: { name: string; amount: number }[];
   budgetsCount: number;
   goalsCount: number;
+  adviceInputContext?: AdviceInputContext;
+  calculationScope?: AdviceCacheScope;
 }
 
 export interface AIService {
@@ -67,7 +171,7 @@ export interface AIService {
   ): Promise<AIResponsePayload>;
 }
 
-export type AdviceHistoryItem = { role: 'user' | 'assistant'; text: string };
+export type { AdviceHistoryItem } from '@pfm/contracts';
 
 export interface AIQuotaStatus {
   allowed: boolean;
@@ -83,6 +187,48 @@ export const ADVICE_CLOCK = {
 
 function pickStrings(language: 'vi' | 'en') {
   return language === 'en' ? en : vi;
+}
+
+/** Ask only for missing inputs or conflicts returned by the financial calculation. */
+export function buildAdviceClarification(
+  fields: readonly string[],
+  language: 'vi' | 'en',
+): string {
+  const strings = pickStrings(language);
+  const questions: Record<string, string> = {
+    income: strings.aiClarifyIncome,
+    expense: strings.aiClarifyExpense,
+    expenseTotal: strings.aiClarifyExpense,
+    goalTarget: strings.aiClarifyGoal,
+    paymentMonths: strings.aiClarifyPaymentMonths,
+    snapshotMonths: strings.aiClarifySnapshotMonths,
+    budgetMonth: strings.aiClarifyBudgetMonth,
+    budget_id: strings.aiClarifyBudgetId,
+    category_id: strings.aiClarifyCategoryId,
+    transactionLimit: strings.aiClarifyTransactionLimit,
+    transactionKind: strings.aiClarifyTransactionKind,
+    toolIntent: strings.aiReplyAmbiguous,
+    savingsForGoal: strings.aiClarifyReservedSavings,
+    savingsMonths: strings.aiClarifySavingsMonths,
+    'expense.includes': strings.aiClarifyExpenseIncludes,
+    'expense.total': strings.aiClarifyExpenseTotal,
+    'expense.appOverlap': strings.aiClarifyExpenseOverlap,
+    'expense.category': strings.aiClarifyExpenseCategory,
+    goal: strings.aiClarifyGoal,
+    period: strings.aiClarifyCashFlowBasis,
+    cashFlowBasis: strings.aiClarifyCashFlowBasis,
+    observationRange: strings.aiClarifyObservationRange,
+    exchangeRate: strings.aiExchangeRateUnavailable,
+  };
+  return [
+    ...new Set(
+      (fields.length ? fields : ['unknown']).map((field) =>
+        Object.hasOwn(questions, field)
+          ? questions[field]
+          : strings.aiClarifyInvalidFacts,
+      ),
+    ),
+  ].join(' ');
 }
 
 export function isDevRuntime(): boolean {
@@ -131,9 +277,9 @@ export function shouldShowAIQuotaBadge(
 ): quota is AIQuotaStatus {
   return Boolean(
     quota &&
-      Number.isFinite(quota.limit) &&
-      quota.limit > 0 &&
-      quota.limit < Number.MAX_SAFE_INTEGER,
+    Number.isFinite(quota.limit) &&
+    quota.limit > 0 &&
+    quota.limit < Number.MAX_SAFE_INTEGER,
   );
 }
 
@@ -160,8 +306,7 @@ export function formatQuotaResetTimeVietnam(
     minute: '2-digit',
     hour12: false,
   }).formatToParts(parsed);
-  const rawHour =
-    timeParts.find((part) => part.type === 'hour')?.value ?? '00';
+  const rawHour = timeParts.find((part) => part.type === 'hour')?.value ?? '00';
   const hour = rawHour === '24' ? '00' : rawHour;
   const minute =
     timeParts.find((part) => part.type === 'minute')?.value ?? '00';
@@ -225,21 +370,21 @@ export async function fetchAIQuota(options?: {
   }
   const fetchFn = options?.fetchImpl ?? fetch;
   try {
-    const deviceId = await getOrCreateDeviceId();
+    const { useApp } = await import('@/state/app');
+    const auth = await readAIAuth(
+      useApp.getState().chatSessionId ?? 'remote-session',
+    );
     const response = await fetchFn(`${baseUrl}/v1/quota`, {
       method: 'GET',
       headers: {
-        'x-device-id': deviceId,
+        ...aiAuthHeaders(auth),
         'ngrok-skip-browser-warning': 'true',
       },
     });
     if (!response.ok) return null;
     const json = await response.json();
     return parseAIQuotaResponse(json);
-  } catch (error) {
-    if (isDevRuntime()) {
-      console.warn('Quota request failed at', baseUrl, error);
-    }
+  } catch {
     return null;
   }
 }
@@ -411,8 +556,12 @@ export function buildAdviceHistory(
         .filter(Boolean)
         .join(' ');
       chain.unshift([
-        { role: 'user', text: row.text },
-        { role: 'assistant', text: context.slice(0, 500) },
+        { id: row.id, role: 'user', text: row.text },
+        {
+          id: replies[row.id]?.id,
+          role: 'assistant',
+          text: context.slice(0, 500),
+        },
       ]);
       continue;
     }
@@ -431,8 +580,12 @@ export function buildAdviceHistory(
     )
       break;
     chain.unshift([
-      { role: 'user', text: row.text },
-      { role: 'assistant', text: (question ?? replyText).slice(0, 500) },
+      { id: row.id, role: 'user', text: row.text },
+      {
+        id: replies[row.id]?.id,
+        role: 'assistant',
+        text: (question ?? replyText).slice(0, 500),
+      },
     ]);
     // A bare period modifies the nearest advice topic, not older unrelated topics.
     if (barePeriodFollowup) break;
@@ -575,11 +728,16 @@ export class MockAIService implements AIService {
     const createdAt = new Date().toISOString();
     const id = `ai-${userMessageId}`;
 
-    const budgetSetupReply = await tryAIBudgetSetup({
-      prompt,
-      userMessageId,
-    });
-    if (budgetSetupReply) return budgetSetupReply;
+    if (
+      isBudgetSetupIntent(prompt) &&
+      classifyAdviceScope(prompt).status === 'allowed'
+    )
+      return {
+        id,
+        userMessageId,
+        replyText: strings.aiBudgetCreateGuidance,
+        createdAt,
+      };
 
     const scopeDecision = classifyAdviceScope(
       history
@@ -751,6 +909,8 @@ export class MockAIService implements AIService {
 function formatRemoteErrorReply(
   data: {
     code?: string;
+    error?: string;
+    retryAfter?: number;
     message?: string;
     resetAt?: string;
     fallbackTemplate?: string;
@@ -766,13 +926,78 @@ function formatRemoteErrorReply(
     const base = strings.aiQuotaExceededReply.replace('{resetTime}', resetTime);
     return data.fallbackTemplate ? `${base}\n\n${data.fallbackTemplate}` : base;
   }
-  if (data.code === 'RATE_LIMIT_EXCEEDED') {
-    return strings.aiRateLimitExceededReply;
-  }
+  if (
+    data.code === 'ADVICE_AMBIGUOUS' &&
+    data.message === pickStrings('vi').aiDueRangeClarification
+  )
+    return strings.aiDueRangeClarification;
+  if (data.error === 'INVALID_TOKEN' || data.code === 'INVALID_TOKEN')
+    return strings.AUTH_INVALID;
+  if (data.code === 'GUEST_RATE_LIMIT_EXCEEDED')
+    return strings.GUEST_RATE_LIMIT_EXCEEDED;
+  if (data.code === 'RATE_LIMIT_EXCEEDED')
+    return strings.RATE_LIMIT_EXCEEDED.replace(
+      '{seconds}',
+      String(data.retryAfter ?? 0),
+    );
   if (data.fallbackTemplate) {
     return `${strings.aiServerErrorReply}\n\n${data.fallbackTemplate}`;
   }
   return strings.aiServerErrorReply;
+}
+
+export interface LocalAdviceRoute {
+  localReply?: AIResponsePayload;
+  requiresTool: boolean;
+}
+
+/** Reuse the legacy local guards and factual replies before choosing a remote advice path. */
+export async function classifyLocally(input: {
+  prompt: string;
+  userMessageId: string;
+  history?: AdviceHistoryItem[];
+  createdAt?: string;
+}): Promise<LocalAdviceRoute> {
+  const { prompt, userMessageId, history = [] } = input;
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const id = `ai-${userMessageId}`;
+  const strings = pickStrings(usePreferences.getState().language);
+  const reply = (replyText: string): LocalAdviceRoute => ({
+    requiresTool: false,
+    localReply: { id, userMessageId, replyText, createdAt },
+  });
+  if (
+    isBudgetSetupIntent(prompt) &&
+    classifyAdviceScope(prompt).status === 'allowed'
+  )
+    return reply(strings.aiBudgetCreateGuidance);
+
+  const currentScope = classifyAdviceScope(prompt);
+  const scopeDecision =
+    currentScope.status === 'ambiguous' && history.length
+      ? classifyAdviceScope(
+          (history
+            .filter((item) => item.role === 'user')
+            .map((item) => item.text)
+            .reverse()
+            .find((text) => classifyAdviceScope(text).status === 'allowed') ??
+            '') +
+            ' ' +
+            prompt,
+        )
+      : currentScope;
+  if (scopeDecision.status === 'out_of_scope')
+    return reply(strings.aiReplyOutOfScope);
+  if (scopeDecision.status === 'restricted')
+    return reply(strings.aiReplyRestricted);
+  // Factual questions must be resolved before the ambiguous fallback, as in the legacy service.
+  const factualReply = await tryFactualAdvice({
+    prompt,
+    history,
+    userMessageId,
+  });
+  if (factualReply) return { requiresTool: false, localReply: factualReply };
+  return { requiresTool: scopeDecision.status !== 'ambiguous' };
 }
 
 export class RemoteAIService implements AIService {
@@ -800,53 +1025,14 @@ export class RemoteAIService implements AIService {
     const { language, currency, exchangeRate } = usePreferences.getState();
     const strings = pickStrings(language);
 
-    const budgetSetupReply = await tryAIBudgetSetup({
-      prompt,
-      userMessageId,
-    });
-    if (budgetSetupReply) return budgetSetupReply;
-
-    const currentScope = classifyAdviceScope(prompt);
-    const scopeDecision =
-      currentScope.status === 'ambiguous' && history.length
-        ? classifyAdviceScope(
-            (history
-              .filter((item) => item.role === 'user')
-              .map((item) => item.text)
-              .reverse()
-              .find((text) => classifyAdviceScope(text).status === 'allowed') ??
-              '') +
-              ' ' +
-              prompt,
-          )
-        : currentScope;
-    if (scopeDecision.status === 'out_of_scope') {
-      return {
-        id,
-        userMessageId,
-        replyText: strings.aiReplyOutOfScope,
-        createdAt,
-      };
-    }
-    if (scopeDecision.status === 'restricted') {
-      return {
-        id,
-        userMessageId,
-        replyText: strings.aiReplyRestricted,
-        createdAt,
-      };
-    }
-    // Numeric questions are answered from local data and never reach the proxy,
-    // so they stay free of AI quota. They are resolved before the ambiguous
-    // fallback because the advice classifier does not model fact questions.
-    const factualReply = await tryFactualAdvice({
+    const route = await classifyLocally({
       prompt,
       history,
       userMessageId,
+      createdAt,
     });
-    if (factualReply) return factualReply;
-
-    if (scopeDecision.status === 'ambiguous') {
+    if (route.localReply) return route.localReply;
+    if (!route.requiresTool) {
       return {
         id,
         userMessageId,
@@ -867,15 +1053,31 @@ export class RemoteAIService implements AIService {
       if (!baseUrl || (!isDevRuntime() && !baseUrl.startsWith('https://'))) {
         throw new Error('HTTPS_REQUIRED');
       }
-      const deviceId = await getOrCreateDeviceId();
+      const session =
+        context.calculationScope?.conversationId ?? 'remote-session';
+      const auth = await readAIAuth(session);
+      const calculationScope = context.calculationScope
+        ? aiAuthScope(auth, session)
+        : undefined;
       const requestId = Crypto.randomUUID();
       const headers = {
         'Content-Type': 'application/json',
-        'x-device-id': deviceId,
+        ...(auth.mode === 'authenticated'
+          ? { Authorization: `Bearer ${auth.idToken}` }
+          : { 'x-device-id': auth.deviceId }),
         'ngrok-skip-browser-warning': 'true',
       };
       let requestQuestion = prompt;
       let requestHistory = history;
+      const validationContext =
+        flags.useStateBackedContext && context.calculationScope?.conversationId
+          ? await readAdviceValidationContext(
+              session,
+              prompt,
+              language,
+              currency,
+            )
+          : undefined;
       let planResponse = await fetch(`${baseUrl}/v1/advice/plan`, {
         method: 'POST',
         headers,
@@ -885,6 +1087,7 @@ export class RemoteAIService implements AIService {
           language,
           currency,
           supportsRiskContext: true,
+          ...(validationContext ? { context: validationContext } : {}),
           ...(requestHistory.length ? { history: requestHistory } : {}),
         }),
       });
@@ -899,9 +1102,9 @@ export class RemoteAIService implements AIService {
         )
       ) {
         const legacyQuestion = [
-          ...requestHistory.map((item) =>
-            item.role === 'assistant' ? `AI hỏi: ${item.text}` : item.text,
-          ),
+          ...requestHistory
+            .filter((item) => item.role === 'user')
+            .map((item) => item.text),
           `Trả lời: ${prompt}`,
         ].join('\n');
         if (legacyQuestion.length <= 500) {
@@ -915,6 +1118,7 @@ export class RemoteAIService implements AIService {
               question: requestQuestion,
               language,
               currency,
+              ...(validationContext ? { context: validationContext } : {}),
             }),
           });
           planData = await planResponse.json();
@@ -924,17 +1128,192 @@ export class RemoteAIService implements AIService {
         return {
           id,
           userMessageId,
-          replyText: formatRemoteErrorReply(planData, language),
+          replyText: formatRemoteErrorReply(
+            {
+              ...planData,
+              retryAfter: Number(planResponse.headers?.get('Retry-After') ?? 0),
+            },
+            language,
+          ),
           createdAt,
         };
       const plan = AdvicePlanResponseSchema.parse(planData);
+      const conversationFacts = plan.selection.scenario.conversationFacts;
+      if (conversationFacts?.length) {
+        try {
+          validateConversationFacts(conversationFacts, [
+            ...requestHistory
+              .filter((item) => item.id)
+              .map((item) => ({ id: item.id!, role: item.role })),
+            { id: userMessageId, role: 'user' },
+            ...(requestId !== userMessageId
+              ? [{ id: requestId, role: 'user' }]
+              : []),
+          ]);
+        } catch {
+          return {
+            id,
+            userMessageId,
+            replyText: strings.aiInvalidFactSource,
+            createdAt,
+          };
+        }
+      }
       const currentDate = today({
         now: () => new Date(),
         timeZone: 'Asia/Ho_Chi_Minh',
       });
-      const summary = await withDatabase((db) =>
-        readAnalysisSummary(db, currentDate),
-      );
+      let summary =
+        !conversationFacts?.length &&
+        (plan.selection.metrics.length || plan.selection.groups?.length)
+          ? await withDatabase((db) => readAnalysisSummary(db, currentDate))
+          : null;
+      let results = {};
+      if (conversationFacts?.length) {
+        const currentFacts = conversationFacts.filter(
+          (fact) =>
+            fact.source_message_id === userMessageId ||
+            fact.source_message_id === requestId,
+        );
+        const modes = new Set(
+          (currentFacts.length ? currentFacts : conversationFacts).map(
+            (fact) => fact.mode,
+          ),
+        );
+        if (!context.adviceInputContext && modes.size !== 1)
+          return {
+            id,
+            userMessageId,
+            replyText: strings.aiReplyAmbiguous,
+            createdAt,
+          };
+        const range = parseAdviceQuery(
+          prompt,
+          requestHistory,
+          ADVICE_CLOCK,
+        ).range;
+        const mode = context.adviceInputContext?.mode ?? [...modes][0];
+        const replaced = new Set(
+          conversationFacts.map((fact) => fact.supersedes_id),
+        );
+        const cashFlowFacts = conversationFacts.filter(
+          (fact) =>
+            !replaced.has(fact.id) &&
+            fact.mode === mode &&
+            ['income', 'expense', 'debt'].includes(fact.kind),
+        );
+        const inputContext: AdviceInputContext = context.adviceInputContext ?? {
+          mode,
+          currency,
+          cashFlowBasis:
+            cashFlowFacts.length &&
+            cashFlowFacts.every((fact) => fact.period === 'monthly')
+              ? 'monthly'
+              : undefined,
+          ...(range
+            ? { observationRange: { from: range.from, to: range.to } }
+            : {}),
+        };
+        let calculationContext: AdviceInputContext = {
+          ...inputContext,
+          savingsForGoal:
+            inputContext.savingsForGoal ??
+            (plan.selection.scenario.savingsForGoal === undefined
+              ? undefined
+              : Math.round(
+                  plan.selection.scenario.savingsForGoal *
+                    (currency === 'USD' ? 100 : 1),
+                )),
+          savingsMonths:
+            inputContext.savingsMonths ?? plan.selection.scenario.savingsMonths,
+          currency,
+          vndPerUsd: exchangeRate,
+        };
+        let calculation = resolveAdviceMetrics(
+          null,
+          plan.selection,
+          calculationContext,
+          calculationScope,
+        );
+        // Read account history only when it can supply the missing cash-flow inputs.
+        if (
+          !calculation.ok &&
+          mode === 'actual' &&
+          calculation.needsClarification.length &&
+          calculation.needsClarification.every(
+            (field) => field === 'income' || field === 'expense',
+          )
+        ) {
+          summary = await withDatabase((db) =>
+            readAnalysisSummary(db, currentDate),
+          );
+          const monthStart = `${currentDate.slice(0, 7)}-01`;
+          const observationRange = {
+            from: addMonths(monthStart, -6),
+            to: addDays(monthStart, -1),
+          };
+          const requestedRange =
+            inputContext.observationRange ?? inputContext.period;
+          if (
+            requestedRange &&
+            (requestedRange.from !== observationRange.from ||
+              requestedRange.to !== observationRange.to)
+          ) {
+            return {
+              id,
+              userMessageId,
+              replyText: buildAdviceClarification(
+                ['observationRange'],
+                language,
+              ),
+              createdAt,
+            };
+          }
+          calculationContext = { ...calculationContext, observationRange };
+          calculation = resolveAdviceMetrics(
+            summary,
+            plan.selection,
+            calculationContext,
+            calculationScope,
+          );
+        }
+        if (!calculation.ok)
+          return {
+            id,
+            userMessageId,
+            replyText: buildAdviceClarification(
+              calculation.needsClarification,
+              language,
+            ),
+            createdAt,
+          };
+        results = calculation.result.metrics;
+      } else if (summary && calculationScope) {
+        const selectedSummary = summary;
+        results = adviceCalculationCache.getOrCompute(
+          calculationScope,
+          { summary, selection: plan.selection, currency, exchangeRate },
+          () =>
+            computeAdviceMetrics(
+              selectedSummary,
+              plan.selection,
+              currency,
+              exchangeRate,
+            ),
+        );
+      } else if (summary) {
+        results = computeAdviceMetrics(
+          summary,
+          plan.selection,
+          currency,
+          exchangeRate,
+        );
+      }
+      if (!summary && plan.selection.groups?.length) {
+        summary = await withDatabase((db) =>
+          readAnalysisSummary(db, currentDate),
+        );
+      }
       const response = await fetch(`${baseUrl}/v1/advice/complete`, {
         method: 'POST',
         headers,
@@ -943,9 +1322,10 @@ export class RemoteAIService implements AIService {
           question: requestQuestion,
           language,
           currency,
+          ...(validationContext ? { context: validationContext } : {}),
           ...(requestHistory.length ? { history: requestHistory } : {}),
           planToken: plan.planToken,
-          ...(plan.selection.groups?.length
+          ...(summary && plan.selection.groups?.length
             ? {
                 dataGroups: await withDatabase((db) =>
                   readAdviceGroups(db, plan.selection, {
@@ -959,12 +1339,7 @@ export class RemoteAIService implements AIService {
                 ),
               }
             : {}),
-          results: computeAdviceMetrics(
-            summary,
-            plan.selection,
-            currency,
-            exchangeRate,
-          ),
+          results,
         }),
       });
 
@@ -994,7 +1369,13 @@ export class RemoteAIService implements AIService {
         return {
           id,
           userMessageId,
-          replyText: formatRemoteErrorReply(data, language),
+          replyText: formatRemoteErrorReply(
+            {
+              ...data,
+              retryAfter: Number(response.headers?.get('Retry-After') ?? 0),
+            },
+            language,
+          ),
           createdAt,
         };
       }
@@ -1006,10 +1387,7 @@ export class RemoteAIService implements AIService {
         userMessageId,
         history,
       );
-    } catch (networkError) {
-      if (isDevRuntime()) {
-        console.warn('Proxy request failed at', baseUrl, networkError);
-      }
+    } catch {
       const fallbackPayload = await this.fallbackService.sendMessage(
         prompt,
         context,
@@ -1030,7 +1408,26 @@ export class RemoteAIService implements AIService {
 
 export const defaultAIService: AIService = new RemoteAIService();
 
+let observesCalculationSession = false;
+
 export async function readAIServiceContext(): Promise<AIServiceContext> {
+  const { useApp } = await import('@/state/app');
+  if (!observesCalculationSession) {
+    useApp.subscribe((state, previous) => {
+      if (
+        state.chatSessionId !== previous.chatSessionId ||
+        state.deleting ||
+        state.status === 'idle'
+      )
+        adviceCalculationCache.clear();
+    });
+    observesCalculationSession = true;
+  }
+  const conversationId = useApp.getState().chatSessionId;
+  const calculationScope = aiAuthScope(
+    await readAIAuth(conversationId),
+    conversationId,
+  );
   const currentMonth = monthKey(
     today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
   );
@@ -1040,6 +1437,7 @@ export async function readAIServiceContext(): Promise<AIServiceContext> {
   return withDatabase(async (db) => {
     const dashboard = await readDashboard(db, currentMonth);
     return {
+      calculationScope,
       balance: dashboard.balance,
       monthlyIncome: dashboard.current.income,
       monthlyExpense: dashboard.current.expense,
@@ -1092,13 +1490,18 @@ export async function savePersistedAIReply(
 export async function savePersistedAIReplyIfMessageExists(
   db: Database,
   payload: AIResponsePayload,
+  sessionId?: string,
 ): Promise<boolean> {
   let saved = false;
   await db.transaction(async (tx) => {
-    const row = await tx.getFirstAsync<{ id: string }>(
-      'SELECT id FROM chat_messages WHERE id = ?',
-      payload.userMessageId,
-    );
+    const row = sessionId === undefined
+      ? await tx.getFirstAsync<{ id: string }>(
+          'SELECT id FROM chat_messages WHERE id = ?', payload.userMessageId,
+        )
+      : await tx.getFirstAsync<{ id: string }>(
+          'SELECT id FROM chat_messages WHERE id = ? AND session_id = ?',
+          payload.userMessageId, sessionId,
+        );
     if (!row) return;
     await savePersistedAIReply(tx, payload);
     saved = true;

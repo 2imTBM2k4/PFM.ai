@@ -5,7 +5,7 @@ import {
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useDesignTheme } from '@/constants/theme';
 import type { SegmentedOptionPickerProps } from './segmented-option-picker';
@@ -22,6 +22,7 @@ export function SegmentedOptionPicker<T extends string>({
   accessibilityLabel,
 }: SegmentedOptionPickerProps<T>) {
   const theme = useDesignTheme();
+  const { fontScale = 1 } = useWindowDimensions();
   const resolvedLabel = accessibilityLabel ?? label ?? '';
 
   return (
@@ -48,13 +49,19 @@ export function SegmentedOptionPicker<T extends string>({
             }
           }}
           modifiers={[
-            pickerStyle('segmented'),
+            pickerStyle(fontScale > 1.3 ? 'menu' : 'segmented'),
             disabledModifier(disabled),
             accessibilityLabelModifier(resolvedLabel),
           ]}
         >
           {options.map((option) => (
-            <SwiftUIText key={option.value} modifiers={[tag(option.value)]}>
+            <SwiftUIText
+              key={option.value}
+              modifiers={[
+                tag(option.value),
+                disabledModifier(Boolean(option.disabled)),
+              ]}
+            >
               {option.label}
             </SwiftUIText>
           ))}

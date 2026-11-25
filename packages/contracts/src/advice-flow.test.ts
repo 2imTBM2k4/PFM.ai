@@ -13,7 +13,272 @@ import {
   AdviceRiskContextGroupSchema,
   AdviceScenarioSchema,
   AdviceSpendingHabitsGroupSchema,
+  ConversationFactSchema,
+  DurationFactSchema,
+  EntryDraftSchema,
+  MoneyFactSchema,
+  isDurationFact,
+  isMoneyFact,
+  validateConversationFacts,
 } from './advice-flow';
+
+const incomeFact = {
+  id: 'income-1',
+  source_message_id: 'user-1',
+  kind: 'income',
+  amount: 15_000_000,
+  currency: 'VND',
+  period: 'monthly',
+  source: 'user_statement',
+  mode: 'actual',
+} as const;
+
+it('accepts explicit reserved savings including zero without defaulting omissions', () => {
+  expect(AdviceScenarioSchema.parse({ savingsForGoal: 0 })).toEqual({
+    savingsForGoal: 0,
+  });
+  expect(AdviceScenarioSchema.parse({ savingsForGoal: 1.25 })).toEqual({
+    savingsForGoal: 1.25,
+  });
+  expect(AdviceScenarioSchema.parse({})).not.toHaveProperty('savingsForGoal');
+  for (const savingsForGoal of [-1, Infinity, NaN]) {
+    expect(AdviceScenarioSchema.safeParse({ savingsForGoal }).success).toBe(
+      false,
+    );
+  }
+});
+
+it('supports signed read-only schedules and classification without changing old requests', () => {
+  expect(
+    AdvicePlanSelectionSchema.parse({
+      metrics: [],
+      scenario: {},
+      groups: [
+        { kind: 'scheduled_due', through: '2026-11-30' },
+        { kind: 'classification_status', rangeKind: 'this_month' },
+      ],
+    }).groups,
+  ).toHaveLength(2);
+  expect(
+    AdviceDataGroupSchema.parse({
+      kind: 'scheduled_due',
+      asOf: '2026-11-14',
+      through: '2026-11-30',
+      totalCount: 1,
+      items: [
+        {
+          kind: 'expense',
+          amount: 100,
+          dueOn: '2026-11-13',
+          status: 'scheduled',
+          paymentStatus: 'unknown',
+        },
+      ],
+    }).kind,
+  ).toBe('scheduled_due');
+  expect(
+    AdviceDataGroupSchema.safeParse({
+      kind: 'scheduled_due',
+      asOf: '2026-11-14',
+      through: '2026-11-30',
+      totalCount: 1,
+      items: [
+        {
+          kind: 'expense',
+          amount: 100,
+          dueOn: '2026-11-13',
+          status: 'unpaid',
+          paymentStatus: 'unknown',
+        },
+      ],
+    }).success,
+  ).toBe(false);
+  expect(
+    AdvicePlanSelectionSchema.parse({
+      metrics: ['months_with_data'],
+      scenario: {},
+    }).groups,
+  ).toBeUndefined();
+  expect(
+    AdvicePlanSelectionSchema.safeParse({
+      metrics: [],
+      scenario: {},
+      groups: [{ kind: 'scheduled_due', through: '2026-02-30' }],
+    }).success,
+  ).toBe(false);
+});
+
+describe('conversation facts and entry draft contracts', () => {
+  it('accepts explicit zero, a correction and a separate hypothetical scenario', () => {
+    const parsedZero = ConversationFactSchema.parse({
+      ...incomeFact,
+      amount: 0,
+    });
+    expect(isMoneyFact(parsedZero) && parsedZero.amount).toBe(0);
+    expect(MoneyFactSchema.parse({ ...incomeFact, amount: 0 }).amount).toBe(0);
+    const parsedDuration = ConversationFactSchema.parse({
+      id: 'months-1',
+      source_message_id: 'user-1',
+      kind: 'savings_months',
+      months: 6,
+      source: 'user_statement',
+      mode: 'actual',
+    });
+    expect(isDurationFact(parsedDuration) && parsedDuration.months).toBe(6);
+    expect(DurationFactSchema.safeParse({ ...parsedDuration, months: 0 }).success).toBe(false);
+    const facts = [
+      incomeFact,
+      {
+        ...incomeFact,
+        id: 'income-2',
+        source_message_id: 'user-2',
+        amount: 12_000_000,
+        supersedes_id: 'income-1',
+      },
+    ];
+    expect(
+      AdviceScenarioSchema.parse({ conversationFacts: facts })
+        .conversationFacts,
+    ).toHaveLength(2);
+    expect(() =>
+      validateConversationFacts(facts, [
+        { id: 'user-1', role: 'user' },
+        { id: 'user-2', role: 'user' },
+      ]),
+    ).not.toThrow();
+    expect(
+      ConversationFactSchema.parse({ ...incomeFact, mode: 'hypothetical' })
+        .mode,
+    ).toBe('hypothetical');
+  });
+
+  it.each([-1, Infinity, NaN, 100_000_000_001, 10.25])(
+    'rejects invalid money %s',
+    (amount) => {
+      expect(
+        ConversationFactSchema.safeParse({ ...incomeFact, amount }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('rejects unknown fields, model statements, oversized lists and invalid correction graphs', () => {
+    expect(
+      ConversationFactSchema.safeParse({ ...incomeFact, source: 'assistant' })
+        .success,
+    ).toBe(false);
+    expect(
+      ConversationFactSchema.safeParse({ ...incomeFact, invented: true })
+        .success,
+    ).toBe(false);
+    expect(
+      AdviceScenarioSchema.safeParse({
+        conversationFacts: Array.from({ length: 33 }, (_, i) => ({
+          ...incomeFact,
+          id: `fact-${i}`,
+        })),
+      }).success,
+    ).toBe(false);
+    for (const facts of [
+      [incomeFact, incomeFact],
+      [{ ...incomeFact, supersedes_id: 'income-1' }],
+      [{ ...incomeFact, supersedes_id: 'other-session' }],
+      [
+        { ...incomeFact, supersedes_id: 'income-2' },
+        { ...incomeFact, id: 'income-2', supersedes_id: 'income-1' },
+      ],
+      [
+        incomeFact,
+        {
+          ...incomeFact,
+          id: 'income-2',
+          mode: 'hypothetical',
+          supersedes_id: 'income-1',
+        },
+      ],
+    ])
+      expect(
+        AdviceScenarioSchema.safeParse({ conversationFacts: facts }).success,
+      ).toBe(false);
+    expect(() =>
+      validateConversationFacts(
+        [incomeFact],
+        [{ id: 'user-1', role: 'assistant' }],
+      ),
+    ).toThrow();
+    expect(() =>
+      validateConversationFacts(
+        [incomeFact],
+        [{ id: 'other-session', role: 'user' }],
+      ),
+    ).toThrow();
+  });
+
+  it('allows explicit conversation-only plans without weakening legacy selection validation', () => {
+    expect(
+      AdvicePlanSelectionSchema.safeParse({
+        metrics: [],
+        scenario: { conversationFacts: [] },
+      }).success,
+    ).toBe(true);
+    expect(
+      AdvicePlanSelectionSchema.safeParse({ metrics: [], scenario: {} })
+        .success,
+    ).toBe(false);
+    expect(
+      AdvicePlanSelectionSchema.safeParse({
+        metrics: [],
+        scenario: { conversationFacts: [incomeFact] },
+      }).success,
+    ).toBe(true);
+    expect(
+      AdvicePlanSelectionSchema.safeParse({
+        metrics: ['invented'],
+        scenario: { conversationFacts: [] },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps missing draft values null and USD values in cents', () => {
+    const draft = {
+      amount: null,
+      currency: null,
+      type: null,
+      category: null,
+      date: null,
+      wallet_id: null,
+      note: null,
+      merchant: null,
+      confidence: {
+        amount: 'low',
+        currency: 'low',
+        type: 'low',
+        category: 'low',
+        date: 'low',
+        wallet_id: 'low',
+        note: 'low',
+        merchant: 'low',
+      },
+      missing_fields: ['amount', 'currency', 'type', 'date', 'wallet_id'],
+    };
+    expect(EntryDraftSchema.parse(draft).amount).toBeNull();
+    expect(
+      EntryDraftSchema.parse({ ...draft, amount: 1025, currency: 'USD' })
+        .amount,
+    ).toBe(1025);
+    expect(
+      EntryDraftSchema.safeParse({
+        ...draft,
+        missing_fields: ['amount', 'amount'],
+      }).success,
+    ).toBe(false);
+    expect(
+      EntryDraftSchema.safeParse({
+        ...draft,
+        confidence: { ...draft.confidence, merchant: 'certain' },
+      }).success,
+    ).toBe(false);
+  });
+});
 
 const expenseGroup = {
   kind: 'expense_by_category' as const,

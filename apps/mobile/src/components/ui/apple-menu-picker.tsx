@@ -130,10 +130,7 @@ function AppleMenuPickerInner<T extends string | number>({
         }}
         style={styles.rowWrapper}
       >
-        <Text
-          numberOfLines={2}
-          style={[styles.rowLabel, { color: theme.text.primary }]}
-        >
+        <Text style={[styles.rowLabel, { color: theme.text.primary }]}>
           {label}
         </Text>
 
@@ -182,10 +179,7 @@ function AppleMenuPickerInner<T extends string | number>({
             </View>
           ) : null}
 
-          <Text
-            numberOfLines={1}
-            style={[styles.triggerText, { color: theme.text.primary }]}
-          >
+          <Text style={[styles.triggerText, { color: theme.text.primary }]}>
             {displayTitle}
           </Text>
 
@@ -249,7 +243,6 @@ function AppleMenuPickerInner<T extends string | number>({
                   ]}
                 >
                   <Text
-                    numberOfLines={1}
                     style={[
                       styles.menuHeaderTitle,
                       { color: theme.text.secondary },
@@ -338,7 +331,6 @@ function AppleMenuPickerInner<T extends string | number>({
                         {/* Title & Subtitle */}
                         <View style={styles.optionTextColumn}>
                           <Text
-                            numberOfLines={1}
                             style={[
                               styles.optionLabel,
                               {
@@ -351,7 +343,6 @@ function AppleMenuPickerInner<T extends string | number>({
                           </Text>
                           {!!option.subtitle && (
                             <Text
-                              numberOfLines={1}
                               style={[
                                 styles.optionSubtitle,
                                 { color: theme.text.muted },

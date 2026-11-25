@@ -5,6 +5,7 @@ import { quotaService } from '../src/services/quota-service';
 import { rateLimitService } from '../src/services/rate-limit-service';
 import { upstreamAiService } from '../src/services/upstream-ai';
 import { config } from '../src/config';
+import { DatabaseSync } from 'node:sqlite';
 
 let app: FastifyInstance;
 const device = { 'x-device-id': 'test-device' };
@@ -22,6 +23,544 @@ afterEach(async () => {
   await app.close();
   config.unlimitedAiTesting = originalUnlimitedAiTesting;
 });
+
+it.each([
+  [
+    'Tiền dành riêng cho mục tiêu = 2 chai. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    2000000,
+    'VND',
+    200,
+  ],
+  [
+    'Tiền dành riêng cho mục tiêu = 2 chai rưỡi. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    2500000,
+    'VND',
+    200,
+  ],
+  [
+    'Tiền dành riêng cho mục tiêu = 2 chai 5. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    2500000,
+    'VND',
+    200,
+  ],
+  [
+    'Tiền dành riêng cho mục tiêu = 2 xị. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    2000,
+    'VND',
+    503,
+  ],
+  [
+    'Tiền dành riêng cho mục tiêu = 0 đồng. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    0,
+    'VND',
+    200,
+  ],
+  [
+    'Tôi đã dành riêng 2 triệu cho mục tiêu; muốn tiết kiệm 24 triệu trong 6 tháng.',
+    2000000,
+    'VND',
+    200,
+  ],
+  ['Tôi muốn tiết kiệm 24 triệu trong 6 tháng.', 0, 'VND', 503],
+  [
+    'Tiền trả nợ = 0 đồng. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    0,
+    'VND',
+    503,
+  ],
+  [
+    'Tiền dành riêng chưa rõ; trả nợ 0 đồng. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    0,
+    'VND',
+    503,
+  ],
+  [
+    'Tiền dành riêng = 1.5 đồng. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    1.5,
+    'VND',
+    503,
+  ],
+  [
+    'Tôi không dành riêng 2 triệu. Tôi muốn tiết kiệm 24 triệu trong 6 tháng.',
+    2000000,
+    'VND',
+    503,
+  ],
+  [
+    'Reserved savings for this goal = 1.10 USD. I want a savings plan for 24 USD over 6 months.',
+    1.1,
+    'USD',
+    200,
+  ],
+  [
+    'Reserved savings for this goal = 1.25 USD. I want a savings plan for 24 USD over 6 months.',
+    1.25,
+    'USD',
+    200,
+  ],
+  [
+    'Reserved savings for this goal = 1.251 USD. I want a savings plan for 24 USD over 6 months.',
+    1.251,
+    'USD',
+    503,
+  ],
+  ['Reserved savings = 500 EUR. I want a savings plan.', 500, 'USD', 503],
+  ['Reserved savings = 500%. I want a savings plan.', 500, 'USD', 503],
+  [
+    'Reserved savings = 1000k; monthly expenses 1000 VND. I want a savings plan.',
+    1000,
+    'VND',
+    503,
+  ],
+  ['Reserved savings = 1000k. I want a savings plan.', 1000000, 'VND', 200],
+] as const)(
+  'validates the source of reserved savings: %s',
+  async (question, savingsForGoal, currency, status) => {
+    upstreamAiService.setFetchForTesting(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    metrics: ['savings_required_monthly'],
+                    scenario: { savingsForGoal },
+                  }),
+                },
+              },
+            ],
+          }),
+        ),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/plan',
+      headers: device,
+      payload: { requestId, question, currency },
+    });
+    expect(response.statusCode).toBe(status);
+    if (status === 200)
+      expect(response.json().selection.scenario.savingsForGoal).toBe(
+        savingsForGoal,
+      );
+  },
+);
+
+it('injects only relevant knowledge and accepts education without personal data', async () => {
+  let stage = 0;
+  upstreamAiService.setFetchForTesting(async (_url, options) => {
+    const body = JSON.parse(options!.body as string);
+    if (stage++ === 0)
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  metrics: [],
+                  scenario: { conversationFacts: [] },
+                  groups: [],
+                }),
+              },
+            },
+          ],
+        }),
+      );
+    expect(body.messages[0].content).toContain('<knowledge>');
+    expect(body.messages[0].content).toContain('emergency_fund');
+    expect(body.messages[0].content).not.toContain('compound_interest');
+    expect(body.messages[0].content).toContain(
+      'Do not require personal income',
+    );
+    expect(body.max_tokens).toBe(2048);
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: {
+              content:
+                'Quỹ dự phòng dành cho chi phí bất ngờ, mức phù hợp phụ thuộc hoàn cảnh.',
+            },
+          },
+        ],
+      }),
+    );
+  });
+  const question = 'Quỹ dự phòng là gì?';
+  const plan = await app.inject({
+    method: 'POST',
+    url: '/v1/advice/plan',
+    headers: device,
+    payload: { requestId, question },
+  });
+  expect(plan.statusCode).toBe(200);
+  const answer = await app.inject({
+    method: 'POST',
+    url: '/v1/advice/complete',
+    headers: device,
+    payload: {
+      requestId,
+      question,
+      planToken: plan.json().planToken,
+      results: {},
+    },
+  });
+  expect(answer.statusCode).toBe(200);
+});
+
+it('asks for the due-date horizon rather than inventing it', async () => {
+  let calls = 0;
+  upstreamAiService.setFetchForTesting(async () => {
+    calls++;
+    return new Response('{}');
+  });
+  const response = await app.inject({
+    method: 'POST',
+    url: '/v1/advice/plan',
+    headers: device,
+    payload: { requestId, question: 'Có khoản nào sắp đến hạn không?' },
+  });
+  expect(response.statusCode).toBe(422);
+  expect(response.json().message).toContain('đến ngày nào');
+  expect(calls).toBe(0);
+});
+
+it.each([
+  ['unknown', [{ kind: 'unknown_group' }], false, 503],
+  [
+    'expense',
+    [{ kind: 'expense_by_category', rangeKind: 'this_month' }],
+    false,
+    200,
+  ],
+  [
+    'three',
+    [
+      { kind: 'scheduled_due', through: '2026-11-30' },
+      { kind: 'classification_status', rangeKind: 'this_month' },
+      { kind: 'risk_context' },
+    ],
+    true,
+    200,
+  ],
+  [
+    'capacity',
+    [
+      { kind: 'budget_status' },
+      { kind: 'goals_status' },
+      { kind: 'personal_baseline' },
+    ],
+    true,
+    503,
+  ],
+  [
+    'invented horizon',
+    [{ kind: 'scheduled_due', through: '2026-12-31' }],
+    false,
+    503,
+  ],
+] as const)(
+  'keeps group validation and capacity for %s',
+  async (_, groups, supportsRiskContext, status) => {
+    upstreamAiService.setFetchForTesting(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    metrics: [],
+                    scenario: {},
+                    groups,
+                  }),
+                },
+              },
+            ],
+          }),
+        ),
+    );
+    const question = groups.some((group) => group.kind === 'scheduled_due')
+      ? 'Có khoản nào sắp đến hạn đến ngày 2026-11-30 không?'
+      : 'Chi tiêu tháng này';
+    const plan = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/plan',
+      headers: device,
+      payload: { requestId, question, supportsRiskContext },
+    });
+    expect(plan.statusCode).toBe(status);
+    if (status === 200) expect(plan.json().selection.groups).toEqual(groups);
+  },
+);
+
+it.each(['scheduled_due', 'classification_status'] as const)(
+  'reads %s from SQLite through the signed plan and complete handlers',
+  async (kind) => {
+    // Load the other application's runtime boundary without widening the proxy TypeScript root.
+    const mobileData = '../../../apps/mobile/src/data';
+    const { migrate } = await import(`${mobileData}/migrate.ts`);
+    const { seed } = await import(`${mobileData}/seed.ts`);
+    const { readAdviceGroups } = await import(`${mobileData}/advice-groups.ts`);
+    interface TestDatabase {
+      execAsync(sql: string): Promise<void>;
+      runAsync(
+        sql: string,
+        ...args: (string | number | null)[]
+      ): Promise<unknown>;
+      getAllAsync<T>(
+        sql: string,
+        ...args: (string | number | null)[]
+      ): Promise<T[]>;
+      getFirstAsync<T>(
+        sql: string,
+        ...args: (string | number | null)[]
+      ): Promise<T | null>;
+      transaction(task: (db: TestDatabase) => Promise<void>): Promise<void>;
+    }
+    const sqlite = new DatabaseSync(':memory:');
+    const db: TestDatabase = {
+      execAsync: async (sql) => {
+        sqlite.exec(sql);
+      },
+      runAsync: async (sql, ...args) => sqlite.prepare(sql).run(...args),
+      getAllAsync: async <T>(
+        sql: string,
+        ...args: (string | number | null)[]
+      ) => sqlite.prepare(sql).all(...args) as T[],
+      getFirstAsync: async <T>(
+        sql: string,
+        ...args: (string | number | null)[]
+      ) => (sqlite.prepare(sql).get(...args) as T) ?? null,
+      transaction: async (task) => {
+        await task(db);
+      },
+    };
+    try {
+      await migrate(db);
+      await seed(db, '2026-11-01');
+      await db.runAsync(
+        `INSERT INTO recurring_rules (id,kind,amount,wallet_id,frequency,interval_count,start_on,created_at,updated_at) VALUES ('due','expense',123456,'00000000-0000-4000-8000-000000000001','monthly',1,'2026-11-20','2026-11-01','2026-11-01')`,
+      );
+      const today = '2026-11-14';
+      const selected =
+        kind === 'scheduled_due'
+          ? { kind, through: '2026-11-30' }
+          : { kind, rangeKind: 'this_month' };
+      const question =
+        kind === 'scheduled_due'
+          ? 'Có khoản nào sắp đến hạn đến ngày 2026-11-30 không?'
+          : 'Giao dịch nào chưa phân loại?';
+      const prompts: string[] = [];
+      upstreamAiService.setFetchForTesting(async (_url, options) => {
+        const body = JSON.parse(options!.body as string);
+        prompts.push(body.messages[0].content);
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    metrics: [],
+                    scenario: {},
+                    groups: [selected],
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+      });
+      const plan = await app.inject({
+        method: 'POST',
+        url: '/v1/advice/plan',
+        headers: device,
+        payload: { requestId, question },
+      });
+      expect(plan.statusCode).toBe(200);
+      expect(prompts[0]).toContain('scheduled_due');
+      expect(prompts[0]).toContain('classification_status');
+      const groups = await readAdviceGroups(db, plan.json().selection, {
+        todayIso: today,
+        fallbackCategoryLabel: 'Chưa phân loại',
+      });
+      upstreamAiService.setFetchForTesting(async (_url, options) => {
+        expect(
+          JSON.parse(options!.body as string).messages[1].content,
+        ).toContain(JSON.stringify(groups));
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content:
+                    kind === 'scheduled_due'
+                      ? 'Khoản dự kiến theo lịch là 123456 VND; chưa có thông tin đối soát thanh toán.'
+                      : 'Chưa có giao dịch thiếu phân loại trong kỳ được chọn.',
+                },
+              },
+            ],
+          }),
+        );
+      });
+      const completed = await app.inject({
+        method: 'POST',
+        url: '/v1/advice/complete',
+        headers: device,
+        payload: {
+          requestId,
+          question,
+          planToken: plan.json().planToken,
+          results: {},
+          dataGroups: groups,
+        },
+      });
+      expect(completed.statusCode).toBe(200);
+      expect(completed.json().answer).not.toContain('chưa thanh toán');
+    } finally {
+      sqlite.close();
+    }
+  },
+);
+
+it('accepts current user facts without requiring local account metrics and signs their provenance', async () => {
+  const fact = {
+    id: 'income',
+    source_message_id: requestId,
+    kind: 'income',
+    amount: 15_000_000,
+    currency: 'VND',
+    period: 'monthly',
+    source: 'user_statement',
+    mode: 'actual',
+  };
+  upstreamAiService.setFetchForTesting(
+    async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  metrics: [],
+                  scenario: { conversationFacts: [fact] },
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+  );
+  const response = await app.inject({
+    method: 'POST',
+    url: '/v1/advice/plan',
+    headers: device,
+    payload: {
+      requestId,
+      question: 'Lập kế hoạch tiết kiệm với lương 15 triệu mỗi tháng',
+    },
+  });
+  expect(response.statusCode).toBe(200);
+  expect(response.json().selection.scenario.conversationFacts).toEqual([fact]);
+});
+
+it.each([
+  ['USD', 'Thu nhập của tôi $10.25, lập kế hoạch tiết kiệm', 1025, 200],
+  ['VND', 'Thu nhập của tôi $10, lập kế hoạch tiết kiệm', 10, 503],
+  ['VND', 'Thu nhập của tôi 0 đồng, lập kế hoạch tiết kiệm', 0, 200],
+] as const)(
+  'validates the source amount and currency for %s',
+  async (currency, question, amount, status) => {
+    const fact = {
+      id: 'income',
+      source_message_id: requestId,
+      kind: 'income',
+      amount,
+      currency,
+      period: 'monthly',
+      source: 'user_statement',
+      mode: 'actual',
+    };
+    upstreamAiService.setFetchForTesting(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    metrics: [],
+                    scenario: { conversationFacts: [fact] },
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/plan',
+      headers: device,
+      payload: { requestId, question, currency },
+    });
+    expect(response.statusCode).toBe(status);
+  },
+);
+
+it.each(['assistant-message', 'other-session', 'unstated-amount'])(
+  'rejects facts grounded in %s',
+  async (source) => {
+    const fact = {
+      id: 'income',
+      source_message_id: source === 'unstated-amount' ? requestId : source,
+      kind: 'income',
+      amount: source === 'unstated-amount' ? 99_000_000 : 15_000_000,
+      currency: 'VND',
+      period: 'monthly',
+      source: 'user_statement',
+      mode: 'actual',
+    };
+    upstreamAiService.setFetchForTesting(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    metrics: [],
+                    scenario: { conversationFacts: [fact] },
+                  }),
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/plan',
+      headers: device,
+      payload: {
+        requestId,
+        question: 'Lập kế hoạch tiết kiệm với lương 15 triệu mỗi tháng',
+        history: [
+          {
+            id: 'assistant-message',
+            role: 'assistant',
+            text: 'Thu nhập của bạn là 15 triệu.',
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).not.toBe(200);
+  },
+);
 
 it('rejects restricted user history before asking the planning model', async () => {
   let called = false;
@@ -204,7 +743,11 @@ it('selects only needed metrics, answers a 40m purchase, and charges one user qu
   expect(plan.statusCode).toBe(200);
   expect(quotaService.checkQuota('test-device').remaining).toBe(10);
   expect((upstreamBodies[0].messages as { content: string }[])[1].content).toBe(
-    '<question>' + question + '</question>',
+    '<question>' +
+      question +
+      '</question>\n<current_message_id>' +
+      requestId +
+      '</current_message_id>',
   );
   const completePayload = {
     requestId,
@@ -643,7 +1186,7 @@ it('handles the 900k obligation for seven months with one charge and rejects inv
   const wrong = await app.inject({
     method: 'POST',
     url: '/v1/advice/plan',
-    headers: device,
+    headers: { 'x-device-id': 'fresh-device-for-invalid-plan' },
     payload: {
       requestId: 'c47ac10b-58cc-4372-a567-0e02b2c3d471',
       question:
@@ -654,68 +1197,72 @@ it('handles the 900k obligation for seven months with one charge and rejects inv
   expect(quotaService.checkQuota('test-device').remaining).toBe(9);
 });
 
-it('asks for non-personal missing data and blocks an invented month count without charging', async () => {
-  let calls = 0;
-  upstreamAiService.setFetchForTesting(async () => {
-    calls++;
-    const content =
-      calls === 1
-        ? JSON.stringify({
-            metrics: ['purchase_months_median', 'months_with_data'],
-            scenario: { price: 40_000_000 },
-          })
-        : 'Bạn có thể cho biết mức tiết kiệm hằng tháng dự kiến không?';
-    return new Response(
-      JSON.stringify({ choices: [{ message: { content } }] }),
-      { status: 200 },
-    );
-  });
-  const question =
-    'Với tài chính hiện tại tôi muốn mua xe máy khoảng 40 triệu thì cần tiết kiệm bao lâu?';
-  const plan = await app.inject({
-    method: 'POST',
-    url: '/v1/advice/plan',
-    headers: device,
-    payload: { requestId, question },
-  });
-  const completePayload = {
-    requestId,
-    question,
-    planToken: plan.json().planToken,
-    results: { purchase_months_median: null, months_with_data: 0 },
-  };
-  const clarification = await app.inject({
-    method: 'POST',
-    url: '/v1/advice/complete',
-    headers: device,
-    payload: completePayload,
-  });
-  expect(clarification.statusCode).toBe(200);
-  expect(clarification.json().answer).toContain('mức tiết kiệm');
-  expect(quotaService.checkQuota('test-device').remaining).toBe(9);
-
-  quotaService.resetForTesting();
-  upstreamAiService.setFetchForTesting(
-    async () =>
-      new Response(
-        JSON.stringify({
-          choices: [{ message: { content: 'Bạn cần 8 tháng để mua xe.' } }],
-        }),
+it.each(['clarification', 'invented'])(
+  'asks for missing data or blocks invented months without replaying a completed question: %s',
+  async (caseKind) => {
+    let calls = 0;
+    upstreamAiService.setFetchForTesting(async () => {
+      calls++;
+      const content =
+        calls === 1
+          ? JSON.stringify({
+              metrics: ['purchase_months_median', 'months_with_data'],
+              scenario: { price: 40_000_000 },
+            })
+          : 'Bạn có thể cho biết mức tiết kiệm hằng tháng dự kiến không?';
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content } }] }),
         { status: 200 },
-      ),
-  );
-  const invented = await app.inject({
-    method: 'POST',
-    url: '/v1/advice/complete',
-    headers: device,
-    payload: {
-      ...completePayload,
-      results: { purchase_months_median: 7, months_with_data: 6 },
-    },
-  });
-  expect(invented.statusCode).toBe(422);
-  expect(quotaService.checkQuota('test-device').remaining).toBe(10);
-});
+      );
+    });
+    const question =
+      'Với tài chính hiện tại tôi muốn mua xe máy khoảng 40 triệu thì cần tiết kiệm bao lâu?';
+    const plan = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/plan',
+      headers: device,
+      payload: { requestId, question },
+    });
+    const completePayload = {
+      requestId,
+      question,
+      planToken: plan.json().planToken,
+      results: { purchase_months_median: null, months_with_data: 0 },
+    };
+    if (caseKind === 'clarification') {
+      const clarification = await app.inject({
+        method: 'POST',
+        url: '/v1/advice/complete',
+        headers: device,
+        payload: completePayload,
+      });
+      expect(clarification.statusCode).toBe(200);
+      expect(clarification.json().answer).toContain('mức tiết kiệm');
+      expect(quotaService.checkQuota('test-device').remaining).toBe(9);
+      return;
+    }
+    upstreamAiService.setFetchForTesting(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: 'Bạn cần 8 tháng để mua xe.' } }],
+          }),
+          { status: 200 },
+        ),
+    );
+    const invented = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/complete',
+      headers: device,
+      payload: {
+        ...completePayload,
+        results: { purchase_months_median: 7, months_with_data: 6 },
+      },
+    });
+    expect(invented.statusCode).toBe(422);
+    expect(quotaService.checkQuota('test-device').remaining).toBe(10);
+  },
+);
 
 it('rejects a planner request for an unapproved metric without releasing local data or charging quota', async () => {
   upstreamAiService.setFetchForTesting(

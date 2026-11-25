@@ -8,6 +8,7 @@ import {
   AdvicePlanSelectionSchema,
   type AdvicePlanSelection,
 } from '@pfm/contracts';
+import { AppError } from '../errors/app-error';
 
 const secret = randomBytes(32);
 const digest = (value: string) =>
@@ -37,6 +38,10 @@ export function createAdvicePlanToken(
       expiresAt: Date.now() + 5 * 60_000,
     }),
   ).toString('base64url');
+  if (payload.length > 3500)
+    throw AppError.upstreamUnavailable(
+      'Kế hoạch tư vấn vượt giới hạn dữ liệu cho phép. Vui lòng rút gọn yêu cầu.',
+    );
   return `${payload}.${sign(payload).toString('base64url')}`;
 }
 

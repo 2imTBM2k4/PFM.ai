@@ -89,13 +89,13 @@ describe('unlimited local AI testing', () => {
     config.unlimitedAiTesting = previous;
   });
 
-  it('does not consume device or IP allowance while testing', () => {
+  it('can bypass daily allowance while retaining the IP defence during testing', () => {
     config.unlimitedAiTesting = true;
     const quota = new QuotaService();
     const rate = new RateLimitService({ maxRequests: 1 });
     for (let index = 0; index < 3; index++) {
       expect(quota.checkQuota('device').allowed).toBe(true);
-      expect(rate.checkRateLimit('127.0.0.1').allowed).toBe(true);
+      expect(rate.checkRateLimit('127.0.0.1').allowed).toBe(index === 0);
       quota.consumeQuestionOnce('device', `question-${index}`);
       quota.consumeQuota('device');
       rate.consumeRateLimit('127.0.0.1');

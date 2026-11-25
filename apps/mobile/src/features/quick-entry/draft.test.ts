@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { parseEntry } from '@pfm/domain';
-import { makeEntryDrafts, confirmEntryDraft } from './draft';
+import {
+  makeEntryDrafts,
+  confirmEntryDraft,
+  applyDraftMessage,
+  applyEntryDraftContract,
+  unconfirmedDraftFields,
+} from './draft';
 import type { WalletRow } from '@/data/repository';
 import type { CategoryRow } from '@/data/categories';
 
@@ -41,12 +47,154 @@ const id = () =>
   `00000000-0000-4000-8002-${String(++serial).padStart(12, '0')}`;
 
 describe('editable quick-entry confirmation', () => {
+  it('corrects the same open draft and requires renewed approval without creating a transaction', () => {
+    const result = parseEntry('ăn sáng 30k', { clock });
+    const draft = makeEntryDrafts(result, context, id)[0];
+    const change = applyDraftMessage('à nhầm 35k', [draft], clock);
+    expect(change.action).toBe('correct');
+    if (change.action !== 'correct') throw new Error('Expected correction');
+    expect(change.drafts).toHaveLength(1);
+    expect(change.drafts[0]).toMatchObject({
+      transactionId: draft.transactionId,
+      amount: '35.000',
+      amountConfirmed: false,
+    });
+    expect(() =>
+      confirmEntryDraft(result.candidates[0], change.drafts[0], now),
+    ).toThrow('ENTRY_AMOUNT_CONFIRMATION');
+    expect(
+      confirmEntryDraft(
+        result.candidates[0],
+        { ...change.drafts[0], amountConfirmed: true },
+        now,
+      ).input.amount,
+    ).toBe(35000);
+    expect(draft.amount).toBe('30.000');
+    expect(applyDraftMessage('thôi để sau', [draft], clock)).toEqual({
+      action: 'cancel',
+    });
+    expect(
+      applyDraftMessage(
+        'à nhầm 35k',
+        [draft, { ...draft, transactionId: id() }],
+        clock,
+      ).action,
+    ).toBe('clarify');
+  });
+
+  it('blocks an uncertain merchant at the save boundary until its exact value is confirmed, changed or cleared', () => {
+    const result = parseEntry('ăn sáng 30k', { clock });
+    const base = makeEntryDrafts(result, context, id)[0];
+    const contract = {
+      amount: 30000,
+      currency: 'VND',
+      type: 'expense',
+      category: categoryId,
+      date: '2026-10-23',
+      wallet_id: walletId,
+      note: '',
+      merchant: 'Quán A',
+      confidence: {
+        amount: 'high',
+        currency: 'high',
+        type: 'high',
+        category: 'high',
+        date: 'high',
+        wallet_id: 'high',
+        note: 'high',
+        merchant: 'low',
+      },
+      missing_fields: [],
+    } as const;
+    const draft = applyEntryDraftContract(
+      { ...contract, missing_fields: [] },
+      base,
+    );
+    expect(unconfirmedDraftFields(draft)).toEqual(['merchant']);
+    expect(() => confirmEntryDraft(result.candidates[0], draft, now)).toThrow(
+      'ENTRY_FIELD_CONFIRMATION',
+    );
+    const confirmed = { ...draft, confirmedFields: { merchant: 'Quán A' } };
+    expect(() =>
+      confirmEntryDraft(result.candidates[0], confirmed, now),
+    ).not.toThrow();
+    expect(() =>
+      confirmEntryDraft(result.candidates[0], { ...draft, merchant: '' }, now),
+    ).not.toThrow();
+    expect(() =>
+      confirmEntryDraft(
+        result.candidates[0],
+        { ...draft, merchant: 'Quán B' },
+        now,
+      ),
+    ).not.toThrow();
+    const regenerated = applyEntryDraftContract(
+      { ...contract, merchant: 'Quán C', missing_fields: [] },
+      confirmed,
+    );
+    expect(unconfirmedDraftFields(regenerated)).toEqual(['merchant']);
+  });
+
+  it('recomputes missing fields instead of trusting the model and rejects invalid calendar dates at save', () => {
+    const result = parseEntry('ăn sáng 30k', { clock });
+    const base = makeEntryDrafts(result, context, id)[0];
+    const low = {
+      amount: 'high',
+      currency: 'high',
+      type: 'high',
+      category: 'high',
+      date: 'high',
+      wallet_id: 'high',
+      note: 'high',
+      merchant: 'high',
+    } as const;
+    const draft = applyEntryDraftContract(
+      {
+        amount: null,
+        currency: null,
+        type: null,
+        category: null,
+        date: '2026-02-30',
+        wallet_id: null,
+        note: null,
+        merchant: null,
+        confidence: low,
+        missing_fields: [],
+      },
+      base,
+    );
+    expect(draft).toMatchObject({
+      amount: '',
+      kind: 'unknown',
+      walletId: '',
+      date: '2026-02-30',
+    });
+    expect(draft.sourceDraft?.missing_fields).toEqual([
+      'amount',
+      'currency',
+      'type',
+      'wallet_id',
+    ]);
+    expect(() =>
+      confirmEntryDraft(
+        result.candidates[0],
+        { ...base, date: '2026-02-30' },
+        now,
+      ),
+    ).toThrow();
+  });
   it('keeps a parsed USD rent amount in cents and requires a booking rate', () => {
     const result = parseEntry('spent $10 on rent', { clock, currency: 'USD' });
     const draft = makeEntryDrafts(result, context, id, 'USD')[0];
-    expect(draft).toMatchObject({ amount: '10.00', currency: 'USD', kind: 'expense' });
+    expect(draft).toMatchObject({
+      amount: '10.00',
+      currency: 'USD',
+      kind: 'expense',
+    });
     expect(() => confirmEntryDraft(result.candidates[0], draft, now)).toThrow();
-    expect(confirmEntryDraft(result.candidates[0], draft, now, 25_500).input).toMatchObject({
+    expect(
+      confirmEntryDraft(result.candidates[0], draft, now, 25_500).input,
+    ).toMatchObject({
       amount: 1000,
       currency: 'USD',
       vndPerUsd: 25_500,

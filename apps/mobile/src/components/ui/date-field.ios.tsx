@@ -1,4 +1,4 @@
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { DatePicker, Host } from '@expo/ui/swift-ui';
 import { datePickerStyle } from '@expo/ui/swift-ui/modifiers';
 import { SymbolView } from 'expo-symbols';
@@ -57,7 +57,9 @@ export function DateField({
         accessibilityRole="button"
         accessibilityState={{ disabled, expanded: open }}
         accessibilityLabel={
-          label + ': ' + (value ? formatDisplayDate(value) : vi.datePickerChoose)
+          label +
+          ': ' +
+          (value ? formatDisplayDate(value) : vi.datePickerChoose)
         }
         disabled={disabled}
         onPress={openPicker}
@@ -159,6 +161,7 @@ export function DateField({
 
             <View style={styles.sheetActions}>
               <Button
+                hitSlop={4}
                 mode="text"
                 onPress={() => commitValue(today)}
                 textColor={theme.brand.primaryText}
@@ -167,6 +170,7 @@ export function DateField({
               </Button>
               {allowClear && (
                 <Button
+                  hitSlop={4}
                   mode="text"
                   onPress={() => commitValue('')}
                   textColor={theme.finance.expense}
@@ -174,10 +178,11 @@ export function DateField({
                   {vi.clear}
                 </Button>
               )}
-              <Button mode="text" onPress={() => setOpen(false)}>
+              <Button hitSlop={4} mode="text" onPress={() => setOpen(false)}>
                 {vi.cancel}
               </Button>
               <Button
+                hitSlop={4}
                 mode="contained"
                 onPress={() => commitValue(formatLocalDateToIso(draftDate))}
               >

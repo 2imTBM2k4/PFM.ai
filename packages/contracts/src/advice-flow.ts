@@ -1,4 +1,22 @@
 import { z } from 'zod';
+import {
+  MoneyFactSchema,
+  isMoneyFact,
+  type MoneyFact,
+} from './conversation-fact';
+import { AdviceValidationContextSchema } from './advice-validation-context';
+export {
+  ConversationFactSchema,
+  DurationFactSchema,
+  MoneyFactSchema,
+  isDurationFact,
+  isMoneyFact,
+} from './conversation-fact';
+export type {
+  ConversationFact,
+  DurationFact,
+  MoneyFact,
+} from './conversation-fact';
 
 export const AdviceMetricSchema = z.enum([
   'monthly_income_avg',
@@ -36,8 +54,119 @@ export const AdviceMetricSchema = z.enum([
 ]);
 export type AdviceMetric = z.infer<typeof AdviceMetricSchema>;
 
+const ConversationFactsSchema = z
+  .array(MoneyFactSchema)
+  .max(32)
+  .superRefine((facts, context) => {
+    const seen = new Map<string, MoneyFact>();
+    const replaced = new Set<string>();
+    for (const [index, fact] of facts.entries()) {
+      const previous = fact.supersedes_id
+        ? seen.get(fact.supersedes_id)
+        : undefined;
+      if (
+        seen.has(fact.id) ||
+        (fact.supersedes_id &&
+          (!previous ||
+            replaced.has(fact.supersedes_id) ||
+            previous.id === fact.id ||
+            previous.mode !== fact.mode ||
+            previous.kind !== fact.kind ||
+            (isMoneyFact(fact) &&
+              isMoneyFact(previous) &&
+              (previous.currency !== fact.currency ||
+                previous.period !== fact.period ||
+                previous.category !== fact.category))))
+      )
+        context.addIssue({
+          code: 'custom',
+          path: [index],
+          message:
+            'Fact IDs must be unique; corrections must replace an earlier fact in the same situation.',
+        });
+      seen.set(fact.id, fact);
+      if (fact.supersedes_id) replaced.add(fact.supersedes_id);
+    }
+  });
+
+/** Validate source ownership against only the user messages supplied for this request. */
+export function validateConversationFacts(
+  input: unknown,
+  messages: readonly { id: string; role: string }[],
+): MoneyFact[] {
+  const facts = ConversationFactsSchema.parse(input);
+  const users = new Set(
+    messages
+      .filter((message) => message.role === 'user')
+      .map((message) => message.id),
+  );
+  if (
+    new Set(messages.map((message) => message.id)).size !== messages.length ||
+    facts.some((fact) => !users.has(fact.source_message_id))
+  )
+    throw new Error('CONVERSATION_FACT_SOURCE');
+  const order = new Map(messages.map((message, index) => [message.id, index]));
+  const byId = new Map(facts.map((fact) => [fact.id, fact]));
+  if (
+    facts.some(
+      (fact) =>
+        fact.supersedes_id &&
+        order.get(fact.source_message_id)! <=
+          order.get(byId.get(fact.supersedes_id)!.source_message_id)!,
+    )
+  )
+    throw new Error('CONVERSATION_FACT_CORRECTION_ORDER');
+  return facts;
+}
+
+export const EntryDraftSchema = z
+  .object({
+    amount: z
+      .number()
+      .finite()
+      .int()
+      .safe()
+      .min(0)
+      .max(100_000_000_000)
+      .nullable(),
+    currency: z.enum(['VND', 'USD']).nullable(),
+    type: z.enum(['income', 'expense']).nullable(),
+    category: z.string().trim().min(1).max(120).nullable(),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .nullable(),
+    wallet_id: z.string().trim().min(1).max(120).nullable(),
+    note: z.string().trim().max(500).nullable(),
+    merchant: z.string().trim().min(1).max(120).nullable(),
+    confidence: z
+      .object({
+        amount: z.enum(['high', 'low']),
+        currency: z.enum(['high', 'low']),
+        type: z.enum(['high', 'low']),
+        category: z.enum(['high', 'low']),
+        date: z.enum(['high', 'low']),
+        wallet_id: z.enum(['high', 'low']),
+        note: z.enum(['high', 'low']),
+        merchant: z.enum(['high', 'low']),
+      })
+      .strict(),
+    missing_fields: z
+      .array(
+        z.enum(['amount', 'currency', 'type', 'category', 'date', 'wallet_id']),
+      )
+      .max(6)
+      .refine(
+        (fields) => new Set(fields).size === fields.length,
+        'Missing fields must be unique.',
+      ),
+  })
+  .strict();
+export type EntryDraft = z.infer<typeof EntryDraftSchema>;
+
 export const AdviceScenarioSchema = z
   .object({
+    conversationFacts: ConversationFactsSchema.optional(),
     price: z.number().finite().safe().min(0).max(1_000_000_000_000).optional(),
     monthlyPayment: z
       .number()
@@ -64,6 +193,14 @@ export const AdviceScenarioSchema = z
       .max(1_000_000_000_000)
       .optional(),
     savingsMonths: z.number().int().min(1).max(600).optional(),
+    /** Money explicitly reserved for this goal, in the selected currency. */
+    savingsForGoal: z
+      .number()
+      .finite()
+      .safe()
+      .min(0)
+      .max(1_000_000_000_000)
+      .optional(),
   })
   .strict();
 export type AdviceScenario = z.infer<typeof AdviceScenarioSchema>;
@@ -296,6 +433,41 @@ export type AdviceRiskContextGroup = z.infer<
   typeof AdviceRiskContextGroupSchema
 >;
 
+const AdviceScheduledDueGroupSchema = z
+  .object({
+    kind: z.literal('scheduled_due'),
+    asOf: IsoDateSchema,
+    through: IsoDateSchema,
+    totalCount: AdviceCountSchema,
+    items: z
+      .array(
+        z
+          .object({
+            kind: z.enum(['income', 'expense', 'transfer']),
+            amount: AdviceMoneySchema,
+            dueOn: IsoDateSchema,
+            status: z.literal('scheduled'),
+            paymentStatus: z.literal('unknown'),
+          })
+          .strict(),
+      )
+      .max(5),
+  })
+  .strict();
+
+const AdviceClassificationGroupSchema = z
+  .object({
+    kind: z.literal('classification_status'),
+    rangeKind: AdviceRangeKindSchema,
+    from: IsoDateSchema,
+    to: IsoDateSchema,
+    expenseCount: AdviceCountSchema,
+    expenseAmount: AdviceMoneySchema,
+    incomeCount: AdviceCountSchema,
+    incomeAmount: AdviceMoneySchema,
+  })
+  .strict();
+
 export const AdviceDataGroupSchema = z.discriminatedUnion('kind', [
   AdviceExpenseGroupSchema,
   AdviceBudgetGroupSchema,
@@ -304,6 +476,8 @@ export const AdviceDataGroupSchema = z.discriminatedUnion('kind', [
   AdviceGoalsGroupSchema,
   AdviceIncomeSourcesGroupSchema,
   AdviceRiskContextGroupSchema,
+  AdviceScheduledDueGroupSchema,
+  AdviceClassificationGroupSchema,
 ]);
 export type AdviceDataGroup = z.infer<typeof AdviceDataGroupSchema>;
 
@@ -312,6 +486,15 @@ export type AdviceDataGroup = z.infer<typeof AdviceDataGroupSchema>;
  * carries amounts. The complete stage returns the filled shapes above.
  */
 export const AdviceGroupSelectionSchema = z.discriminatedUnion('kind', [
+  z
+    .object({ kind: z.literal('scheduled_due'), through: IsoDateSchema })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('classification_status'),
+      rangeKind: AdviceRangeKindSchema,
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('expense_by_category'),
@@ -356,7 +539,10 @@ export const AdvicePlanSelectionSchema = z
   })
   .strict()
   .refine(
-    (selection) => selection.metrics.length > 0 || !!selection.groups?.length,
+    (selection) =>
+      selection.metrics.length > 0 ||
+      !!selection.groups?.length ||
+      selection.scenario.conversationFacts !== undefined,
     {
       message: 'Select at least one metric or one data group.',
     },
@@ -373,6 +559,7 @@ export const AdvicePlanRequestSchema = z
     requestId: z.string().uuid(),
     question: z.string().trim().min(1).max(500),
     ...AdviceLocaleSchema,
+    context: AdviceValidationContextSchema.nullish(),
     /**
      * Older app builds cannot fill the risk context group, so the proxy only
      * signs it when the client says it can return it.
@@ -382,6 +569,7 @@ export const AdvicePlanRequestSchema = z
       .array(
         z
           .object({
+            id: z.string().trim().min(1).max(120).optional(),
             role: z.enum(['user', 'assistant']),
             text: z.string().trim().min(1).max(500),
           })
@@ -406,10 +594,12 @@ export const AdviceCompleteRequestSchema = z
     requestId: z.string().uuid(),
     question: z.string().trim().min(1).max(500),
     ...AdviceLocaleSchema,
+    context: AdviceValidationContextSchema.nullish(),
     history: z
       .array(
         z
           .object({
+            id: z.string().trim().min(1).max(120).optional(),
             role: z.enum(['user', 'assistant']),
             text: z.string().trim().min(1).max(500),
           })

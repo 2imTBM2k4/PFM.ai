@@ -12,7 +12,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { haveFieldsChanged, requestGuardLeave } from '@/utils/unsaved-changes';
-import { BackHandler, View } from 'react-native';
+import { BackHandler, Platform, View } from 'react-native';
 import {
   ActivityIndicator,
   Button,
@@ -132,6 +132,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
   }, [editing, leaveForm, onClose]);
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         back();
         return true;
@@ -203,6 +204,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
       }
     >
       <Button
+        hitSlop={4}
         mode="contained"
         icon="plus"
         contentStyle={styles.button}
@@ -253,6 +255,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
           />
         )}
         <Button
+          hitSlop={4}
           compact
           mode="contained-tonal"
           disabled={busy || loading}
@@ -278,9 +281,26 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
         </Text>
       )}
       {(error || status.error) && (
-        <Text accessibilityRole="alert" style={{ color: colors.error }}>
-          {error || vi.recurringRunError}
-        </Text>
+        <View
+          style={[
+            styles.subtlePanel,
+            {
+              backgroundColor: palette.dangerSoft,
+              borderColor: palette.danger,
+            },
+          ]}
+        >
+          <Text accessibilityRole="alert" style={{ color: colors.error }}>
+            {error || vi.recurringRunError}
+          </Text>
+          <Button
+            hitSlop={4}
+            disabled={loading || busy}
+            onPress={() => void reload()}
+          >
+            {vi.retry}
+          </Button>
+        </View>
       )}
       {loading && (
         <View style={{ paddingVertical: 28, alignItems: 'center' }}>
@@ -381,6 +401,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
 
           <View style={[styles.row, { justifyContent: 'flex-end' }]}>
             <Button
+              hitSlop={4}
               compact
               mode="contained-tonal"
               icon="pencil-outline"
@@ -393,6 +414,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
               {vi.recurringEdit}
             </Button>
             <Button
+              hitSlop={4}
               compact
               mode="outlined"
               icon={row.is_active ? 'pause' : 'play'}
@@ -809,6 +831,7 @@ function RecurringForm({
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         contentStyle={styles.button}

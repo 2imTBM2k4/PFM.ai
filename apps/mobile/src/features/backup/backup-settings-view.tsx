@@ -1,8 +1,10 @@
+import { useFocusedBackHandler } from '@/hooks/use-focused-back-handler';
 import { LocalTransferSettings } from './local-transfer-settings';
 import { useTransientState } from '@/hooks/use-transient-state';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { isRunningInExpoGo } from 'expo';
-import { useEffect, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Button, Divider, Switch, Text, TextInput } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard } from '@/components/ui';
@@ -99,14 +101,19 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
   );
   const [restoreConfirmText, setRestoreConfirmText] = useState('');
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  useUnsavedChangesGuard({
+    id: 'backup-navigation',
+    scope: 'tab',
+    routeKey: 'settings',
+    dirty: false,
+    saving: busy,
+    onDiscard: onClose,
+  });
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-    return () => sub.remove();
-  }, [onClose]);
+  useFocusedBackHandler(() => {
+    onClose();
+    return true;
+  });
 
   const activeError: BackupOperationError | null =
     actionError ?? state.lastError;
@@ -229,17 +236,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
   };
 
   return (
-    <Screen title={vi.backupMenuTitle}>
-      <Button
-        mode="text"
-        icon="arrow-left"
-        compact
-        style={{ alignSelf: 'flex-start' }}
-        onPress={onClose}
-      >
-        {vi.back}
-      </Button>
-
+    <Screen title={vi.backupMenuTitle} onBack={onClose} backDisabled={busy}>
       {/* Expo Go Notice */}
       {inExpoGo && (
         <GlassCard
@@ -309,6 +306,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
           </View>
           {activeError === 'needs_reauth' && !inExpoGo && (
             <Button
+              hitSlop={4}
               mode="contained"
               icon="google"
               buttonColor={palette.danger}
@@ -423,6 +421,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
 
           <View style={localStyles.actionsRow}>
             <Button
+              hitSlop={4}
               mode="contained"
               icon="cloud-upload-outline"
               buttonColor={theme.brand.primaryStrong}
@@ -434,6 +433,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
               {vi.backupNowButton}
             </Button>
             <Button
+              hitSlop={4}
               mode="contained-tonal"
               icon="cloud-download-outline"
               disabled={busy || isUploading || inExpoGo}
@@ -451,6 +451,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
           style={{ gap: 14 }}
         >
           <Button
+            hitSlop={4}
             mode="contained"
             icon="google"
             buttonColor={theme.brand.primaryStrong}
@@ -463,6 +464,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
             {vi.backupSignInButton}
           </Button>
           <Button
+            hitSlop={4}
             mode="outlined"
             icon="cloud-download-outline"
             contentStyle={styles.button}
@@ -517,6 +519,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
             autoCorrect={false}
           />
           <Button
+            hitSlop={4}
             mode="contained"
             icon="cloud-download-outline"
             buttonColor={palette.danger}
@@ -530,6 +533,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
             {vi.backupRestoreConfirmButton}
           </Button>
           <Button
+            hitSlop={4}
             mode="outlined"
             disabled={busy}
             onPress={() => {
@@ -597,6 +601,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
         >
           {!confirmingDisconnect ? (
             <Button
+              hitSlop={4}
               mode="outlined"
               icon="logout-variant"
               textColor={palette.danger}
@@ -615,6 +620,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
                 {vi.backupDisconnectExplanation}
               </Text>
               <Button
+                hitSlop={4}
                 mode="contained"
                 buttonColor={theme.brand.primaryStrong}
                 textColor="#FFFFFF"
@@ -625,6 +631,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
                 {vi.backupDisconnectKeepRemoteButton}
               </Button>
               <Button
+                hitSlop={4}
                 mode="outlined"
                 textColor={palette.danger}
                 style={{ borderColor: palette.danger }}
@@ -634,6 +641,7 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
                 {vi.backupDisconnectDeleteRemoteButton}
               </Button>
               <Button
+                hitSlop={4}
                 mode="text"
                 disabled={busy}
                 onPress={() => setConfirmingDisconnect(false)}

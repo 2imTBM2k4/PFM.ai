@@ -1,5 +1,6 @@
 import { useTransientState } from '@/hooks/use-transient-state';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { uuid } from 'expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -39,7 +40,8 @@ import { checkBudgetAlerts } from '@/features/budgets/mobile';
 import { vi } from '@/messages/vi';
 import { getProxyBaseUrl } from '@/services/ai-service';
 import { getOrCreateDeviceId } from '@/services/device-id';
-import { logAppEvent } from '@/services/logger';
+import { logAppEvent, logLocalAIEntry } from '@/services/logger';
+import { readAIAuth } from '@/services/ai-auth';
 import { scanReceipt } from '@/services/receipt-service';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
@@ -102,6 +104,17 @@ export function ChatComposer({
   const working = useRef(false);
   const request = useRef(0);
   const mounted = useRef(true);
+  useUnsavedChangesGuard({
+    id: 'chat-composer',
+    scope: 'modal',
+    dirty: text.trim().length > 0,
+    saving: busy,
+    onDiscard: () => {
+      setText('');
+      setPreview(null);
+      setSession(null);
+    },
+  });
 
   useEffect(() => {
     mounted.current = true;
@@ -121,6 +134,8 @@ export function ChatComposer({
   const language = usePreferences((state) => state.language);
   const pendingChatAction = usePreferences((state) => state.pendingChatAction);
   const consumeChatAction = usePreferences((state) => state.consumeChatAction);
+  const pendingChatPrompt = usePreferences((state) => state.pendingChatPrompt);
+  const consumeChatPrompt = usePreferences((state) => state.consumeChatPrompt);
   const pendingReceiptAsset = usePreferences(
     (state) => state.pendingReceiptAsset,
   );
@@ -225,6 +240,9 @@ export function ChatComposer({
       route: 'entry',
       status: 'ready',
       action: 'confirm_open',
+    });
+    void readAIAuth(chatSessionId).then(auth => logLocalAIEntry(uuid.v4(), auth.mode)).catch(() => {
+      // Optional diagnostics must not prevent opening the editable draft.
     });
     setSession({
       result: preview.parsed,
@@ -612,6 +630,21 @@ export function ChatComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consumeChatAction, context, disabled, loading, pendingChatAction]);
 
+  useEffect(() => {
+    if (!pendingChatPrompt || !mounted.current) return;
+    const frame = requestAnimationFrame(() => {
+      const prompt = consumeChatPrompt();
+      if (prompt) {
+        setText(prompt);
+        setChosenRoute('advice');
+        setPreview(null);
+        setChoosing(false);
+        setError('');
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [consumeChatPrompt, pendingChatPrompt]);
+
   const ready =
     !busy &&
     !loading &&
@@ -730,7 +763,7 @@ export function ChatComposer({
               <Text
                 variant="labelMedium"
                 accessibilityLiveRegion="polite"
-                numberOfLines={1}
+
                 style={{
                   color:
                     preview.route === 'out_of_scope'
@@ -762,6 +795,8 @@ export function ChatComposer({
               preview.route !== 'ambiguous' && (
                 <Pressable
                   accessibilityRole="button"
+                  hitSlop={10}
+                  style={{ minHeight: 44, justifyContent: 'center' }}
                   onPress={() => setChoosing(true)}
                 >
                   <Text
@@ -860,6 +895,7 @@ export function ChatComposer({
           </Text>
           <View style={composerStyles.chooseButtons}>
             <Button
+              hitSlop={4}
               mode="outlined"
               compact
               disabled={!ready}
@@ -868,6 +904,7 @@ export function ChatComposer({
               {vi.chatChooseTransaction}
             </Button>
             <Button
+              hitSlop={4}
               mode="contained"
               compact
               buttonColor={theme.brand.primaryStrong}
@@ -895,7 +932,12 @@ export function ChatComposer({
           >
             {error}
           </Text>
-          <Button compact disabled={busy} onPress={() => void load()}>
+          <Button
+            hitSlop={4}
+            compact
+            disabled={busy}
+            onPress={() => void load()}
+          >
             {vi.retry}
           </Button>
         </View>
@@ -912,13 +954,14 @@ export function ChatComposer({
       )}
 
       {context && !context.wallets.length && (
-        <Button compact onPress={() => router.navigate('/')}>
+        <Button hitSlop={4} compact onPress={() => router.navigate('/')}>
           {vi.manageWallets}
         </Button>
       )}
 
       {receipt && (
         <Button
+          hitSlop={4}
           mode="outlined"
           compact
           disabled={busy}
@@ -993,9 +1036,9 @@ const composerStyles = StyleSheet.create({
     gap: 4,
   },
   iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1005,20 +1048,20 @@ const composerStyles = StyleSheet.create({
     maxHeight: 96,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 17,
+    lineHeight: 22,
   },
   inlineToolButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sendCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

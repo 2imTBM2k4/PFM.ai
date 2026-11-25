@@ -1,0 +1,101 @@
+{
+  "measuredAt": "2026-11-18T04:41:01.452Z",
+  "model": "ag/gemini-3.8-flash-high",
+  "routerBaseUrl": "http://127.0.0.1:20128/v1",
+  "allowedModels": [
+    "ag/gemini-3.8-flash-high",
+    "ag/gemini-3.8-flash",
+    "cx/gpt-6.1-sol"
+  ],
+  "summary": {
+    "turns": 1,
+    "totalCalls": 1,
+    "validCalls": 1,
+    "schemaPercent": 100,
+    "correctToolPercent": 100,
+    "businessPercent": 0,
+    "fallbackPercent": 100,
+    "averageLatencyMs": 21410.4179,
+    "p95LatencyMs": 21410.4179
+  },
+  "reports": [
+    {
+      "id": "S1",
+      "passed": false,
+      "correctTools": true,
+      "businessCorrect": false,
+      "validCalls": 1,
+      "totalCalls": 1,
+      "fallback": true,
+      "protocolError": true,
+      "needsReview": false,
+      "latencyMs": 21410.4179,
+      "modelCalls": 2,
+      "sseValid": false,
+      "sseEvents": 12,
+      "text": "Trong 6 tháng từ 2026-05-01 đến 2026-10-31, thu nhập trung bình mỗi tháng của bạn là 15.000.000 VND, cao hơn mức chi tiêu trung bình mỗi tháng là 10.000.000 VND.\n\nSố liệu này giả định rằng toàn bộ các khoản thu chi phát sinh trong khoảng thời gian trên đã được ghi nhận đầy đủ.",
+      "clarificationFields": [],
+      "parameterDifferences": [],
+      "rawResponses": [
+        {
+          "status": 200,
+          "body": "{\"id\":\"chatcmpl-Xiz9aqOgMcis0-kP5cD0SA\",\"object\":\"chat.completion\",\"created\":1794976869,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"reasoning_content\":\"**Analyzing the User's Request for Financial Data**\\n\\nOkay, so the user, who seems to be operating in Vietnamese (specifically, requesting information in the \\\"VND\\\" currency and \\\"Asia/Ho_Chi_Minh\\\" time zone), wants me to provide the average monthly income and expenses over the last six complete months. The \\\"referenceDate\\\" is set to \\\"2026-11-16,\\\" which is important for the time-based calculation, and the context confirms that my \\\"defaultSnapshotMonths\\\" parameter is set to 6, which aligns with the user's explicit request. They’re essentially asking, \\\"Cho tôi xem thu nhập và chi tiêu trung bình mỗi tháng trong 6 tháng hoàn chỉnh gần nhất.\\\"\\n\\nMy task here is to use available tools to answer this request efficiently and accurately. I have access to a `get_financial_snapshot` tool, and I need to carefully construct the right call. The tool's documentation tells me the available \\\"fields\\\" (what kind of data I can retrieve) and that they are: `[\\\"monthly_income_avg\\\", \\\"monthly_expense_avg\\\", \\\"liquid_balance\\\", \\\"months_with_data\\\"]`. The tool also takes an integer called \\\"months\\\".\\n\\nNow, I need to stick to the rules and be as specific as possible. The user *only* wants average income and expense over a period of time. There's no mention of liquid balance or how many months have available data. Those are irrelevant to the specific user's query, so I should omit them. The rule is very clear: Request only the *minimum* indicators needed to answer the question, do not request extra indicators simply because they are available. Therefore, the \\\"fields\\\" parameter should be `[\\\"monthly_income_avg\\\", \\\"monthly_expense_avg\\\"]`. The \\\"months\\\" parameter is, of course, 6.\\n\\nSo the tool call I need to make is `get_financial_snapshot(fields=[\\\"monthly_income_avg\\\", \\\"monthly_expense_avg\\\"], months=6)`. That should get the information. Now, I'll execute the call and await the results.\\n\\n\\n\",\"tool_calls\":[{\"id\":\"call_get_financial_snapshot_1794976869303_0\",\"type\":\"function\",\"function\":{\"name\":\"get_financial_snapshot\",\"arguments\":\"{\\\"fields\\\":[\\\"monthly_income_avg\\\",\\\"monthly_expense_avg\\\"],\\\"months\\\":6}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":3952,\"completion_tokens\":34,\"total_tokens\":3986,\"completion_tokens_details\":{\"reasoning_tokens\":373}}}"
+        },
+        {
+          "status": 200,
+          "body": "data: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976872,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976872,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Here's the financial snapshot for the last six complete months. The period covers May 2026 to October 2026. The average monthly income is 15,000,000 VND and the average monthly expense is 10,000,000 VND.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976874,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Average monthly income is 15,000,000 VND, exceeding the average monthly expense of 10,000,000 VND from May 2026 to October 2026. The query requires actionable suggestions tied to the provided financial data. It is important to remember this is not financial advice, but simply an informational query.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976876,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The financial data includes only average monthly income and expense, without category breakdowns or identified spending habits. Generating actionable suggestions would require this level of detail. Presenting zero suggestions aligns with the instruction to avoid generating advice based on missing data, avoiding the need to make up new categories or calculations not present in the original data.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976879,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The provided financial data shows an average monthly income of 15,000,000 VND exceeding the average monthly expense of 10,000,000 VND from May 2026 to October 2026. This comparison is permitted. This result assumes all income and expenses for the period are fully recorded.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Trong 6 tháng từ 2026-05-01 đến 2026-10-31, thu nhập trung bình mỗi tháng là 15.000.000 VND, cao hơn mức chi tiêu trung bình là 10.000.000 VND. This comparison adheres to the instruction not to calculate new amounts. The assumption is all transactions for the period were fully recorded.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Trong 6 tháng từ 2026-05-01\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" đến 2026-10-31, thu nhập trung bình mỗi tháng của bạn là 1\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"5.000.000 VND, cao hơn mức chi tiêu trung bình mỗi tháng là 10\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".000.000 VND.\\n\\nSố liệu này giả định rằng toàn bộ các khoản thu chi phát\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" sinh trong khoảng thời gian trên đã được ghi nhận đầy đủ.\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3607,\"completion_tokens\":1918,\"total_tokens\":5525,\"completion_tokens_details\":{\"reasoning_tokens\":1817}}}\n\n"
+        }
+      ],
+      "observations": [
+        {
+          "name": "get_financial_snapshot",
+          "params": {
+            "months": 6,
+            "fields": [
+              "monthly_income_avg",
+              "monthly_expense_avg"
+            ]
+          },
+          "result": {
+            "status": "ok",
+            "data": {
+              "indicators": {
+                "monthly_income_avg": 15000000,
+                "monthly_expense_avg": 10000000
+              },
+              "period": {
+                "from": "2026-05-01",
+                "to": "2026-10-31"
+              },
+              "currency": "VND",
+              "dataQuality": "complete"
+            },
+            "stateRevision": 1,
+            "calculationVersion": 1
+          }
+        }
+      ],
+      "returnedModels": [
+        "gemini-3.8-flash-n"
+      ],
+      "usage": {
+        "input": null,
+        "output": null,
+        "missingCalls": 1
+      },
+      "error": "INVALID_SSE"
+    }
+  ],
+  "upstreamRaw": [
+    {
+      "id": "S1",
+      "status": 200,
+      "body": "{\"id\":\"chatcmpl-Xiz9aqOgMcis0-kP5cD0SA\",\"object\":\"chat.completion\",\"created\":1794976869,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"reasoning_content\":\"**Analyzing the User's Request for Financial Data**\\n\\nOkay, so the user, who seems to be operating in Vietnamese (specifically, requesting information in the \\\"VND\\\" currency and \\\"Asia/Ho_Chi_Minh\\\" time zone), wants me to provide the average monthly income and expenses over the last six complete months. The \\\"referenceDate\\\" is set to \\\"2026-11-16,\\\" which is important for the time-based calculation, and the context confirms that my \\\"defaultSnapshotMonths\\\" parameter is set to 6, which aligns with the user's explicit request. They’re essentially asking, \\\"Cho tôi xem thu nhập và chi tiêu trung bình mỗi tháng trong 6 tháng hoàn chỉnh gần nhất.\\\"\\n\\nMy task here is to use available tools to answer this request efficiently and accurately. I have access to a `get_financial_snapshot` tool, and I need to carefully construct the right call. The tool's documentation tells me the available \\\"fields\\\" (what kind of data I can retrieve) and that they are: `[\\\"monthly_income_avg\\\", \\\"monthly_expense_avg\\\", \\\"liquid_balance\\\", \\\"months_with_data\\\"]`. The tool also takes an integer called \\\"months\\\".\\n\\nNow, I need to stick to the rules and be as specific as possible. The user *only* wants average income and expense over a period of time. There's no mention of liquid balance or how many months have available data. Those are irrelevant to the specific user's query, so I should omit them. The rule is very clear: Request only the *minimum* indicators needed to answer the question, do not request extra indicators simply because they are available. Therefore, the \\\"fields\\\" parameter should be `[\\\"monthly_income_avg\\\", \\\"monthly_expense_avg\\\"]`. The \\\"months\\\" parameter is, of course, 6.\\n\\nSo the tool call I need to make is `get_financial_snapshot(fields=[\\\"monthly_income_avg\\\", \\\"monthly_expense_avg\\\"], months=6)`. That should get the information. Now, I'll execute the call and await the results.\\n\\n\\n\",\"tool_calls\":[{\"id\":\"call_get_financial_snapshot_1794976869303_0\",\"type\":\"function\",\"function\":{\"name\":\"get_financial_snapshot\",\"arguments\":\"{\\\"fields\\\":[\\\"monthly_income_avg\\\",\\\"monthly_expense_avg\\\"],\\\"months\\\":6}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":3952,\"completion_tokens\":34,\"total_tokens\":3986,\"completion_tokens_details\":{\"reasoning_tokens\":373}}}"
+    },
+    {
+      "id": "S1",
+      "status": 200,
+      "body": "data: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976872,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976872,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Here's the financial snapshot for the last six complete months. The period covers May 2026 to October 2026. The average monthly income is 15,000,000 VND and the average monthly expense is 10,000,000 VND.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976874,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Average monthly income is 15,000,000 VND, exceeding the average monthly expense of 10,000,000 VND from May 2026 to October 2026. The query requires actionable suggestions tied to the provided financial data. It is important to remember this is not financial advice, but simply an informational query.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976876,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The financial data includes only average monthly income and expense, without category breakdowns or identified spending habits. Generating actionable suggestions would require this level of detail. Presenting zero suggestions aligns with the instruction to avoid generating advice based on missing data, avoiding the need to make up new categories or calculations not present in the original data.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976879,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"The provided financial data shows an average monthly income of 15,000,000 VND exceeding the average monthly expense of 10,000,000 VND from May 2026 to October 2026. This comparison is permitted. This result assumes all income and expenses for the period are fully recorded.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"Trong 6 tháng từ 2026-05-01 đến 2026-10-31, thu nhập trung bình mỗi tháng là 15.000.000 VND, cao hơn mức chi tiêu trung bình là 10.000.000 VND. This comparison adheres to the instruction not to calculate new amounts. The assumption is all transactions for the period were fully recorded.\\n\\n\\n\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Trong 6 tháng từ 2026-05-01\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" đến 2026-10-31, thu nhập trung bình mỗi tháng của bạn là 1\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"5.000.000 VND, cao hơn mức chi tiêu trung bình mỗi tháng là 10\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".000.000 VND.\\n\\nSố liệu này giả định rằng toàn bộ các khoản thu chi phát\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" sinh trong khoảng thời gian trên đã được ghi nhận đầy đủ.\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-Ziz9aqmSE4az1e8PgeOqgA0\",\"object\":\"chat.completion.chunk\",\"created\":1794976882,\"model\":\"gemini-3.8-flash-n\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3607,\"completion_tokens\":1918,\"total_tokens\":5525,\"completion_tokens_details\":{\"reasoning_tokens\":1817}}}\n\n"
+    }
+  ]
+}

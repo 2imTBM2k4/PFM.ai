@@ -66,6 +66,7 @@ vi.mock('react', async (importOriginal) => {
 });
 
 vi.mock('react-native', () => ({
+  useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
   View: 'View',
   Text: 'RNText',
   Pressable: 'Pressable',
@@ -90,6 +91,7 @@ vi.mock('react-native', () => ({
 }));
 
 vi.mock('react-native-reanimated', () => ({
+  useReducedMotion: () => false,
   default: { View: 'Animated.View' },
   useSharedValue: (initial: number) => ({ value: initial, set: vi.fn() }),
   useAnimatedStyle: (fn: () => Record<string, unknown>) => fn(),
@@ -280,9 +282,17 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
         viMessages.transactionExpense,
       );
       expect(buttons[0]!.props.accessibilityState).toEqual({ selected: true });
+      const outerWrapperStyle = Object.assign(
+        {},
+        ...([compact.props.style].flat(Infinity).filter(Boolean) as object[]),
+      );
+      expect(outerWrapperStyle.padding).toBeUndefined();
       expect(
-        Object.assign({}, ...(buttons[0]!.props.style as object[])),
-      ).toMatchObject({ width: 32, height: 32 });
+        Object.assign(
+          {},
+          ...(buttons[0]!.props.style as object[]).flat(Infinity),
+        ),
+      ).toMatchObject({ width: 44, height: 44 });
       expect(
         collectElements(compact, (element) => element.type === 'RNText'),
       ).toHaveLength(0);
@@ -306,6 +316,16 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
       expect(
         collectElements(expanded, (element) => element.type === 'RNText'),
       ).toHaveLength(1);
+      const staticBadge = Pill({
+        label: viMessages.transactionExpense,
+        tone: 'expense',
+        size: 'sm',
+      });
+      const staticBadgeStyle = Object.assign(
+        {},
+        ...(staticBadge.props.style as object[]).flat(Infinity).filter(Boolean),
+      );
+      expect(staticBadgeStyle.minHeight).toBeUndefined();
     },
   );
 
@@ -365,6 +385,14 @@ describe('Đợt 2 picker, date, month, and time helpers', () => {
       'wallet-outline',
       'chart-donut',
       'repeat',
+      'eye-outline',
+      'bell-outline',
+      'shield-lock-outline',
+      'database-remove-outline',
+      'magnify',
+      'pencil-outline',
+      'receipt-text-outline',
+      'wallet-plus-outline',
     ]) {
       expect(toSfSymbol(icon)).not.toBe('circle');
     }
@@ -624,5 +652,44 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
         (el) => el.type === 'PaperSegmentedButtons',
       ),
     ).toHaveLength(1);
+  });
+
+  it('gives DateField fallback calendar day cells at least a 44pt height', async () => {
+    const { DateField } = await import('./date-field');
+    resetStateHooks();
+    const renderDateField = () => {
+      stateHooks.cursor = 0;
+      return DateField({
+        label: 'Ngày',
+        value: '2026-11-13',
+        onChange: vi.fn(),
+      });
+    };
+    const trigger = collectElements(
+      renderDateField(),
+      (el) => el.type === 'Pressable',
+    )[0]!;
+    (trigger.props.onPress as () => void)();
+    const openTree = renderDateField();
+    const modal = collectElements(openTree, (el) => el.type === 'Modal')[0]!;
+    expect(modal).toBeDefined();
+    const dayCell = collectElements(
+      modal,
+      (el) =>
+        el.type === 'Pressable' &&
+        el.props.accessibilityRole === 'button' &&
+        typeof el.props.accessibilityLabel === 'string' &&
+        (el.props.accessibilityLabel as string).includes('13'),
+    )[0]!;
+    expect(dayCell).toBeDefined();
+    expect(
+      Object.assign(
+        {},
+        ...([dayCell.props.style].flat(Infinity).filter(Boolean) as Record<
+          string,
+          unknown
+        >[]),
+      ),
+    ).toMatchObject({ minHeight: 44 });
   });
 });

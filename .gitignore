@@ -22,10 +22,16 @@ expo-env.d.ts
 .pnpm-store/
 *.log
 
-# Local planning and skill artifacts
+# Local planning, index, and skill artifacts
 plan.md
+.codegraph/
+.superpowers/
 .taste-skill/
-docs/
+docs/*
+!docs/tool-calling-test-cases.md
+!docs/tool-calling-smoke-ag-gemini-3.8-flash-high-2026-11-18T04-41-01-452Z.json
+!docs/tool-calling-smoke-ag-gemini-3.8-flash-high-2026-11-18T06-57-52-543Z.json
+!docs/tool-calling-smoke-ag-gemini-3.8-flash-high-2026-11-18T07-40-30-647Z.json
 spikes/
 .superpowers
 .codegraph

@@ -1,3 +1,4 @@
+import { useAccessibilityPreferences } from '@/hooks/use-accessibility-preferences';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -71,6 +72,7 @@ export function TabIconButton({
 }) {
   const theme = useDesignTheme();
   const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -87,10 +89,12 @@ export function TabIconButton({
         hitSlop={4}
         onPress={onPress}
         onPressIn={() => {
-          scale.set(withSpring(0.9, { damping: 15, stiffness: 320 }));
+          if (!reduceMotion)
+            scale.set(withSpring(0.9, { damping: 15, stiffness: 320 }));
         }}
         onPressOut={() => {
-          scale.set(withSpring(1, { damping: 15, stiffness: 320 }));
+          if (!reduceMotion)
+            scale.set(withSpring(1, { damping: 15, stiffness: 320 }));
         }}
         style={[
           styles.tabCircle,
@@ -103,26 +107,33 @@ export function TabIconButton({
         {Platform.OS === 'ios' ? (
           <SymbolView
             name={active ? item.iosActiveIcon : item.iosIcon}
-            size={active && showLabel ? 19 : 22}
+            size={showLabel ? 18 : 22}
             tintColor={
               active ? theme.tabBar.activeIcon : theme.tabBar.inactiveIcon
             }
             style={{
-              width: active && showLabel ? 19 : 22,
-              height: active && showLabel ? 19 : 22,
+              width: showLabel ? 18 : 22,
+              height: showLabel ? 18 : 22,
             }}
           />
         ) : (
           <MaterialCommunityIcons
             name={iconName as never}
-            size={active && showLabel ? 19 : 22}
+            size={showLabel ? 18 : 22}
             color={active ? theme.tabBar.activeIcon : theme.tabBar.inactiveIcon}
           />
         )}
-        {active && showLabel && (
+        {showLabel && (
           <Text
-            numberOfLines={1}
-            style={[styles.activeLabel, { color: theme.tabBar.activeIcon }]}
+            maxFontSizeMultiplier={1.2}
+            style={[
+              styles.activeLabel,
+              {
+                color: active
+                  ? theme.tabBar.activeIcon
+                  : theme.tabBar.inactiveIcon,
+              },
+            ]}
           >
             {item.label}
           </Text>
@@ -152,7 +163,11 @@ export function FloatingTabBarView({
     items.length,
     isDuoClosedPortrait,
   );
-  const liquidGlassAvailable = isLiquidGlassAvailable();
+  const { reduceTransparency, increaseContrast } =
+    useAccessibilityPreferences();
+  const solid = reduceTransparency || increaseContrast;
+  const Surface = solid ? View : GlassView;
+  const liquidGlassAvailable = !solid && isLiquidGlassAvailable();
   const tabVisibility = useSharedValue(visible ? 1 : 0);
   const reduceMotion = useReducedMotion();
   const bottomOffset =
@@ -230,17 +245,21 @@ export function FloatingTabBarView({
             importantForAccessibility={visible ? 'auto' : 'no-hide-descendants'}
             style={barContainerAnimatedStyle}
           >
-            <GlassView
+            <Surface
               glassEffectStyle="regular"
               isInteractive
               colorScheme={theme.mode}
               accessibilityRole="tablist"
               style={[
                 styles.liquidGlassBar,
-                { width: layout.pillWidth },
+                { width: layout.pillWidth, height: layout.pillHeight },
+                !isDuoClosedPortrait &&
+                  !liquidGlassAvailable && { paddingVertical: 1 },
                 !liquidGlassAvailable && createSoftShadow(theme.mode, 'lg'),
                 !liquidGlassAvailable && {
-                  backgroundColor: theme.tabBar.pillBackground,
+                  backgroundColor: solid
+                    ? theme.card.surfaceElevated
+                    : theme.tabBar.pillBackground,
                   borderColor: theme.tabBar.pillBorder,
                   borderWidth: 1,
                 },
@@ -267,22 +286,24 @@ export function FloatingTabBarView({
                   showLabel={layout.showActiveLabel}
                 />
               ))}
-            </GlassView>
+            </Surface>
           </Animated.View>
         </View>
         <View
           testID="floating-tab-action"
           style={{ width: layout.addButtonSize, height: layout.addButtonSize }}
         >
-          <GlassView
+          <Surface
             pointerEvents="none"
-            glassEffectStyle="clear"
+            glassEffectStyle="regular"
             colorScheme={theme.mode}
             style={[
               StyleSheet.absoluteFill,
               { borderRadius: layout.addButtonSize / 2 },
               !liquidGlassAvailable && {
-                backgroundColor: theme.tabBar.pillBackground,
+                backgroundColor: solid
+                  ? theme.card.surfaceElevated
+                  : theme.tabBar.pillBackground,
                 borderColor: theme.tabBar.pillBorder,
                 borderWidth: 1,
               },
@@ -325,7 +346,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     borderRadius: DesignRadius.pill,
     paddingHorizontal: 6,
-    paddingVertical: 5,
+    paddingVertical: 2,
     overflow: 'hidden',
   },
   verticalLiquidGlassBar: {
@@ -341,14 +362,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 6,
+    flexDirection: 'column',
+    gap: 2,
+    paddingHorizontal: 2,
   },
   activeLabel: {
     fontSize: 10,
     lineHeight: 12,
     fontWeight: '700',
     flexShrink: 1,
+    textAlign: 'center',
   },
 });

@@ -37,7 +37,9 @@ export interface ReceiptAssetPayload {
 interface PreferencesState extends UserPreferences {
   hydrated: boolean;
   pendingTransactionEntry: 'manual' | 'natural' | null;
+  pendingTransactionDate: string | null;
   pendingChatAction: ChatActionType | null;
+  pendingChatPrompt: string | null;
   pendingReceiptAsset: ReceiptAssetPayload | null;
   isAddTransactionOpen: boolean;
   isChatOpen: boolean;
@@ -48,10 +50,13 @@ interface PreferencesState extends UserPreferences {
   setTabBarVisible(visible: boolean): void;
   setHideBalance(hide: boolean): Promise<void>;
   toggleHideBalance(): Promise<void>;
-  openAddTransaction(mode?: 'manual' | 'natural'): void;
+  openAddTransaction(mode?: 'manual' | 'natural', occurredOn?: string): void;
   closeAddTransaction(): void;
+  consumeTransactionDate(): string | null;
   openChat(action?: ChatActionType): void;
+  openChatWithPrompt(prompt: string): void;
   openChatWithReceipt(asset: ReceiptAssetPayload): void;
+  consumeChatPrompt(): string | null;
   closeChat(): void;
   exchangeRate: number | null;
   exchangeRateDate: string | null;
@@ -230,7 +235,9 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   notifyRecurring: true,
   hydrated: false,
   pendingTransactionEntry: null,
+  pendingTransactionDate: null,
   pendingChatAction: null,
+  pendingChatPrompt: null,
   pendingReceiptAsset: null,
   isAddTransactionOpen: false,
   isChatOpen: false,
@@ -276,16 +283,44 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     await get().setHideBalance(!get().hideBalance);
   },
 
-  openAddTransaction(mode = 'manual') {
-    set({ isAddTransactionOpen: true, pendingTransactionEntry: mode });
+  openAddTransaction(mode = 'manual', occurredOn) {
+    set({
+      isAddTransactionOpen: true,
+      pendingTransactionEntry: mode,
+      pendingTransactionDate: occurredOn ?? null,
+    });
   },
 
   closeAddTransaction() {
-    set({ isAddTransactionOpen: false, pendingTransactionEntry: null });
+    set({
+      isAddTransactionOpen: false,
+      pendingTransactionEntry: null,
+      pendingTransactionDate: null,
+    });
+  },
+
+  consumeTransactionDate() {
+    const current = get().pendingTransactionDate;
+    if (current !== null) {
+      set({ pendingTransactionDate: null });
+    }
+    return current;
   },
 
   openChat(action?: ChatActionType) {
-    set({ isChatOpen: true, pendingChatAction: action ?? null });
+    set({
+      isChatOpen: true,
+      pendingChatAction: action ?? null,
+      pendingChatPrompt: null,
+    });
+  },
+
+  openChatWithPrompt(prompt: string) {
+    set({
+      isChatOpen: true,
+      pendingChatAction: null,
+      pendingChatPrompt: prompt,
+    });
   },
 
   openChatWithReceipt(asset: ReceiptAssetPayload) {
@@ -293,6 +328,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
       isChatOpen: true,
       pendingReceiptAsset: asset,
       pendingChatAction: null,
+      pendingChatPrompt: null,
     });
   },
 
@@ -300,6 +336,7 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     set({
       isChatOpen: false,
       pendingChatAction: null,
+      pendingChatPrompt: null,
       pendingReceiptAsset: null,
     });
   },
@@ -349,6 +386,14 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     const current = get().pendingReceiptAsset;
     if (current !== null) {
       set({ pendingReceiptAsset: null });
+    }
+    return current;
+  },
+
+  consumeChatPrompt() {
+    const current = get().pendingChatPrompt;
+    if (current !== null) {
+      set({ pendingChatPrompt: null });
     }
     return current;
   },

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 export const BACKUP_FORMAT = 'pfm-backup' as const;
 export const BACKUP_FORMAT_VERSION = 1 as const;
-export const BACKUP_LATEST_SCHEMA_VERSION = 5 as const;
+export const BACKUP_LATEST_SCHEMA_VERSION = 6 as const;
 
 export const BACKUP_ALLOWED_SETTINGS_KEYS = [
   'onboarding_complete',

@@ -40,7 +40,6 @@ export function errorHandler(
   }
 
   // Unhandled internal server error (never leak raw error stack or payload to client)
-  request.log.error(error);
   reply.status(500).send({
     success: false,
     message: 'Đã xảy ra lỗi nội bộ máy chủ.',

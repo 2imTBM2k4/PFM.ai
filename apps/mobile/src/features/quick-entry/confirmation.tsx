@@ -35,7 +35,13 @@ import { displayCategoryName, displayWalletName } from '@/messages/seed-labels';
 import { usePreferences } from '@/state/preferences';
 import { formatDisplayDate } from '@/utils/display';
 import { isFutureDate } from '../transactions/form';
-import type { EntryDraft, EntryReferences } from './draft';
+import {
+  applyDraftMessage,
+  entryDraftFieldValue,
+  unconfirmedDraftFields,
+  type EntryDraft,
+  type EntryReferences,
+} from './draft';
 
 export const ENTRY_KINDS = [
   { value: 'expense', label: vi.transactionExpense },
@@ -88,10 +94,13 @@ export function EntryConfirmation({
   const [initialDrafts] = useState<EntryDraft[]>(() =>
     drafts.map((entry) => ({ ...entry })),
   );
+  const [draftMessage, setDraftMessage] = useState('');
+  const [draftMessageError, setDraftMessageError] = useState('');
   const {
     control,
     setValue,
     handleSubmit,
+    getValues,
     formState: { isSubmitting },
   } = useForm<Fields>({
     defaultValues: { entries: initialDrafts },
@@ -139,10 +148,50 @@ export function EntryConfirmation({
             subtitle={vi.quickConfirmHint}
             onBack={requestLeave}
             backDisabled={disabled}
+            inModal
+            hasTabBar={false}
           >
             <Text selectable variant="bodyMedium">
               {result.raw}
             </Text>
+            <FocusAwareTextInput
+              mode="outlined"
+              label={vi.quickDraftMessage}
+              accessibilityLabel={vi.quickDraftMessage}
+              value={draftMessage}
+              onChangeText={setDraftMessage}
+              disabled={disabled}
+            />
+            {draftMessageError ? (
+              <HelperText type="error">{draftMessageError}</HelperText>
+            ) : null}
+            <Button
+              accessibilityLabel={vi.quickDraftApply}
+              disabled={disabled || !draftMessage.trim()}
+              onPress={() => {
+                const change = applyDraftMessage(
+                  draftMessage,
+                  getValues('entries'),
+                  { now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' },
+                );
+                if (change.action === 'cancel') {
+                  onCancel();
+                  return;
+                }
+                if (change.action === 'clarify') {
+                  setDraftMessageError(vi.quickDraftClarify);
+                  return;
+                }
+                setValue('entries', change.drafts, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+                setDraftMessage('');
+                setDraftMessageError('');
+              }}
+            >
+              {vi.quickDraftApply}
+            </Button>
             {result.warnings.map((warning) => (
               <Text
                 key={warning}
@@ -175,9 +224,20 @@ export function EntryConfirmation({
               </Text>
             )}
             <Button
+              hitSlop={4}
               mode="contained"
               contentStyle={styles.button}
-              disabled={disabled || !values.some((entry) => entry.selected)}
+              disabled={
+                disabled ||
+                !values.some((entry) => entry.selected) ||
+                values.some(
+                  (entry) =>
+                    entry.selected &&
+                    (unconfirmedDraftFields(entry).length > 0 ||
+                      (entry.requiresAmountConfirmation &&
+                        !entry.amountConfirmed)),
+                )
+              }
               loading={disabled}
               onPress={() =>
                 void handleSubmit((values) =>
@@ -188,6 +248,7 @@ export function EntryConfirmation({
               {vi.quickSave}
             </Button>
             <Button
+              hitSlop={4}
               contentStyle={styles.button}
               disabled={disabled}
               onPress={requestLeave}
@@ -382,7 +443,7 @@ function CandidateFields({
     [debts, palette, language],
   );
   const textField = (
-    name: 'amount' | 'note' | 'counterpartyLabel',
+    name: 'amount' | 'note' | 'counterpartyLabel' | 'merchant',
     label: string,
     low = false,
   ) => (
@@ -397,7 +458,7 @@ function CandidateFields({
                 currency={draft.currency}
                 label={label}
                 accessibilityLabel={label}
-                value={field.value}
+                value={field.value ?? ''}
                 disabled={disabled || !draft.selected}
                 error={!!fieldState.error}
                 onBlur={field.onBlur}
@@ -501,7 +562,57 @@ function CandidateFields({
       <Text variant="bodySmall" style={{ color: palette.textMuted }}>
         {formatDisplayDate(draft.date) || vi.quickInvalidDate}
       </Text>
+      {draft.sourceDraft && (
+        <>
+          {textField(
+            'merchant',
+            vi.quickMerchant,
+            draft.sourceDraft.confidence.merchant === 'low',
+          )}
+          {unconfirmedDraftFields(draft)
+            .filter(
+              (name) =>
+                !(name === 'currency' && draft.sourceDraft?.currency === null),
+            )
+            .map((name) => {
+              const labels = {
+                amount: vi.transactionAmount,
+                currency: vi.settingsCurrencyLabel,
+                type: vi.transactionKind,
+                category: vi.transactionCategory,
+                date: vi.transactionDate,
+                wallet_id: vi.transactionWallet,
+                note: vi.transactionNote,
+                merchant: vi.quickMerchant,
+              };
+              const label = vi.quickConfirmField.replace(
+                '{field}',
+                labels[name],
+              );
+              return (
+                <Button
+                  key={name}
+                  accessibilityLabel={label}
+                  disabled={formDisabled}
+                  onPress={() =>
+                    setValue(
+                      `${path}.confirmedFields`,
+                      {
+                        ...draft.confirmedFields,
+                        [name]: entryDraftFieldValue(draft, name),
+                      },
+                      { shouldDirty: true, shouldValidate: true },
+                    )
+                  }
+                >
+                  {label}
+                </Button>
+              );
+            })}
+        </>
+      )}
       <Button
+        hitSlop={4}
         mode="outlined"
         contentStyle={styles.compactButton}
         disabled={disabled}
@@ -557,13 +668,23 @@ function CandidateFields({
             >
               <AppleMenuPicker
                 label={vi.settingsCurrencyLabel}
-                value={draft.currency}
+                value={
+                  draft.sourceDraft?.currency === null &&
+                  !draft.confirmedFields?.currency
+                    ? ''
+                    : draft.currency
+                }
                 options={[
                   { value: 'VND', label: 'VND (₫)' },
                   { value: 'USD', label: 'USD ($)' },
                 ]}
                 disabled={formDisabled}
                 onSelect={(value) => {
+                  setValue(
+                    `${path}.confirmedFields`,
+                    { ...draft.confirmedFields, currency: value },
+                    { shouldDirty: true },
+                  );
                   setValue(`${path}.currency`, value as 'VND' | 'USD', {
                     shouldValidate: true,
                   });
@@ -581,9 +702,14 @@ function CandidateFields({
           `${vi.transactionAmount.replace(' (₫)', '')} (${draft.currency})`,
           candidate.amount.confidence !== 'high',
         )}
-        {candidate.explanation.includes('amount.assumed_thousands') && (
+        {(candidate.explanation.includes('amount.assumed_thousands') ||
+          draft.requiresAmountConfirmation) && (
           <>
-            <Text style={{ color: palette.warningInk }}>{vi.quickAssumed}</Text>
+            <Text style={{ color: palette.warningInk }}>
+              {candidate.explanation.includes('amount.assumed_thousands')
+                ? vi.quickAssumed
+                : vi.quickDraftAmountChanged}
+            </Text>
             <Controller
               control={control}
               name={`${path}.amountConfirmed`}

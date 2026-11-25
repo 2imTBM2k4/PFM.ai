@@ -5,7 +5,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { FocusAwareTextInput } from '@/components/field-feedback';
 import { useTransientState } from '@/hooks/use-transient-state';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@/components/platform-icon';
 import { uuid } from 'expo';
 import { useFocusEffect } from 'expo-router';
 import { parseEntry, today, validateDate, type ParseResult } from '@pfm/domain';
@@ -19,6 +19,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import {
   BackHandler,
+  Platform,
   Keyboard,
   FlatList,
   Pressable,
@@ -27,6 +28,7 @@ import {
   TextInput as RNTextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Button,
@@ -145,6 +147,7 @@ export function TransactionManager({
     () =>
       createTabBarScrollHandler((expanded) => setControlsCollapsed(!expanded), {
         showAtBottom: false,
+        showOnlyAtTop: true,
       }),
     [],
   );
@@ -168,6 +171,7 @@ export function TransactionManager({
   const focused = useRef(false);
   const hasLoadedOnce = useRef(false);
   const tabBarScroll = useTabBarScroll();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const palette = useFinancePalette();
   const theme = useDesignTheme();
@@ -272,6 +276,7 @@ export function TransactionManager({
 
   useFocusEffect(
     useCallback(() => {
+      if (Platform.OS === 'web') return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         if (mode.type === 'list') return false;
         back();
@@ -529,6 +534,7 @@ export function TransactionManager({
 
         <View style={localStyles.detailActions}>
           <Button
+            hitSlop={4}
             mode="contained"
             icon="pencil-outline"
             buttonColor={theme.brand.primaryStrong}
@@ -541,6 +547,7 @@ export function TransactionManager({
             {vi.editTransaction}
           </Button>
           <Button
+            hitSlop={4}
             mode="outlined"
             icon="trash-can-outline"
             textColor={palette.danger}
@@ -621,6 +628,7 @@ export function TransactionManager({
           </Text>
         )}
         <Button
+          hitSlop={4}
           mode="contained"
           buttonColor={colors.error}
           icon="trash-can-outline"
@@ -636,6 +644,7 @@ export function TransactionManager({
           {vi.deleteTransaction}
         </Button>
         <Button
+          hitSlop={4}
           mode="outlined"
           contentStyle={styles.button}
           disabled={busy}
@@ -646,11 +655,84 @@ export function TransactionManager({
       </Screen>
     );
 
+  const kindPills = (
+    <>
+      <Pill
+        label={vi.txFilterAll}
+        icon={controlsCollapsed ? 'view-grid-outline' : undefined}
+        compact={controlsCollapsed}
+        tone="primary"
+        selected={quickKind === 'all'}
+        size="sm"
+        onPress={() => setQuickKind('all')}
+      />
+      <Pill
+        label={vi.transactionExpense}
+        icon={controlsCollapsed ? 'arrow-top-right' : undefined}
+        compact={controlsCollapsed}
+        tone="expense"
+        selected={quickKind === 'expense'}
+        size="sm"
+        onPress={() => setQuickKind('expense')}
+      />
+      <Pill
+        label={vi.transactionIncome}
+        icon={controlsCollapsed ? 'arrow-bottom-left' : undefined}
+        compact={controlsCollapsed}
+        tone="income"
+        selected={quickKind === 'income'}
+        size="sm"
+        onPress={() => setQuickKind('income')}
+      />
+      <Pill
+        label={vi.transactionTransfer}
+        icon={controlsCollapsed ? 'swap-horizontal' : undefined}
+        compact={controlsCollapsed}
+        tone="neutral"
+        selected={quickKind === 'transfer'}
+        size="sm"
+        onPress={() => setQuickKind('transfer')}
+      />
+    </>
+  );
+
+  const quickTiles = (
+    <>
+      <QuickTile
+        compact={controlsCollapsed}
+        icon="tune-variant"
+        label={vi.filterAdvanced}
+        bg={hasFilters ? palette.warningSoft : palette.primarySoft}
+        fg={hasFilters ? palette.warningInk : palette.primaryInk}
+        disabled={busy || loading}
+        onPress={() => setMode({ type: 'filters' })}
+      />
+      <QuickTile
+        icon="calendar-sync-outline"
+        compact={controlsCollapsed}
+        label={vi.recurringTitle}
+        bg={palette.tealSoft}
+        fg={palette.tealInk}
+        disabled={busy || loading}
+        onPress={onManageRecurring}
+      />
+      <QuickTile
+        icon="handshake-outline"
+        compact={controlsCollapsed}
+        label={vi.debtsTitle}
+        bg={palette.purpleSoft}
+        fg={palette.purpleInk}
+        disabled={busy || loading}
+        onPress={onManageDebts}
+      />
+    </>
+  );
+
   return (
     <Screen title={vi.transactions} scroll={false}>
       <Animated.View
         layout={LinearTransition.duration(220)}
-        style={{ gap: controlsCollapsed ? 2 : 10 }}
+        style={{ gap: controlsCollapsed ? 8 : 10 }}
       >
         {/* Instant Search Input Bar */}
         {!controlsCollapsed && (
@@ -681,6 +763,9 @@ export function TransactionManager({
             {!!quickQuery && (
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={vi.clear}
+                hitSlop={10}
+                style={localStyles.searchClearButton}
                 onPress={() => setQuickQuery('')}
               >
                 <MaterialCommunityIcons
@@ -693,88 +778,45 @@ export function TransactionManager({
           </Animated.View>
         )}
 
-        {/* Kind Filter Pills + Add Transaction CTA */}
+        {/* Kind Filter Pills; merges with quick actions into 1 row when scrolled */}
         <Animated.View
           layout={LinearTransition.duration(220)}
           style={localStyles.filterPillsRow}
         >
           <ScrollView
+            testID={controlsCollapsed ? 'collapsed-controls-row' : undefined}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8 }}
+            contentContainerStyle={
+              controlsCollapsed
+                ? localStyles.collapsedControlsContent
+                : localStyles.expandedPillsContent
+            }
           >
-            <Pill
-              label={vi.txFilterAll}
-              icon={controlsCollapsed ? 'view-grid-outline' : undefined}
-              compact={controlsCollapsed}
-              tone="primary"
-              selected={quickKind === 'all'}
-              size="sm"
-              onPress={() => setQuickKind('all')}
-            />
-            <Pill
-              label={vi.transactionExpense}
-              icon={controlsCollapsed ? 'arrow-top-right' : undefined}
-              compact={controlsCollapsed}
-              tone="expense"
-              selected={quickKind === 'expense'}
-              size="sm"
-              onPress={() => setQuickKind('expense')}
-            />
-            <Pill
-              label={vi.transactionIncome}
-              icon={controlsCollapsed ? 'arrow-bottom-left' : undefined}
-              compact={controlsCollapsed}
-              tone="income"
-              selected={quickKind === 'income'}
-              size="sm"
-              onPress={() => setQuickKind('income')}
-            />
-            <Pill
-              label={vi.transactionTransfer}
-              icon={controlsCollapsed ? 'swap-horizontal' : undefined}
-              compact={controlsCollapsed}
-              tone="neutral"
-              selected={quickKind === 'transfer'}
-              size="sm"
-              onPress={() => setQuickKind('transfer')}
-            />
+            {kindPills}
+            {controlsCollapsed && (
+              <>
+                <View
+                  style={[
+                    localStyles.collapsedDivider,
+                    { backgroundColor: theme.card.border },
+                  ]}
+                />
+                {quickTiles}
+              </>
+            )}
           </ScrollView>
         </Animated.View>
 
         {/* Quick Navigation Row for Advanced Filters, Recurring, Debts */}
-        <Animated.View
-          layout={LinearTransition.duration(220)}
-          style={localStyles.quickRow}
-        >
-          <QuickTile
-            compact={controlsCollapsed}
-            icon="tune-variant"
-            label={vi.filterAdvanced}
-            bg={hasFilters ? palette.warningSoft : palette.primarySoft}
-            fg={hasFilters ? palette.warningInk : palette.primaryInk}
-            disabled={busy || loading}
-            onPress={() => setMode({ type: 'filters' })}
-          />
-          <QuickTile
-            icon="calendar-sync-outline"
-            compact={controlsCollapsed}
-            label={vi.recurringTitle}
-            bg={palette.tealSoft}
-            fg={palette.tealInk}
-            disabled={busy || loading}
-            onPress={onManageRecurring}
-          />
-          <QuickTile
-            icon="handshake-outline"
-            compact={controlsCollapsed}
-            label={vi.debtsTitle}
-            bg={palette.purpleSoft}
-            fg={palette.purpleInk}
-            disabled={busy || loading}
-            onPress={onManageDebts}
-          />
-        </Animated.View>
+        {!controlsCollapsed && (
+          <Animated.View
+            layout={LinearTransition.duration(220)}
+            style={localStyles.quickRow}
+          >
+            {quickTiles}
+          </Animated.View>
+        )}
       </Animated.View>
 
       {hasFilters && (
@@ -828,6 +870,7 @@ export function TransactionManager({
               {vi.transactionDeleted}
             </Text>
             <Button
+              hitSlop={4}
               compact
               mode="contained-tonal"
               disabled={busy || loading}
@@ -857,7 +900,7 @@ export function TransactionManager({
           <Text accessibilityRole="alert" style={{ color: colors.error }}>
             {error}
           </Text>
-          <Button disabled={busy || loading} onPress={load}>
+          <Button hitSlop={4} disabled={busy || loading} onPress={load}>
             {vi.retry}
           </Button>
         </View>
@@ -886,7 +929,7 @@ export function TransactionManager({
             renderItem={renderItem}
             contentContainerStyle={{
               gap: 12,
-              paddingBottom: DesignSpacing.bottomTabClearance,
+              paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
             }}
             ListEmptyComponent={
               <EmptyStateCard
@@ -901,6 +944,7 @@ export function TransactionManager({
             ListFooterComponent={
               more ? (
                 <Button
+                  hitSlop={4}
                   mode="outlined"
                   contentStyle={styles.button}
                   disabled={busy}
@@ -1008,96 +1052,103 @@ const TransactionItem = memo(function TransactionItem({
       : null;
 
   return (
-    <GlassCard
-      variant="elevated"
-      radius="lg"
-      padding={16}
-      onPress={() => onPress(row)}
-      style={{ gap: 10 }}
-    >
-      <View style={styles.row}>
-        <View style={[styles.inlineRow, { flex: 1 }]}>
-          <IconBadge
-            icon={badgeIcon}
-            bg={badgeBg}
-            fg={category?.color ?? badgeFg}
-            size={42}
-            iconSize={20}
-          />
-          <View style={{ flex: 1, gap: 4 }}>
-            <View style={[styles.inlineRow, { gap: 6 }]}>
-              <Text
-                variant="titleMedium"
-                numberOfLines={1}
-                style={{
-                  fontWeight: '700',
-                  color: theme.text.primary,
-                  flexShrink: 1,
-                }}
-              >
-                {categoryTitle ?? kindTitle}
+    <GlassCard variant="elevated" radius="lg" padding={16} style={{ gap: 10 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${categoryTitle ?? kindTitle}. ${formatEntryAmount(row)}. ${formatDisplayDate(row.occurred_on)}. ${row.note ?? ''}`}
+        disabled={busy}
+        onPress={() => onPress(row)}
+        style={{ minHeight: 44, gap: 10 }}
+      >
+        <View style={[styles.row, { alignItems: 'flex-start' }]}>
+          <View
+            style={[
+              styles.inlineRow,
+              { flex: 1, flexWrap: 'nowrap', alignItems: 'flex-start' },
+            ]}
+          >
+            <IconBadge
+              icon={badgeIcon}
+              bg={badgeBg}
+              fg={category?.color ?? badgeFg}
+              size={42}
+              iconSize={20}
+            />
+            <View style={{ flex: 1, gap: 4 }}>
+              <View style={[styles.inlineRow, { gap: 6 }]}>
+                <Text
+                  variant="titleMedium"
+
+                  style={{
+                    fontWeight: '700',
+                    color: theme.text.primary,
+                    flexShrink: 1,
+                  }}
+                >
+                  {categoryTitle ?? kindTitle}
+                </Text>
+                <Pill
+                  label={kindTitle}
+                  tone={isIncome ? 'income' : isExpense ? 'expense' : 'primary'}
+                  size="sm"
+                />
+              </View>
+              <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+                {formatDisplayDate(row.occurred_on)} ·{' '}
+                {displayWalletName(
+                  wallets.find((w) => w.id === row.wallet_id)?.name,
+                )}
+                {row.to_wallet_id
+                  ? ` → ${wallets.find((w) => w.id === row.to_wallet_id)?.name ?? ''}`
+                  : ''}
               </Text>
-              <Pill
-                label={kindTitle}
-                tone={isIncome ? 'income' : isExpense ? 'expense' : 'primary'}
-                size="sm"
-              />
             </View>
-            <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-              {formatDisplayDate(row.occurred_on)} ·{' '}
-              {displayWalletName(
-                wallets.find((w) => w.id === row.wallet_id)?.name,
-              )}
-              {row.to_wallet_id
-                ? ` → ${wallets.find((w) => w.id === row.to_wallet_id)?.name ?? ''}`
-                : ''}
-            </Text>
           </View>
+          <Text
+            variant="titleMedium"
+
+            minimumFontScale={0.75}
+            style={[
+              styles.number,
+              {
+                fontWeight: '800',
+                maxWidth: '44%',
+                color: isIncome
+                  ? theme.finance.incomeText
+                  : isExpense
+                    ? theme.finance.expenseText
+                    : theme.text.primary,
+              },
+            ]}
+          >
+            {row.kind === 'expense' ? '−' : row.kind === 'income' ? '+' : ''}
+            {formatEntryAmount(row)}
+          </Text>
         </View>
-        <Text
-          variant="titleMedium"
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.75}
-          style={[
-            styles.number,
-            {
-              fontWeight: '800',
-              maxWidth: '44%',
-              color: isIncome
-                ? theme.finance.incomeText
-                : isExpense
-                  ? theme.finance.expenseText
-                  : theme.text.primary,
-            },
-          ]}
-        >
-          {row.kind === 'expense' ? '−' : row.kind === 'income' ? '+' : ''}
-          {formatEntryAmount(row)}
-        </Text>
-      </View>
 
-      {!!row.note && (
-        <Text variant="bodyMedium" style={{ color: theme.text.primary }}>
-          {row.note}
-        </Text>
-      )}
+        {!!row.note && (
+          <Text variant="bodyMedium" style={{ color: theme.text.primary }}>
+            {row.note}
+          </Text>
+        )}
 
-      {!!row.recurring_rule_id && (
-        <StatusPill
-          icon="calendar-sync-outline"
-          label={vi.recurringEntry}
-          bg={palette.tealSoft}
-          fg={palette.tealInk}
-        />
-      )}
+        {!!row.recurring_rule_id && (
+          <StatusPill
+            icon="calendar-sync-outline"
+            label={vi.recurringEntry}
+            bg={palette.tealSoft}
+            fg={palette.tealInk}
+          />
+        )}
 
-      <TransactionBalance row={row} wallets={wallets} />
+        <TransactionBalance row={row} wallets={wallets} />
+      </Pressable>
 
       <Divider style={{ backgroundColor: theme.card.border }} />
 
       <View style={[styles.row, { justifyContent: 'flex-end' }]}>
         <Button
+          hitSlop={4}
           compact
           mode="contained-tonal"
           icon="pencil-outline"
@@ -1107,6 +1158,7 @@ const TransactionItem = memo(function TransactionItem({
           {vi.editTransaction}
         </Button>
         <Button
+          hitSlop={4}
           compact
           mode="text"
           textColor={palette.danger}
@@ -1147,8 +1199,10 @@ export function TransactionForm({
   onNaturalSaved,
   onSave,
   hideHeader = false,
+  inModal,
   guardScope = 'tab',
   guardRouteKey = 'transactions',
+  initialDate,
 }: {
   row: TransactionRow | null;
   wallets: WalletRow[];
@@ -1159,8 +1213,10 @@ export function TransactionForm({
   onNaturalSaved?(): Promise<void>;
   onSave(input: TransactionInput): Promise<void>;
   hideHeader?: boolean;
+  inModal?: boolean;
   guardScope?: 'tab' | 'modal';
   guardRouteKey?: string;
+  initialDate?: string;
 }) {
   const selectedCurrency = usePreferences((state) => state.currency);
   const language = usePreferences((state) => state.language);
@@ -1187,6 +1243,7 @@ export function TransactionForm({
     categoryId: row?.category_id ?? '',
     date:
       row?.occurred_on ??
+      initialDate ??
       today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' }),
     note: row?.note ?? '',
   }));
@@ -1228,7 +1285,7 @@ export function TransactionForm({
       keys: relevantKeys,
     });
   const { requestLeave, runGuardedSave } = useUnsavedChangesGuard({
-    id: 'transaction-form',
+    id: guardScope === 'modal' ? 'transaction-form-modal' : 'transaction-form',
     scope: guardScope,
     routeKey: guardScope === 'tab' ? guardRouteKey : undefined,
     dirty,
@@ -1420,6 +1477,7 @@ export function TransactionForm({
         </Text>
       )}
       <Button
+        hitSlop={4}
         mode="contained"
         icon="check"
         buttonColor={theme.brand.primaryStrong}
@@ -1468,20 +1526,25 @@ export function TransactionForm({
     </>
   );
 
+  const resolvedInModal = inModal ?? hideHeader;
+
   return (
     <Screen
       title={row ? vi.editTransaction : vi.addTransaction}
       onBack={requestLeave}
       backDisabled={disabled}
       hideHeader={hideHeader}
-      inModal={hideHeader}
-      hasTabBar={guardScope !== 'modal' && !hideHeader}
+      inModal={resolvedInModal}
+      hasTabBar={guardScope !== 'modal' && !resolvedInModal}
       footer={footer}
     >
       {/* Natural Language Quick-Entry toggle */}
       {!row && (
         <View style={{ gap: 8 }}>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={vi.txNaturalToggle}
+            accessibilityState={{ expanded: showNatural }}
             onPress={() => setShowNatural((v) => !v)}
             style={[
               localStyles.naturalToggleBar,
@@ -1605,6 +1668,7 @@ export function TransactionForm({
 
               {!naturalSession ? (
                 <Button
+                  hitSlop={4}
                   mode="contained-tonal"
                   icon="creation"
                   disabled={disabled || !naturalText.trim()}
@@ -1861,9 +1925,17 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: DesignRadius.pill,
     borderWidth: 1,
+    minHeight: 48,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 2,
     gap: 8,
+  },
+  searchClearButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -8,
   },
   searchInput: {
     flex: 1,
@@ -1873,6 +1945,20 @@ const localStyles = StyleSheet.create({
   filterPillsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  expandedPillsContent: {
+    gap: 8,
+  },
+  collapsedControlsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+  },
+  collapsedDivider: {
+    width: 1,
+    height: 24,
+    marginHorizontal: 2,
   },
   quickRow: {
     flexDirection: 'row',
