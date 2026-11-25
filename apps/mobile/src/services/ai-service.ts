@@ -469,7 +469,7 @@ export function mapTopicToIntent(
 }
 
 export function getProxyBaseUrl(): string {
-  const configured = process.env.EXPO_PUBLIC_PROXY_URL?.trim();
+  const configured = process.env.EXPO_PUBLIC_PROXY_URL?.trim().replace(/\/+$/, '');
   if (!isDevRuntime()) {
     return configured && configured.startsWith('https://') ? configured : '';
   }

@@ -12,9 +12,9 @@ on:
           - unsigned
           - signed
       proxy_url:
-        description: 'EXPO_PUBLIC_PROXY_URL'
+        description: 'EXPO_PUBLIC_PROXY_URL (không cần dấu / ở cuối; để trống sẽ lấy từ Secret)'
         required: false
-        default: 'https://wolf-lapel-founding.ngrok-free.dev'
+        default: 'https://subatomic-marbling-only.ngrok-free.dev'
         type: string
       export_method:
         description: 'Export method nếu chọn signed (ad-hoc / development / app-store)'
@@ -72,6 +72,7 @@ jobs:
       - name: Write mobile .env
         env:
           INPUT_PROXY_URL: ${{ inputs.proxy_url }}
+          SECRET_PROXY_URL: ${{ secrets.EXPO_PUBLIC_PROXY_URL }}
           INPUT_GOOGLE_IOS_CLIENT_ID: ${{ inputs.google_ios_client_id }}
           INPUT_GOOGLE_WEB_CLIENT_ID: ${{ inputs.google_web_client_id }}
           INPUT_IOS_BUNDLE_ID: ${{ inputs.ios_bundle_id }}
@@ -79,12 +80,14 @@ jobs:
           SECRET_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
         run: |
           mkdir -p apps/mobile
+          PROXY_URL="${INPUT_PROXY_URL:-$SECRET_PROXY_URL}"
+          PROXY_URL="${PROXY_URL%/}"
           GOOGLE_IOS_CLIENT_ID="${INPUT_GOOGLE_IOS_CLIENT_ID:-$SECRET_GOOGLE_IOS_CLIENT_ID}"
           GOOGLE_WEB_CLIENT_ID="${INPUT_GOOGLE_WEB_CLIENT_ID:-$SECRET_GOOGLE_WEB_CLIENT_ID}"
           IOS_BUNDLE_ID="${INPUT_IOS_BUNDLE_ID}"
 
           {
-            printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$INPUT_PROXY_URL"
+            printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$PROXY_URL"
             if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
               printf "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=%s\n" "$GOOGLE_IOS_CLIENT_ID"
             fi
@@ -97,7 +100,7 @@ jobs:
           } > apps/mobile/.env
 
           {
-            printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$INPUT_PROXY_URL"
+            printf "EXPO_PUBLIC_PROXY_URL=%s\n" "$PROXY_URL"
             if [ -n "$GOOGLE_IOS_CLIENT_ID" ]; then
               printf "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=%s\n" "$GOOGLE_IOS_CLIENT_ID"
             fi
