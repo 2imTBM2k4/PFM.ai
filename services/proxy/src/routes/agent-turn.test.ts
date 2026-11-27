@@ -915,4 +915,28 @@ describe('versioned turn admission', () => {
     expect(response.json()).not.toHaveProperty('continuationToken');
     expect(quotaService.checkQuota('turn-device').remaining).toBe(10);
   });
+  it('allows default category labels such as Lãi & đầu tư without triggering ADVICE_RESTRICTED', async () => {
+    fetchMock.mockResolvedValue(jsonReply());
+    const response = await request({
+      turn: {
+        ...turn,
+        categories: [
+          { id: 'cat-food', name: 'Ăn uống' },
+          { id: 'cat-invest', name: 'Lãi & đầu tư' },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().continuationToken).toEqual(expect.any(String));
+  });
+  it('still rejects category or budget labels that contain PII', async () => {
+    const response = await request({
+      turn: {
+        ...turn,
+        categories: [{ id: 'cat-pii', name: 'Liên hệ 0912345678' }],
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe('PII_DETECTED');
+  });
 });

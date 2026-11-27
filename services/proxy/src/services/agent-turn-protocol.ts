@@ -79,13 +79,17 @@ export async function resolveTurnPolicy(
   for (const text of [
     question,
     ...(context?.sourceMessages.map((message) => message.text) ?? []),
-    ...(turn.categories?.map((item) => item.name) ?? []),
-    ...(turn.budgets?.map((item) => item.name) ?? []),
   ]) {
     if (scanPii(text).hasPii) throw AppError.piiDetected();
     const scope = classifyAdviceScope(text);
     if (scope.status === 'out_of_scope') throw AppError.outOfScope();
     if (scope.status === 'restricted') throw AppError.restricted();
+  }
+  for (const label of [
+    ...(turn.categories?.map((item) => item.name) ?? []),
+    ...(turn.budgets?.map((item) => item.name) ?? []),
+  ]) {
+    if (scanPii(label).hasPii) throw AppError.piiDetected();
   }
   const check = await checkQuestionWithState(question, context, {
     language: turn.language,
