@@ -124,6 +124,14 @@ const MATERIAL_TO_SF_SYMBOL: Record<string, SFSymbol> = {
   'swap-vertical': 'arrow.up.arrow.down',
   'calendar-today': 'calendar',
   minus: 'minus',
+  'coffee-outline': 'cup.and.saucer',
+  'gas-station-outline': 'fuelpump',
+  'shopping-outline': 'bag',
+  wifi: 'wifi',
+  'movie-open-outline': 'film',
+  airplane: 'airplane',
+  paw: 'pawprint',
+  dumbbell: 'dumbbell',
 };
 
 /**

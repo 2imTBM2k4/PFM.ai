@@ -13,18 +13,20 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { createWebTransitionStyle, MotionSpring } from '@/constants/motion';
+import {
+  getFloatingTabBarLayout,
+  useResponsiveLayout,
+  type FloatingTabBarLayout,
+} from '@/constants/responsive-layout';
 import {
   createSoftShadow,
   DesignRadius,
   DesignSpacing,
   useDesignTheme,
 } from '@/constants/theme';
-import {
-  getFloatingTabBarLayout,
-  useResponsiveLayout,
-} from '@/constants/responsive-layout';
-import { QuickActionMenu } from './quick-action-menu';
 import { vi } from '@/messages/vi';
+import { QuickActionMenu } from './quick-action-menu';
 
 export {
   getFloatingTabBarLayout,
@@ -52,6 +54,52 @@ export interface FloatingTabBarProps {
 
 export type QuickActionKey = 'manual' | 'camera' | 'chat';
 
+/** Computes the exact sliding indicator frame for the active tab slot. */
+export function getActiveTabIndicatorFrame(
+  layout: FloatingTabBarLayout,
+  itemCount: number,
+  activeIndex: number,
+  isVertical: boolean,
+) {
+  const safeCount = Math.max(1, itemCount);
+  const clampedIndex = Math.max(0, Math.min(activeIndex, safeCount - 1));
+
+  if (isVertical) {
+    const paddingVertical = 8;
+    const gap = 4;
+    const innerHeight = Math.max(0, layout.pillHeight - paddingVertical * 2);
+    const totalContentHeight =
+      safeCount * layout.tabHeight + Math.max(0, safeCount - 1) * gap;
+    const extraPerSlot =
+      Math.max(0, innerHeight - totalContentHeight) / safeCount;
+    return {
+      x: Math.max(0, (layout.pillWidth - layout.activeTabWidth) / 2),
+      y:
+        paddingVertical +
+        clampedIndex * (layout.tabHeight + gap + extraPerSlot) +
+        extraPerSlot / 2,
+      width: layout.activeTabWidth,
+      height: layout.tabHeight,
+    };
+  }
+
+  const paddingHorizontal = 6;
+  const innerWidth = Math.max(0, layout.pillWidth - paddingHorizontal * 2);
+  const totalTabsWidth =
+    layout.activeTabWidth + Math.max(0, safeCount - 1) * layout.inactiveTabWidth;
+  const spacePerSlot = Math.max(0, innerWidth - totalTabsWidth) / safeCount;
+
+  return {
+    x:
+      paddingHorizontal +
+      clampedIndex * (layout.inactiveTabWidth + spacePerSlot) +
+      spacePerSlot / 2,
+    y: Math.max(0, (layout.pillHeight - layout.tabHeight) / 2),
+    width: layout.activeTabWidth,
+    height: layout.tabHeight,
+  };
+}
+
 /**
  * Renders an individual circular icon button inside the floating Apple liquid glass tab bar.
  */
@@ -62,6 +110,7 @@ export function TabIconButton({
   width = 44,
   height = 44,
   showLabel = true,
+  showActiveBackground = true,
 }: {
   item: TabBarItem;
   active: boolean;
@@ -69,6 +118,7 @@ export function TabIconButton({
   width?: number;
   height?: number;
   showLabel?: boolean;
+  showActiveBackground?: boolean;
 }) {
   const theme = useDesignTheme();
   const scale = useSharedValue(1);
@@ -89,19 +139,19 @@ export function TabIconButton({
         hitSlop={4}
         onPress={onPress}
         onPressIn={() => {
-          if (!reduceMotion)
-            scale.set(withSpring(0.9, { damping: 15, stiffness: 320 }));
+          if (!reduceMotion) scale.set(withSpring(0.9, MotionSpring.tactile));
         }}
         onPressOut={() => {
-          if (!reduceMotion)
-            scale.set(withSpring(1, { damping: 15, stiffness: 320 }));
+          if (!reduceMotion) scale.set(withSpring(1, MotionSpring.tactile));
         }}
         style={[
           styles.tabCircle,
           { width, height },
-          active && {
-            backgroundColor: theme.tabBar.activeTab,
-          },
+          createWebTransitionStyle(),
+          active &&
+            showActiveBackground && {
+              backgroundColor: theme.tabBar.activeTab,
+            },
         ]}
       >
         {Platform.OS === 'ios' ? (
@@ -176,6 +226,55 @@ export function FloatingTabBarView({
       layout.compact ? DesignSpacing.xs : DesignSpacing.sm,
     ) + 6;
 
+  const matchedIndex = items.findIndex((item) => item.key === activeKey);
+  const hasActiveTab = matchedIndex >= 0;
+  const activeIndex = hasActiveTab ? matchedIndex : 0;
+  const targetIndicator = getActiveTabIndicatorFrame(
+    layout,
+    items.length,
+    activeIndex,
+    isDuoClosedPortrait,
+  );
+  const indicatorX = useSharedValue(targetIndicator.x);
+  const indicatorY = useSharedValue(targetIndicator.y);
+  const indicatorW = useSharedValue(targetIndicator.width);
+  const indicatorH = useSharedValue(targetIndicator.height);
+
+  useEffect(() => {
+    if (!hasActiveTab) return;
+    if (reduceMotion) {
+      indicatorX.set(targetIndicator.x);
+      indicatorY.set(targetIndicator.y);
+      indicatorW.set(targetIndicator.width);
+      indicatorH.set(targetIndicator.height);
+    } else {
+      indicatorX.set(withSpring(targetIndicator.x, MotionSpring.snappy));
+      indicatorY.set(withSpring(targetIndicator.y, MotionSpring.snappy));
+      indicatorW.set(withSpring(targetIndicator.width, MotionSpring.snappy));
+      indicatorH.set(withSpring(targetIndicator.height, MotionSpring.snappy));
+    }
+  }, [
+    hasActiveTab,
+    indicatorH,
+    indicatorW,
+    indicatorX,
+    indicatorY,
+    reduceMotion,
+    targetIndicator.height,
+    targetIndicator.width,
+    targetIndicator.x,
+    targetIndicator.y,
+  ]);
+
+  const activeIndicatorStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: indicatorX.value },
+      { translateY: indicatorY.value },
+    ],
+    width: indicatorW.value,
+    height: indicatorH.value,
+  }));
+
   useEffect(() => {
     tabVisibility.set(
       reduceMotion
@@ -234,7 +333,6 @@ export function FloatingTabBarView({
           pointerEvents="box-none"
           style={[
             { width: layout.pillWidth, height: layout.pillHeight },
-            // Clip the sliding Duo rail before it crosses the persistent action button.
             isDuoClosedPortrait && { overflow: 'hidden' },
           ]}
         >
@@ -271,6 +369,17 @@ export function FloatingTabBarView({
                   } as never),
               ]}
             >
+              {hasActiveTab && (
+                <Animated.View
+                  testID="floating-tab-active-indicator"
+                  pointerEvents="none"
+                  style={[
+                    styles.activeIndicator,
+                    { backgroundColor: theme.tabBar.activeTab },
+                    activeIndicatorStyle,
+                  ]}
+                />
+              )}
               {items.map((item) => (
                 <TabIconButton
                   key={item.key}
@@ -284,6 +393,7 @@ export function FloatingTabBarView({
                   }
                   height={layout.tabHeight}
                   showLabel={layout.showActiveLabel}
+                  showActiveBackground={false}
                 />
               ))}
             </Surface>
@@ -354,6 +464,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 8,
     gap: 4,
+  },
+  activeIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    borderRadius: DesignRadius.pill,
   },
   tabCircle: {
     width: 44,

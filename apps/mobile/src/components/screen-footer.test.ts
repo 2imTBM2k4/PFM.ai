@@ -309,6 +309,23 @@ describe('Screen sticky footer and tab bar clearance (D3 / 3-PA1)', () => {
     expect(usePreferences.getState().isTabBarVisible).toBe(true);
   });
 
+  it.each([false, true])(
+    'avoids double iOS keyboard insets when KeyboardAvoidingView already pads the ScrollView (inModal=%s)',
+    (inModal) => {
+      const tree = Screen({
+        title: 'Add transaction',
+        inModal,
+        footer: createElement('SaveButton', { testID: 'sticky-save' }),
+        children: createElement('FormBody'),
+      });
+      const scroll = collectElements(
+        tree,
+        (el) => el.type === 'ScrollView',
+      )[0]!;
+      expect(scroll.props.automaticallyAdjustKeyboardInsets).toBe(false);
+    },
+  );
+
   it('does not touch FloatingTabBar when hasTabBar is false (modal form)', () => {
     const footerNode = createElement('SaveButton', { testID: 'sticky-save' });
     Screen({

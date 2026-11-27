@@ -4,10 +4,28 @@ import type { Database, Queries } from './migrate';
 export const CATEGORY_ICONS = [
   'tag',
   'food',
+  'coffee-outline',
   'home',
   'car',
+  'gas-station-outline',
   'cart',
+  'shopping-outline',
   'cash',
+  'briefcase-outline',
+  'trending-up',
+  'piggy-bank-outline',
+  'credit-card-outline',
+  'receipt-text-outline',
+  'lightning-bolt-outline',
+  'wifi',
+  'heart-pulse',
+  'school-outline',
+  'gamepad-variant-outline',
+  'movie-open-outline',
+  'airplane',
+  'gift-outline',
+  'paw',
+  'dumbbell',
 ] as const;
 export const CATEGORY_COLORS = [
   '#195DB7',
@@ -27,6 +45,24 @@ export interface CategoryRow {
   color: string | null;
   is_archived: number;
   sort_order: number;
+}
+
+/**
+ * Resolves the effective icon for a category, falling back to its parent's icon
+ * when the child category has no custom icon set.
+ */
+export function resolveCategoryIcon(
+  category: Pick<CategoryRow, 'icon' | 'parent_id'> | null | undefined,
+  categoriesById: ReadonlyMap<string, Pick<CategoryRow, 'icon'>>,
+  fallback: string = 'tag-outline',
+): string {
+  if (!category) return fallback;
+  if (category.icon) return category.icon;
+  if (category.parent_id) {
+    const parentIcon = categoriesById.get(category.parent_id)?.icon;
+    if (parentIcon) return parentIcon;
+  }
+  return fallback;
 }
 
 /**
@@ -118,6 +154,7 @@ export async function createCategory(
 ) {
   const category = validateCategory(input);
   await db.transaction(async (transaction) => {
+    let resolvedIcon = category.icon;
     if (category.parentId) {
       const parent = await requireActiveCategory(
         transaction,
@@ -125,6 +162,9 @@ export async function createCategory(
         category.kind,
       );
       if (parent.parent_id) throw new Error('CATEGORY_DEPTH');
+      if (resolvedIcon === null && parent.icon !== null) {
+        resolvedIcon = parent.icon;
+      }
     }
     await transaction.runAsync(
       `INSERT INTO categories (id,name,kind,parent_id,is_fixed_cost,icon,color,sort_order,created_at,updated_at)
@@ -134,7 +174,7 @@ export async function createCategory(
       category.kind,
       category.parentId,
       category.isFixedCost ? 1 : 0,
-      category.icon,
+      resolvedIcon,
       category.color,
       timestamp,
       timestamp,
@@ -165,15 +205,33 @@ export async function updateCategory(
       kind: current.kind,
       parentId: current.parent_id,
     });
+    let resolvedIcon = category.icon;
+    if (current.parent_id && resolvedIcon === null) {
+      const parent = await transaction.getFirstAsync<CategoryRow>(
+        'SELECT * FROM categories WHERE id = ?',
+        current.parent_id,
+      );
+      if (parent?.icon) {
+        resolvedIcon = parent.icon;
+      }
+    }
     await transaction.runAsync(
       'UPDATE categories SET name=?,is_fixed_cost=?,icon=?,color=?,updated_at=? WHERE id=?',
       category.name,
       category.isFixedCost ? 1 : 0,
-      category.icon,
+      resolvedIcon,
       category.color,
       timestamp,
       id,
     );
+    if (!current.parent_id && resolvedIcon !== current.icon) {
+      await transaction.runAsync(
+        'UPDATE categories SET icon=?,updated_at=? WHERE parent_id=?',
+        resolvedIcon,
+        timestamp,
+        id,
+      );
+    }
   });
 }
 

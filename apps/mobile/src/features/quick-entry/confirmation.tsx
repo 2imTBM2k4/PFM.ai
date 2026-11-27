@@ -412,7 +412,7 @@ function CandidateFields({
         return {
           value: category.id,
           label: displayCategoryName(category.name, language),
-          icon: category.icon || 'tag-outline',
+          icon: category.icon || parent?.icon || 'tag-outline',
           iconBg: isExpense ? palette.expenseSoft : palette.incomeSoft,
           iconColor:
             category.color ||

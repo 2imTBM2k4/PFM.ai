@@ -317,6 +317,7 @@ export function CategoryManager({ onClose }: { onClose(): void }) {
             <CategoryItem
               category={item}
               parentName={displayCategoryName(parent.name)}
+              parentIcon={parent.icon}
               onEdit={edit}
               onArchive={archive}
               busy={busy}
@@ -661,6 +662,7 @@ const ParentCategoryCard = memo(function ParentCategoryCard({
 const CategoryItem = memo(function CategoryItem({
   category,
   parentName,
+  parentIcon,
   onEdit,
   onArchive,
   onRestore,
@@ -668,6 +670,7 @@ const CategoryItem = memo(function CategoryItem({
 }: {
   category: CategoryRow;
   parentName?: string;
+  parentIcon?: string | null;
   onEdit(category: CategoryRow): void;
   onArchive(category: CategoryRow): void;
   onRestore(category: CategoryRow): void;
@@ -691,7 +694,7 @@ const CategoryItem = memo(function CategoryItem({
       <View style={styles.row}>
         <View style={[styles.inlineRow, { flex: 1, gap: 12 }]}>
           <IconBadge
-            icon={category.icon ?? 'tag-outline'}
+            icon={category.icon ?? parentIcon ?? 'tag-outline'}
             bg={isExpense ? palette.expenseSoft : palette.incomeSoft}
             fg={
               category.color ??
@@ -798,7 +801,7 @@ function CategoryForm({
     kind: category?.kind ?? defaultParent?.kind ?? 'expense',
     parentId: category?.parent_id ?? defaultParentId ?? '',
     isFixedCost: !!category?.is_fixed_cost,
-    icon: category?.icon ?? '',
+    icon: category?.icon ?? defaultParent?.icon ?? '',
     color: category?.color ?? '',
   }));
   const {
@@ -835,15 +838,33 @@ function CategoryForm({
   const { colors } = useTheme();
   const palette = useFinancePalette();
 
-  const icons = useMemo(
-    () => [
-      vi.categoryIconTag,
-      vi.categoryIconFood,
-      vi.categoryIconHome,
-      vi.categoryIconCar,
-      vi.categoryIconCart,
-      vi.categoryIconCash,
-    ],
+  const iconLabels = useMemo<Record<(typeof CATEGORY_ICONS)[number], string>>(
+    () => ({
+      tag: vi.categoryIconTag,
+      food: vi.categoryIconFood,
+      'coffee-outline': vi.categoryIconCoffee,
+      home: vi.categoryIconHome,
+      car: vi.categoryIconCar,
+      'gas-station-outline': vi.categoryIconFuel,
+      cart: vi.categoryIconCart,
+      'shopping-outline': vi.categoryIconBag,
+      cash: vi.categoryIconCash,
+      'briefcase-outline': vi.categoryIconWork,
+      'trending-up': vi.categoryIconInvest,
+      'piggy-bank-outline': vi.categoryIconSavings,
+      'credit-card-outline': vi.categoryIconCard,
+      'receipt-text-outline': vi.categoryIconBills,
+      'lightning-bolt-outline': vi.categoryIconUtilities,
+      wifi: vi.categoryIconWifi,
+      'heart-pulse': vi.categoryIconHealth,
+      'school-outline': vi.categoryIconEducation,
+      'gamepad-variant-outline': vi.categoryIconEntertainment,
+      'movie-open-outline': vi.categoryIconMedia,
+      airplane: vi.categoryIconTravel,
+      'gift-outline': vi.categoryIconGift,
+      paw: vi.categoryIconPet,
+      dumbbell: vi.categoryIconFitness,
+    }),
     [],
   );
   const colorNames = useMemo(
@@ -916,15 +937,15 @@ function CategoryForm({
         iconBg: palette.surfaceMuted,
         iconColor: palette.textMuted,
       },
-      ...CATEGORY_ICONS.map((icon, index) => ({
+      ...CATEGORY_ICONS.map((icon) => ({
         value: icon,
-        label: icons[index] ?? icon,
+        label: iconLabels[icon],
         icon: icon,
         iconBg: palette.primarySoft,
         iconColor: palette.primaryInk,
       })),
     ],
-    [icons, palette],
+    [iconLabels, palette],
   );
 
   const colorOptions = useMemo(
@@ -1018,7 +1039,19 @@ function CategoryForm({
               value={field.value}
               options={parentOptions}
               disabled={disabled || !!category}
-              onSelect={field.onChange}
+              onSelect={(nextParentId) => {
+                const previousParentIcon =
+                  rows.find((row) => row.id === field.value)?.icon ?? '';
+                const nextParentIcon =
+                  rows.find((row) => row.id === nextParentId)?.icon ?? '';
+                field.onChange(nextParentId);
+                if (
+                  !currentValues.icon ||
+                  currentValues.icon === previousParentIcon
+                ) {
+                  setValue('icon', nextParentIcon);
+                }
+              }}
             />
           )}
         />
@@ -1170,7 +1203,12 @@ function ArchiveForm({
         subtitle: row.parent_id
           ? `${displayCategoryName(rows.find((parent) => parent.id === row.parent_id)?.name)} › ${displayCategoryName(row.name)}`
           : undefined,
-        icon: row.icon || 'tag-outline',
+        icon:
+          row.icon ||
+          (row.parent_id
+            ? rows.find((parent) => parent.id === row.parent_id)?.icon
+            : null) ||
+          'tag-outline',
         iconBg:
           row.kind === 'expense' ? palette.expenseSoft : palette.incomeSoft,
         iconColor:

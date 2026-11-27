@@ -59,6 +59,7 @@ vi.mock('react', async (importOriginal) => {
       }
       return [stateHooks.values[idx], stateHooks.setters[idx]];
     },
+    useEffect: (effect: () => void) => effect(),
     useMemo: <T>(fn: () => T) => fn(),
     useCallback: <T>(fn: T) => fn,
     useRef: (initial: unknown) => ({ current: initial }),
@@ -612,19 +613,19 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
     expect(onFallbackChange).toHaveBeenCalledWith('07:10');
   });
 
-  it('renders SegmentedOptionPicker natively on iOS and via SegmentedButtons on Android/web', async () => {
+  it('renders SegmentedOptionPicker natively on iOS and with a sliding segmented control on Android/web', async () => {
     const { SegmentedOptionPicker: IosSegmentedOptionPicker } =
       await import('./segmented-option-picker.ios');
     const { SegmentedOptionPicker: FallbackSegmentedOptionPicker } =
       await import('./segmented-option-picker');
     const onIosSelect = vi.fn();
     const iosTree = IosSegmentedOptionPicker({
-      label: 'Loại giao dịch',
+      label: 'Transaction type',
       value: 'expense',
       options: [
-        { value: 'expense', label: 'Chi' },
-        { value: 'income', label: 'Thu' },
-        { value: 'transfer', label: 'Chuyển' },
+        { value: 'expense', label: 'Expense' },
+        { value: 'income', label: 'Income' },
+        { value: 'transfer', label: 'Transfer' },
       ],
       onSelect: onIosSelect,
     });
@@ -636,22 +637,60 @@ describe('Đợt 2 iOS native vs Android/web controls', () => {
     (picker.props.onSelectionChange as (v: unknown) => void)('income');
     expect(onIosSelect).toHaveBeenCalledWith('income');
 
-    const fallbackTree = FallbackSegmentedOptionPicker({
-      label: 'Loại giao dịch',
-      value: 'expense',
-      options: [
-        { value: 'expense', label: 'Chi' },
-        { value: 'income', label: 'Thu' },
-        { value: 'transfer', label: 'Chuyển' },
-      ],
-      onSelect: vi.fn(),
+    resetStateHooks();
+    const onFallbackSelect = vi.fn();
+    const renderFallback = () => {
+      stateHooks.cursor = 0;
+      return FallbackSegmentedOptionPicker({
+        label: 'Transaction type',
+        value: 'expense',
+        options: [
+          { value: 'expense', label: 'Expense' },
+          { value: 'income', label: 'Income' },
+          { value: 'transfer', label: 'Transfer', disabled: true },
+        ],
+        onSelect: onFallbackSelect,
+      });
+    };
+    let fallbackTree = renderFallback();
+    const tablist = collectElements(
+      fallbackTree,
+      (el) => el.props.accessibilityRole === 'tablist',
+    )[0]!;
+    expect(tablist).toBeDefined();
+    (
+      tablist.props.onLayout as (e: {
+        nativeEvent: { layout: { width: number } };
+      }) => void
+    )({
+      nativeEvent: { layout: { width: 306 } },
     });
+    fallbackTree = renderFallback();
     expect(
       collectElements(
         fallbackTree,
-        (el) => el.type === 'PaperSegmentedButtons',
+        (el) => el.props.testID === 'segmented-active-thumb',
       ),
     ).toHaveLength(1);
+
+    const tabs = collectElements(
+      fallbackTree,
+      (el) => el.type === 'Pressable' && el.props.accessibilityRole === 'tab',
+    );
+    expect(tabs).toHaveLength(3);
+    expect(tabs[0]!.props.accessibilityState).toEqual({
+      selected: true,
+      disabled: false,
+    });
+    expect(tabs[2]!.props.accessibilityState).toEqual({
+      selected: false,
+      disabled: true,
+    });
+    (tabs[1]!.props.onPress as () => void)();
+    expect(onFallbackSelect).toHaveBeenCalledWith('income');
+    onFallbackSelect.mockClear();
+    (tabs[2]!.props.onPress as () => void)();
+    expect(onFallbackSelect).not.toHaveBeenCalled();
   });
 
   it('gives DateField fallback calendar day cells at least a 44pt height', async () => {

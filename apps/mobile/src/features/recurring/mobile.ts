@@ -50,6 +50,7 @@ async function reconcileReminders(
   now: Date,
   debts: DebtRow[],
 ) {
+  if (Platform.OS === 'web') return;
   const permission = await Notifications.getPermissionsAsync();
   const granted =
     permission.granted ||
@@ -162,6 +163,7 @@ export function runRecurring(
 }
 
 export async function requestRecurringNotifications() {
+  if (Platform.OS === 'web') return;
   const version = resetVersion;
   try {
     await ensureChannel();
@@ -177,12 +179,14 @@ export async function requestRecurringNotifications() {
 export async function clearRecurringNotifications() {
   resetVersion++;
   await pending?.catch(() => undefined);
-  for (const item of await Notifications.getAllScheduledNotificationsAsync())
-    if (isManagedReminder(item.identifier))
-      await Notifications.cancelScheduledNotificationAsync(item.identifier);
-  for (const item of await Notifications.getPresentedNotificationsAsync())
-    if (isManagedReminder(item.request.identifier))
-      await Notifications.dismissNotificationAsync(item.request.identifier);
+  if (Platform.OS !== 'web') {
+    for (const item of await Notifications.getAllScheduledNotificationsAsync())
+      if (isManagedReminder(item.identifier))
+        await Notifications.cancelScheduledNotificationAsync(item.identifier);
+    for (const item of await Notifications.getPresentedNotificationsAsync())
+      if (isManagedReminder(item.request.identifier))
+        await Notifications.dismissNotificationAsync(item.request.identifier);
+  }
   useRecurringStatus.setState({
     error: false,
     permission: 'unknown',

@@ -1,7 +1,11 @@
 import { usePathname, useRouter } from 'expo-router';
-import { type PropsWithChildren, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { type PropsWithChildren, useState, useSyncExternalStore } from 'react';
+import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
+import {
+  createWebGlassStyle,
+  createWebTransitionStyle,
+} from '@/constants/motion';
 import {
   useResponsiveLayout,
   WEB_SIDEBAR_WIDTH,
@@ -27,7 +31,7 @@ interface SidebarNavItem {
   match: (pathname: string) => boolean;
 }
 
-/** Web-only desktop dashboard shell with persistent left sidebar (>= 1024px) and mobile passthrough (< 1024px). */
+/** Web-only desktop dashboard shell with frosted glass sidebar (>= 1024px) and mobile passthrough (< 1024px). */
 export function WebDashboardShell({ children }: PropsWithChildren) {
   const layoutReady = useSyncExternalStore(
     subscribeNoop,
@@ -43,6 +47,7 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
   const setThemeMode = usePreferences((state) => state.setThemeMode);
   const backupRuntime = useBackupRuntimeStatus();
   const { state: backupState, isUploading } = backupRuntime;
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   if (!layoutReady || !isWebDesktop) {
     return <>{children}</>;
@@ -116,6 +121,12 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
         : vi.backupMenuTitle;
 
   const isDark = themeMode === 'dark';
+  const sidebarSurface = isDark
+    ? 'rgba(24, 24, 27, 0.78)'
+    : 'rgba(255, 255, 255, 0.78)';
+  const hoverSurface = isDark
+    ? 'rgba(255, 255, 255, 0.06)'
+    : 'rgba(17, 24, 39, 0.04)';
 
   return (
     <View style={[localStyles.root, { backgroundColor: theme.sky.upperMid }]}>
@@ -123,9 +134,10 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
         accessibilityRole="none"
         style={[
           localStyles.sidebar,
+          createWebGlassStyle(24, 180),
           {
             width: WEB_SIDEBAR_WIDTH,
-            backgroundColor: theme.card.surfaceElevated,
+            backgroundColor: sidebarSurface,
             borderRightColor: theme.card.border,
           },
         ]}
@@ -134,7 +146,11 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
           <View
             style={[
               localStyles.brandIcon,
-              { backgroundColor: theme.brand.primarySoft },
+              {
+                backgroundColor: theme.brand.primarySoft,
+                borderColor: theme.brand.primaryBorder,
+                borderWidth: 1,
+              },
             ]}
           >
             <Icon
@@ -164,18 +180,33 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
           accessibilityRole="button"
           accessibilityLabel={vi.addTransaction}
           onPress={() => router.push('/add-transaction' as never)}
+          onHoverIn={() => setHoveredKey('cta')}
+          onHoverOut={() => setHoveredKey(null)}
           style={({ pressed }) => [
             localStyles.primaryCta,
+            createWebTransitionStyle(),
             {
               backgroundColor: theme.brand.primaryStrong,
-              opacity: pressed ? 0.88 : 1,
+              opacity: pressed ? 0.92 : 1,
+              transform: [
+                {
+                  translateY: hoveredKey === 'cta' && !pressed ? -1.5 : 0,
+                },
+                { scale: pressed ? 0.98 : 1 },
+              ],
             },
+            {
+              boxShadow:
+                hoveredKey === 'cta'
+                  ? `0 10px 24px ${theme.brand.primaryGlow}`
+                  : `0 4px 14px ${theme.brand.primaryGlow}`,
+            } as unknown as ViewStyle,
           ]}
         >
-          <Icon source="plus" size={20} color="#FFFFFF" />
+          <Icon source="plus" size={20} color={theme.text.onPrimary} />
           <Text
             variant="labelLarge"
-            style={{ color: '#FFFFFF', fontWeight: '700' }}
+            style={{ color: theme.text.onPrimary, fontWeight: '700' }}
           >
             {vi.addTransaction}
           </Text>
@@ -184,12 +215,15 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
         <View style={localStyles.navList}>
           {navItems.map((item) => {
             const active = item.match(pathname);
+            const hovered = hoveredKey === item.key;
             return (
               <Pressable
                 key={item.key}
                 accessibilityRole="button"
                 accessibilityLabel={item.label}
                 accessibilityState={{ selected: active }}
+                onHoverIn={() => setHoveredKey(item.key)}
+                onHoverOut={() => setHoveredKey(null)}
                 onPress={() => {
                   if (!active) {
                     router.navigate(item.href as never);
@@ -197,15 +231,31 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
                 }}
                 style={({ pressed }) => [
                   localStyles.navItem,
+                  createWebTransitionStyle(),
                   {
                     backgroundColor: active
                       ? theme.brand.primarySoft
                       : pressed
                         ? theme.card.surfaceSubtle
-                        : 'transparent',
+                        : hovered
+                          ? hoverSurface
+                          : 'transparent',
+                    transform: [{ translateX: hovered && !active ? 2 : 0 }],
                   },
                 ]}
               >
+                <View
+                  style={[
+                    localStyles.activeAccent,
+                    createWebTransitionStyle(),
+                    {
+                      backgroundColor: active
+                        ? theme.brand.primaryStrong
+                        : 'transparent',
+                      opacity: active ? 1 : 0,
+                    },
+                  ]}
+                />
                 <Icon
                   source={active ? item.activeIcon : item.icon}
                   size={20}
@@ -240,13 +290,18 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={syncLabel}
+            onHoverIn={() => setHoveredKey('sync')}
+            onHoverOut={() => setHoveredKey(null)}
             onPress={() => router.navigate('/settings' as never)}
             style={({ pressed }) => [
               localStyles.footerRow,
+              createWebTransitionStyle(),
               {
                 backgroundColor: pressed
                   ? theme.card.surfaceSubtle
-                  : 'transparent',
+                  : hoveredKey === 'sync'
+                    ? hoverSurface
+                    : 'transparent',
               },
             ]}
           >
@@ -262,14 +317,23 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isDark ? vi.settingsThemeLightShort : vi.settingsThemeDarkShort}
+            accessibilityLabel={
+              isDark
+                ? vi.settingsThemeLightShort
+                : vi.settingsThemeDarkShort
+            }
+            onHoverIn={() => setHoveredKey('theme')}
+            onHoverOut={() => setHoveredKey(null)}
             onPress={() => setThemeMode(isDark ? 'light' : 'dark')}
             style={({ pressed }) => [
               localStyles.footerRow,
+              createWebTransitionStyle(),
               {
                 backgroundColor: pressed
                   ? theme.card.surfaceSubtle
-                  : 'transparent',
+                  : hoveredKey === 'theme'
+                    ? hoverSurface
+                    : 'transparent',
               },
             ]}
           >
@@ -283,7 +347,9 @@ export function WebDashboardShell({ children }: PropsWithChildren) {
               numberOfLines={1}
               style={{ flex: 1, color: theme.text.secondary, fontWeight: '600' }}
             >
-              {isDark ? vi.settingsThemeLightShort : vi.settingsThemeDarkShort}
+              {isDark
+                ? vi.settingsThemeLightShort
+                : vi.settingsThemeDarkShort}
             </Text>
           </Pressable>
         </View>
@@ -340,6 +406,15 @@ const localStyles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: DesignRadius.md,
+    position: 'relative',
+  },
+  activeAccent: {
+    position: 'absolute',
+    left: 2,
+    top: 8,
+    bottom: 8,
+    width: 3,
+    borderRadius: DesignRadius.pill,
   },
   sidebarFooter: {
     borderTopWidth: 1,
