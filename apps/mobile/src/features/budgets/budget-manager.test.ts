@@ -14,6 +14,26 @@ const harness = vi.hoisted(() => ({
   invokeWithDb: false,
 }));
 
+vi.mock('react-native-reanimated', () => ({
+  default: { View: 'Animated.View' },
+  useReducedMotion: () => false,
+  useSharedValue: (initial: number) => ({ value: initial, set: vi.fn() }),
+  useAnimatedStyle: (fn: () => Record<string, unknown>) => fn(),
+  withSpring: (value: number) => value,
+  FadeInDown: {
+    duration: () => ({
+      delay: () => ({
+        springify: () => ({
+          damping: () => ({
+            stiffness: () => ({}),
+          }),
+        }),
+      }),
+    }),
+  },
+  LinearTransition: { duration: () => ({}) },
+}));
+
 vi.mock('react', async (original) => {
   const actual = await original<typeof import('react')>();
   return {
@@ -84,7 +104,19 @@ vi.mock('@/components/ui', () => ({
   SegmentedOptionPicker: 'Segments',
 }));
 vi.mock('@/constants/theme', () => ({
+  DesignRadius: { xs: 10, sm: 14, md: 20, lg: 24, xl: 28, pill: 999 },
   DesignSpacing: { bottomTabClearance: 112 },
+  createSoftShadow: () => ({}),
+  useDesignTheme: () => ({
+    mode: 'light',
+    card: {
+      surface: '#FFFFFF',
+      surfaceElevated: '#FFFFFF',
+      surfaceSubtle: '#F2F2F7',
+      border: '#D1D1D6',
+    },
+    text: { primary: '#111827', secondary: '#4B5563' },
+  }),
   useFinancePalette: () => ({}),
 }));
 vi.mock('@/hooks/use-current-date', () => ({

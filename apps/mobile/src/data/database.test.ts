@@ -4552,3 +4552,72 @@ it('tracks debt creation and repayment without changing wallet balance when affe
   expect((await readDashboard(db, '2026-10')).balance).toBe(-600_000);
   expect((await listDebts(db, debtId))[0].status).toBe('closed');
 });
+
+it('inherits parent icon on child creation and propagates parent icon updates to children', async () => {
+  await migrate(db);
+  const stamp = '2026-10-26T00:00:00Z';
+  const parentId = randomUUID();
+  const otherParentId = randomUUID();
+  const childAutoId = randomUUID();
+  const childCustomId = randomUUID();
+  const otherChildId = randomUUID();
+
+  await createCategory(
+    db,
+    parentId,
+    { name: 'Food Group', kind: 'expense', icon: 'food' },
+    stamp,
+  );
+  await createCategory(
+    db,
+    otherParentId,
+    { name: 'Travel Group', kind: 'expense', icon: 'airplane' },
+    stamp,
+  );
+  await createCategory(
+    db,
+    childAutoId,
+    { name: 'Lunch', kind: 'expense', parentId, icon: null },
+    stamp,
+  );
+  await createCategory(
+    db,
+    childCustomId,
+    { name: 'Coffee', kind: 'expense', parentId, icon: 'coffee-outline' },
+    stamp,
+  );
+  await createCategory(
+    db,
+    otherChildId,
+    { name: 'Flights', kind: 'expense', parentId: otherParentId, icon: null },
+    stamp,
+  );
+
+  let rows = await listCategories(db);
+  expect(rows.find((r) => r.id === childAutoId)?.icon).toBe('food');
+  expect(rows.find((r) => r.id === childCustomId)?.icon).toBe('coffee-outline');
+  expect(rows.find((r) => r.id === otherChildId)?.icon).toBe('airplane');
+
+  // Updating parent icon propagates automatically to all of its children only
+  await updateCategory(
+    db,
+    parentId,
+    { name: 'Food Group', icon: 'cart' },
+    '2026-10-27T00:00:00Z',
+  );
+  rows = await listCategories(db);
+  expect(rows.find((r) => r.id === parentId)?.icon).toBe('cart');
+  expect(rows.find((r) => r.id === childAutoId)?.icon).toBe('cart');
+  expect(rows.find((r) => r.id === childCustomId)?.icon).toBe('cart');
+  expect(rows.find((r) => r.id === otherChildId)?.icon).toBe('airplane');
+
+  // Clearing a child icon falls back to its parent icon
+  await updateCategory(
+    db,
+    childCustomId,
+    { name: 'Coffee', icon: null },
+    '2026-10-28T00:00:00Z',
+  );
+  rows = await listCategories(db);
+  expect(rows.find((r) => r.id === childCustomId)?.icon).toBe('cart');
+});

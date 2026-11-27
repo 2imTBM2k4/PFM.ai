@@ -268,3 +268,25 @@ it('shares the reminder window with debt due dates and cancels on date change or
   await clearRecurringNotifications();
   expect(native.scheduled).toEqual([{ identifier: 'pfm-budget-test' }]);
 });
+
+it('skips native notification scheduling on web without reporting sync errors', async () => {
+  const {
+    clearRecurringNotifications,
+    requestRecurringNotifications,
+    runRecurring,
+    useRecurringStatus,
+  } = await import('./mobile');
+  const previousPlatform = native.platform;
+  native.platform = 'web';
+  native.fail = true;
+  try {
+    const result = await runRecurring();
+    expect(result.created).toBeGreaterThanOrEqual(0);
+    expect(useRecurringStatus.getState().error).toBe(false);
+    await expect(requestRecurringNotifications()).resolves.toBeUndefined();
+    await expect(clearRecurringNotifications()).resolves.toBeUndefined();
+  } finally {
+    native.platform = previousPlatform;
+    native.fail = false;
+  }
+});

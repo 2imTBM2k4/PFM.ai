@@ -15,11 +15,10 @@ import {
   ActivityIndicator,
   Button,
   Divider,
-  ProgressBar,
   Text,
 } from 'react-native-paper';
 import { EmptyStateCard, IconBadge, Screen, styles } from '@/components/screen';
-import { GlassCard, Pill } from '@/components/ui';
+import { AnimatedProgressBar, GlassCard, Pill } from '@/components/ui';
 import {
   createSoftShadow,
   DesignRadius,
@@ -200,7 +199,7 @@ export function OverviewScreen({
       )}
 
       {error && (
-        <GlassCard
+        <GlassCard enterIndex={0}
           radius="lg"
           style={{
             backgroundColor: palette.dangerSoft,
@@ -250,7 +249,7 @@ export function OverviewScreen({
           />
 
           {/* Hero Total Balance Card */}
-          <GlassCard
+          <GlassCard enterIndex={1}
             variant="elevated"
             radius={isCompactPhone ? 'lg' : 'xl'}
             padding={isCompactPhone ? 14 : 22}
@@ -451,7 +450,7 @@ export function OverviewScreen({
           <View style={isWebDesktop ? localStyles.desktopLeftCol : localStyles.mobileStack}>
           {/* Top Savings Goal Card */}
           {topGoal && (
-            <GlassCard
+            <GlassCard enterIndex={2}
               variant="elevated"
               radius="xl"
               padding={18}
@@ -531,7 +530,7 @@ export function OverviewScreen({
                     / {formatVnd(topGoal.target_amount)}
                   </Text>
                 </View>
-                <ProgressBar
+                <AnimatedProgressBar
                   progress={Math.min(
                     1,
                     topGoal.progress / topGoal.target_amount,
@@ -548,7 +547,7 @@ export function OverviewScreen({
           )}
 
           {/* Phân tích chi tiêu: positioned right below Thu trừ chi */}
-          <GlassCard
+          <GlassCard enterIndex={3}
             variant="elevated"
             radius="xl"
             padding={18}
@@ -630,7 +629,7 @@ export function OverviewScreen({
                             {formatVnd(cat.amount)} ({pct}%)
                           </Text>
                         </View>
-                        <ProgressBar
+                        <AnimatedProgressBar
                           progress={Math.min(1, cat.amount / totalExpense)}
                           color={designTheme.brand.primary}
                           style={localStyles.categoryProgressBar}
@@ -645,7 +644,7 @@ export function OverviewScreen({
           </View>
           <View style={isWebDesktop ? localStyles.desktopRightCol : localStyles.mobileStack}>
           {/* Recent Transactions Card (See All) */}
-          <GlassCard radius="xl" padding={20}>
+          <GlassCard enterIndex={4} radius="xl" padding={20}>
             <View style={styles.row}>
               <Text
                 variant="titleMedium"

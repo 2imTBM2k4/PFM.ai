@@ -1,9 +1,9 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { SymbolView } from 'expo-symbols';
-import { toSfSymbol } from '@/utils/sf-symbols';
+import { useState } from 'react';
 import {
-  Pressable,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -11,21 +11,28 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Animated, {
+  LinearTransition,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
-  useReducedMotion,
-  LinearTransition,
 } from 'react-native-reanimated';
+import { createWebTransitionStyle, MotionSpring } from '@/constants/motion';
 import {
   DesignRadius,
   DesignSpacing,
   DesignTypography,
   useDesignTheme,
 } from '@/constants/theme';
+import { toSfSymbol } from '@/utils/sf-symbols';
 
 export type PillTone =
-  'expense' | 'income' | 'savings' | 'primary' | 'neutral' | 'glass';
+  | 'expense'
+  | 'income'
+  | 'savings'
+  | 'primary'
+  | 'neutral'
+  | 'glass';
 
 export interface PillProps {
   label: string;
@@ -57,6 +64,8 @@ export function Pill({
   const theme = useDesignTheme();
   const reduceMotion = useReducedMotion();
   const scale = useSharedValue(1);
+  const [hovered, setHovered] = useState(false);
+  const isWeb = Platform.OS === 'web';
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -116,8 +125,15 @@ export function Pill({
     isSmall ? styles.small : styles.medium,
     {
       backgroundColor: colors.bg,
-      borderColor: colors.border,
+      borderColor:
+        hovered && onPress && !selected
+          ? theme.brand.primaryBorder
+          : colors.border,
     },
+    isWeb && onPress ? createWebTransitionStyle() : undefined,
+    isWeb && hovered && onPress && !reduceMotion
+      ? ({ transform: [{ translateY: -1 }] } as ViewStyle)
+      : undefined,
     style,
     compact && {
       width: 44,
@@ -188,13 +204,13 @@ export function Pill({
         accessibilityLabel={accessibilityLabel ?? label}
         hitSlop={10}
         onPress={onPress}
+        onHoverIn={isWeb ? () => setHovered(true) : undefined}
+        onHoverOut={isWeb ? () => setHovered(false) : undefined}
         onPressIn={() => {
-          if (!reduceMotion)
-            scale.set(withSpring(0.95, { damping: 16, stiffness: 300 }));
+          if (!reduceMotion) scale.set(withSpring(0.95, MotionSpring.snappy));
         }}
         onPressOut={() => {
-          if (!reduceMotion)
-            scale.set(withSpring(1, { damping: 16, stiffness: 300 }));
+          if (!reduceMotion) scale.set(withSpring(1, MotionSpring.snappy));
         }}
         style={[
           containerStyle,

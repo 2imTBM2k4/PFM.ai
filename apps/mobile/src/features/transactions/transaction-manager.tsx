@@ -145,13 +145,22 @@ export function TransactionManager({
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [quickQuery, setQuickQuery] = useState('');
   const [quickKind, setQuickKind] = useState<string>('all');
-  const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const isWeb = Platform.OS === 'web';
+  const [rawControlsCollapsed, setControlsCollapsed] = useState(false);
+  const controlsCollapsed = !isWeb && rawControlsCollapsed;
   const controlsScroll = useMemo(
     () =>
-      createTabBarScrollHandler((expanded) => setControlsCollapsed(!expanded), {
-        showAtBottom: false,
-        showOnlyAtTop: true,
-      }),
+      createTabBarScrollHandler(
+        (expanded) => {
+          if (Platform.OS !== 'web') {
+            setControlsCollapsed(!expanded);
+          }
+        },
+        {
+          showAtBottom: false,
+          showOnlyAtTop: true,
+        },
+      ),
     [],
   );
   useEffect(() => {

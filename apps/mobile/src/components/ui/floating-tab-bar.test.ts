@@ -10,6 +10,7 @@ import {
 } from '@/components/app-tabs';
 import {
   FloatingTabBarView,
+  getActiveTabIndicatorFrame,
   getFloatingTabBarLayout,
   TabIconButton,
 } from '@/components/ui/floating-tab-bar';
@@ -875,13 +876,68 @@ describe('FloatingTabBar & CustomBottomTabBar (Group 1 & Group 2)', () => {
     resetUnsavedGuards();
   });
 
-  it('hides navigation in regular iPhone Chat and keeps the closed Duo rail', () => {
+  it('computes and renders a sliding active indicator for horizontal and vertical rails', () => {
+    const horizontalLayout = getFloatingTabBarLayout(390, 0, 0, 4, false);
+    const firstSlot = getActiveTabIndicatorFrame(horizontalLayout, 4, 0, false);
+    const secondSlot = getActiveTabIndicatorFrame(horizontalLayout, 4, 1, false);
+    expect(secondSlot.x).toBeGreaterThan(firstSlot.x);
+    expect(firstSlot.width).toBe(horizontalLayout.activeTabWidth);
+    expect(firstSlot.height).toBe(horizontalLayout.tabHeight);
+
+    const verticalLayout = getFloatingTabBarLayout(540, 0, 0, 4, true);
+    const topSlot = getActiveTabIndicatorFrame(verticalLayout, 4, 0, true);
+    const lowerSlot = getActiveTabIndicatorFrame(verticalLayout, 4, 2, true);
+    expect(lowerSlot.y).toBeGreaterThan(topSlot.y);
+    expect(topSlot.height).toBe(verticalLayout.tabHeight);
+
+    const tree = FloatingTabBarView({
+      items: APP_TAB_ITEMS,
+      activeKey: 'transactions',
+      onSelect: vi.fn(),
+      onActionSelect: vi.fn(),
+    });
+    const indicator = collectElements(
+      tree,
+      (el) => el.props.testID === 'floating-tab-active-indicator',
+    );
+    expect(indicator).toHaveLength(1);
+  });
+
+  it('hides navigation in regular iPhone Chat and keeps the closed Duo rail without an active indicator', () => {
     const { props } = makeMockBottomTabBarProps(2); // index 2 = 'chat'
 
     expect(CustomBottomTabBar(props)).toBeNull();
 
     mockWindowDimensions.width = 540;
     mockWindowDimensions.height = 720;
-    expect(CustomBottomTabBar(props)).not.toBeNull();
+    const closedDuoTree = CustomBottomTabBar(props);
+    expect(closedDuoTree).not.toBeNull();
+    const indicator = collectElements(
+      closedDuoTree,
+      (el) => el.props.testID === 'floating-tab-active-indicator',
+    );
+    expect(indicator).toHaveLength(0);
+    const selectedTabs = collectElements(
+      closedDuoTree,
+      (el) =>
+        el.props.accessibilityRole === 'tab' &&
+        (el.props.accessibilityState as { selected?: boolean } | undefined)
+          ?.selected === true,
+    );
+    expect(selectedTabs).toHaveLength(0);
+  });
+
+  it('omits the active indicator when activeKey is not present in items', () => {
+    const tree = FloatingTabBarView({
+      items: APP_TAB_ITEMS,
+      activeKey: 'chat',
+      onSelect: vi.fn(),
+      onActionSelect: vi.fn(),
+    });
+    const indicator = collectElements(
+      tree,
+      (el) => el.props.testID === 'floating-tab-active-indicator',
+    );
+    expect(indicator).toHaveLength(0);
   });
 });

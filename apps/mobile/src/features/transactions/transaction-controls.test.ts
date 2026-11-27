@@ -1,5 +1,6 @@
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { expect, it, vi } from 'vitest';
+import { Platform } from 'react-native';
 import { TransactionManager } from './transaction-manager';
 vi.mock('@/components/platform-icon', () => ({
   default: 'MaterialCommunityIcons',
@@ -223,4 +224,39 @@ it('hides search and collapses all 7 controls into one horizontal row, stays col
     ...collect(tree, 'QuickTile'),
   ])
     expect(button.props.compact).toBe(false);
+});
+
+it('keeps the transaction toolbar expanded while scrolling on web', () => {
+  harness.values = [];
+  harness.refs = [];
+  harness.memos = [];
+  const originalOs = Platform.OS;
+  (Platform as { OS: string }).OS = 'web';
+  try {
+    let tree = render();
+    const list = collect(tree, 'FlatList')[0]!;
+    (list.props.onScroll as (event: unknown) => void)({
+      nativeEvent: {
+        contentOffset: { y: 200 },
+        contentSize: { height: 1500 },
+        layoutMeasurement: { height: 600 },
+      },
+    });
+    tree = render();
+
+    expect(
+      collect(tree, 'ScrollView').filter(
+        (el) => el.props.testID === 'collapsed-controls-row',
+      ),
+    ).toHaveLength(0);
+    expect(collect(tree, 'Search')).toHaveLength(1);
+    for (const button of [
+      ...collect(tree, 'Pill'),
+      ...collect(tree, 'QuickTile'),
+    ]) {
+      expect(button.props.compact).toBe(false);
+    }
+  } finally {
+    (Platform as { OS: string }).OS = originalOs;
+  }
 });

@@ -118,6 +118,9 @@ export function normalizeTablesForCanonicalJson(
       ...(row.booking_rate !== undefined
         ? { booking_rate: row.booking_rate }
         : {}),
+      ...(row.affects_wallet_balance !== undefined
+        ? { affects_wallet_balance: row.affects_wallet_balance }
+        : {}),
       created_at: row.created_at,
       updated_at: row.updated_at,
     })),
