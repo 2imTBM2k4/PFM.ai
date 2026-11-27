@@ -9,6 +9,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -845,16 +846,37 @@ export function ChatComposer({
           placeholder={vi.chatInputHint}
           placeholderTextColor={theme.text.muted}
           multiline
+          numberOfLines={Platform.OS === 'web' ? 1 : undefined}
           maxLength={500}
           editable={!busy}
           value={text}
+          onKeyPress={(event) => {
+            if (Platform.OS !== 'web') return;
+            const nativeEvent = event.nativeEvent as unknown as {
+              key?: string;
+              shiftKey?: boolean;
+              isComposing?: boolean;
+            };
+            if (nativeEvent.key === 'Enter' && !nativeEvent.shiftKey && !nativeEvent.isComposing) {
+              if (typeof (event as unknown as { preventDefault?: () => void }).preventDefault === 'function') {
+                (event as unknown as { preventDefault: () => void }).preventDefault();
+              }
+              if (ready) {
+                handleSendPress();
+              }
+            }
+          }}
           onChangeText={(value) => {
             setText(value);
             setPreview(null);
             setChoosing(false);
             setError('');
           }}
-          style={[composerStyles.nativeInput, { color: theme.text.primary }]}
+          style={[
+            composerStyles.nativeInput,
+            Platform.OS === 'web' ? (composerStyles.webInputReset as object) : undefined,
+            { color: theme.text.primary },
+          ]}
         />
 
         <Pressable
@@ -1050,6 +1072,14 @@ const composerStyles = StyleSheet.create({
     paddingVertical: 6,
     fontSize: 17,
     lineHeight: 22,
+  },
+  webInputReset: {
+    outlineStyle: 'none' as never,
+    outlineWidth: 0 as never,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    fontSize: 15,
+    paddingVertical: 8,
   },
   inlineToolButton: {
     width: 44,

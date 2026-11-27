@@ -657,7 +657,7 @@ export default function Chat({
                 <ActivityIndicator size={16} color={theme.brand.primary} />
                 <Text
                   variant="bodyMedium"
-                  style={{ color: theme.text.secondary, fontWeight: '600' }}
+                  style={{ color: theme.text.secondary, fontWeight: '600', flexShrink: 1 }}
                 >
                   {strings.aiTyping}
                 </Text>
@@ -1120,6 +1120,9 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    flex: 0,
+    flexGrow: 0,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    alignSelf: 'flex-start',
   },
 });

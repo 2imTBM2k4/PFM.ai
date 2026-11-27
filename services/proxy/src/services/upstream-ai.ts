@@ -67,6 +67,7 @@ export class UpstreamAiService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(byok ? { 'ngrok-skip-browser-warning': 'true' } : {}),
         ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
       body: JSON.stringify({
@@ -240,6 +241,7 @@ export class UpstreamAiService {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
             Authorization: `Bearer ${byok.apiKey}`,
           },
           body: JSON.stringify({

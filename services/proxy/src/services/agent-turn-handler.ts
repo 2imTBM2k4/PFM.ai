@@ -46,13 +46,22 @@ const schema = z
         ? !body.stream
         : body.stream,
   );
-const upstreamMessageSchema = z
-  .object({
-    role: z.literal('assistant'),
-    content: z.string().max(8192).nullable().optional(),
-    tool_calls: z.array(AgentCallSchema).max(2).default([]),
-  })
-  .strict();
+const upstreamCallSchema = z.object({
+  id: z.string().min(1).max(128),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.string().min(1).max(128),
+    arguments: z.string().max(4000),
+  }),
+});
+const upstreamMessageSchema = z.object({
+  role: z.literal('assistant'),
+  content: z.string().max(8192).nullable().optional(),
+  tool_calls: z.preprocess(
+    (value) => (value == null ? [] : value),
+    z.array(upstreamCallSchema).max(2),
+  ),
+});
 function turnError(reason: string): never {
   if (reason === 'FAILURE_LIMIT' || reason === 'CAPACITY')
     throw new AppError(
@@ -305,11 +314,15 @@ export async function handleAgentTurn(
     const message = parsed.choices[0].message;
     if (
       message.tool_calls.length
-        ? parsed.choices[0].finish_reason !== 'tool_calls'
+        ? parsed.choices[0].finish_reason !== 'tool_calls' &&
+          parsed.choices[0].finish_reason !== 'stop'
         : parsed.choices[0].finish_reason !== 'stop' ||
           !transcript.successfulTools
     )
       throw new Error('Ungrounded or inconsistent selection');
+    if (message.tool_calls.length) {
+      parsed.choices[0].finish_reason = 'tool_calls';
+    }
     // Match the loop's rule: selection prose is not verified evidence for the final answer.
     message.content = null;
     const previousIds = new Set(

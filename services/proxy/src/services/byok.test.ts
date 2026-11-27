@@ -107,6 +107,8 @@ describe('BYOK proxy endpoints, CORS & key privacy', () => {
     });
 
     expect(res.statusCode).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(res.json()).toEqual({ ok: true, model: 'gpt-4o-mini' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [calledUrl, calledInit] = fetchMock.mock.calls[0] as unknown as [
@@ -141,6 +143,89 @@ describe('BYOK proxy endpoints, CORS & key privacy', () => {
 
     expect(res.statusCode).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("accepts BYOK tool-calling responses with extra provider fields (refusal, reasoning_content, tool_calls.index)", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              index: 0,
+              finish_reason: 'tool_calls',
+              message: {
+                role: 'assistant',
+                content: null,
+                refusal: null,
+                reasoning_content: 'Checking monthly income and expenses',
+                annotations: [],
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_9router_1',
+                    type: 'function',
+                    extra_content: { google: { thought_signature: 'sig' } },
+                    function: {
+                      name: 'plan_savings_goal',
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    upstreamAiService.setFetchForTesting(fetchMock as unknown as typeof fetch);
+
+    const app = buildApp({ logger: false });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/advice/step',
+      headers: {
+        'x-device-id': 'web-device-byok-1',
+        'x-byok-base-url': 'https://my-9router.ngrok-free.dev/v1',
+        'x-byok-api-key': 'sk-9router-secret',
+        'x-byok-model': 'gemini-2.5-flash',
+      },
+      payload: {
+        turn: {
+          version: 1,
+          turnId: 'turn-byok-1',
+          userMessageId: 'msg-byok-1',
+          sessionId: 'sess-byok-1',
+          scenarioId: null,
+          stateRevision: 0,
+          language: 'vi',
+          currency: 'VND',
+        },
+        messages: [
+          {
+            role: 'user',
+            content: 'Tính kế hoạch tiết kiệm giúp tôi',
+          },
+        ],
+        allowedTools: ['plan_savings_goal'],
+        allowTools: true,
+        stream: false,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.choices[0].finish_reason).toBe('tool_calls');
+    expect(body.choices[0].message.tool_calls).toEqual([
+      {
+        id: 'call_9router_1',
+        type: 'function',
+        function: { name: 'plan_savings_goal', arguments: '{}' },
+      },
+    ]);
+    expect(body.choices[0].message.refusal).toBeUndefined();
+    expect(body.choices[0].message.reasoning_content).toBeUndefined();
     await app.close();
   });
 });
