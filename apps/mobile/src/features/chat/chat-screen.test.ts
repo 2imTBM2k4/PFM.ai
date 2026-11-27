@@ -106,6 +106,7 @@ vi.mock('react-native-reanimated', () => ({
   useAnimatedStyle: () => ({}),
 }));
 vi.mock('react-native', () => ({
+  useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }),
   Alert: { alert: vi.fn() },
   AppState: { currentState: 'active' },
   FlatList: 'FlatList',

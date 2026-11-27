@@ -51,6 +51,7 @@ vi.mock('expo', () => ({ uuid: { v4: () => 'new' } }));
 vi.mock('expo-router', () => ({ useFocusEffect: () => {} }));
 vi.mock('@expo/vector-icons', () => ({ MaterialCommunityIcons: 'Icon' }));
 vi.mock('react-native', () => ({
+  useWindowDimensions: () => ({ width: 390, height: 844, scale: 1, fontScale: 1 }),
   Platform: { OS: 'android' },
   FlatList: 'FlatList',
   ScrollView: 'ScrollView',

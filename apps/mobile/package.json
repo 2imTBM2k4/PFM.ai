@@ -56,6 +56,7 @@
     "start": "expo start --go",
     "android": "expo start --go --android",
     "ios": "expo start --go --ios",
+    "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
   "private": true

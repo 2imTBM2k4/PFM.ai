@@ -28,6 +28,7 @@ import { vi } from '@/messages/vi';
 import { useApp } from '@/state/app';
 import { usePreferences } from '@/state/preferences';
 import { LockGate } from '@/features/lock/lock-gate';
+import { WebDashboardShell } from '@/components/web-dashboard-shell';
 import { BackupWatcher } from '@/features/backup/mobile';
 import { BudgetNotificationWatcher } from '@/features/budgets/notification-watcher';
 import { RecurringWatcher } from '@/features/recurring/watcher';
@@ -148,7 +149,7 @@ function ApplicationContent() {
   return status === 'error' ? (
     <Screen title={vi.appName} hasTabBar={false}>
       <Text accessibilityRole="alert">
-        {Platform.OS === 'web' ? vi.expoGoOnly : vi[startupError]}
+        {vi[startupError]}
       </Text>
       <Button hitSlop={4} onPress={initialize}>
         {vi.retry}
@@ -185,6 +186,7 @@ function ApplicationNavigator() {
     if (chatOpen) router.push('/chat');
   }, [chatOpen, router]);
   return (
+    <WebDashboardShell>
     <Stack
       screenOptions={{
         headerShown: false,
@@ -213,6 +215,7 @@ function ApplicationNavigator() {
         }}
       />
     </Stack>
+    </WebDashboardShell>
   );
 }
 

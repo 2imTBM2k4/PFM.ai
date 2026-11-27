@@ -70,7 +70,7 @@ export function OverviewScreen({
   const recurringVersion = useApp((state) => state.recurringVersion);
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
-  const { isDuoClosedPortrait, isCompactPhone } = useResponsiveLayout();
+  const { isDuoClosedPortrait, isCompactPhone, isWebDesktop } = useResponsiveLayout();
   const router = useRouter();
 
   const load = useCallback(
@@ -447,6 +447,8 @@ export function OverviewScreen({
             )}
           </GlassCard>
 
+          <View style={isWebDesktop ? localStyles.desktopGrid : localStyles.mobileStack}>
+          <View style={isWebDesktop ? localStyles.desktopLeftCol : localStyles.mobileStack}>
           {/* Top Savings Goal Card */}
           {topGoal && (
             <GlassCard
@@ -640,7 +642,8 @@ export function OverviewScreen({
               </View>
             )}
           </GlassCard>
-
+          </View>
+          <View style={isWebDesktop ? localStyles.desktopRightCol : localStyles.mobileStack}>
           {/* Recent Transactions Card (See All) */}
           <GlassCard radius="xl" padding={20}>
             <View style={styles.row}>
@@ -789,6 +792,8 @@ export function OverviewScreen({
               )}
             </View>
           </GlassCard>
+          </View>
+          </View>
         </>
       )}
     </Screen>
@@ -957,5 +962,23 @@ const localStyles = StyleSheet.create({
   categoryProgressBar: {
     height: 6,
     borderRadius: 3,
+  },
+  desktopGrid: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 18,
+  },
+  desktopLeftCol: {
+    flex: 1.15,
+    minWidth: 0,
+    gap: 16,
+  },
+  desktopRightCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 16,
+  },
+  mobileStack: {
+    gap: 14,
   },
 });

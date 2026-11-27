@@ -142,8 +142,9 @@ export function Screen({
   const width = useMeasuredLayout ? measured.width : 0;
   const height = useMeasuredLayout ? measured.height : 0;
   const isDuoClosedPortrait = useMeasuredLayout && measured.isDuoClosedPortrait;
+  const isWebDesktop = useMeasuredLayout && measured.isWebDesktop;
   const cameraClearance = getCameraClearance(width, height, insets.top);
-  const tabBarActive = hasTabBar ?? !inModal;
+  const tabBarActive = !isWebDesktop && (hasTabBar ?? !inModal);
   const shouldHideTabBar = tabBarActive && (hideTabBar ?? Boolean(footer));
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -189,15 +190,17 @@ export function Screen({
       : cameraClearance;
   const compactPhone = width <= 380 || height <= 700;
   const horizontalPadding =
-    width <= 340
-      ? DesignSpacing.sm
-      : width <= 380
-        ? 12
-        : Platform.OS === 'web' && width >= 600
-          ? 16
-          : width < 390
-            ? DesignSpacing.md
-            : DesignSpacing.screenPadding;
+    isWebDesktop
+      ? 28
+      : width <= 340
+        ? DesignSpacing.sm
+        : width <= 380
+          ? 12
+          : Platform.OS === 'web' && width >= 600
+            ? 16
+            : width < 390
+              ? DesignSpacing.md
+              : DesignSpacing.screenPadding;
   const compactHeight = height <= 700;
   const content = (
     <RevealFieldContext.Provider value={revealField}>
@@ -210,9 +213,11 @@ export function Screen({
           scroll ? styles.scrollColumn : styles.fill,
           maxWidth !== undefined
             ? { maxWidth, alignSelf: 'center', width: '100%' }
-            : Platform.OS === 'web' && width >= 600
-              ? { maxWidth: 500, alignSelf: 'center', width: '100%' }
-              : undefined,
+            : isWebDesktop
+              ? { maxWidth: 1160, alignSelf: 'center', width: '100%' }
+              : Platform.OS === 'web' && width >= 600
+                ? { maxWidth: 500, alignSelf: 'center', width: '100%' }
+                : undefined,
           {
             paddingLeft: horizontalPadding,
             paddingRight:

@@ -3,7 +3,8 @@ import { ADVICE_SYSTEM_PROMPT, knowledgePrompt } from '@pfm/domain';
 
 import { config } from '../config';
 import { AppError } from '../errors/app-error';
-import { recordModelResponse } from '../middleware/logging';
+import { getActiveByok, recordModelResponse } from '../middleware/logging';
+import type { ByokConfig } from './byok';
 import { admitModelCall } from '../middleware/rate-limit';
 
 export const SYSTEM_PROMPT = ADVICE_SYSTEM_PROMPT;
@@ -56,30 +57,30 @@ export class UpstreamAiService {
     timeoutMs?: number;
   }): Promise<Response> {
     admitModelCall();
+    const byok = getActiveByok();
+    const baseUrl = (byok?.baseUrl ?? config.routerBaseUrl).replace(/\/$/, '');
+    const apiKey = byok ? byok.apiKey : config.routerApiKey;
+    const effectiveModel = byok ? byok.model : payload.model;
     const { signal, timeoutMs, ...body } = payload;
     const timeout = AbortSignal.timeout(timeoutMs ?? this.toolStepTimeoutMs);
-    const response = await this.fetchImpl(
-      `${config.routerBaseUrl.replace(/\/$/, '')}/chat/completions`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(config.routerApiKey
-            ? { Authorization: `Bearer ${config.routerApiKey}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          ...body,
-          temperature: 0.2,
-          max_tokens: payload.max_tokens ?? 2048,
-          ...(payload.tools?.length && payload.tool_choice !== 'none'
-            ? { parallel_tool_calls: false }
-            : {}),
-        }),
-        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    const response = await this.fetchImpl(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
       },
-    );
-    if (response.ok) recordModelResponse(payload.model);
+      body: JSON.stringify({
+        ...body,
+        model: effectiveModel,
+        temperature: 0.2,
+        max_tokens: payload.max_tokens ?? 2048,
+        ...(payload.tools?.length && payload.tool_choice !== 'none'
+          ? { parallel_tool_calls: false }
+          : {}),
+      }),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+    if (response.ok) recordModelResponse(effectiveModel);
     return response;
   }
 
@@ -89,12 +90,16 @@ export class UpstreamAiService {
     modelIndex = 0,
   ): Promise<UpstreamResult> {
     admitModelCall();
+    const byok = getActiveByok();
     const model =
+      byok?.model ??
       config.modelChainFree[modelIndex] ??
       config.modelChainFree[0] ??
       'default';
 
-    const url = `${config.routerBaseUrl.replace(/\/$/, '')}/chat/completions`;
+    const baseUrl = (byok?.baseUrl ?? config.routerBaseUrl).replace(/\/$/, '');
+    const apiKey = byok ? byok.apiKey : config.routerApiKey;
+    const url = `${baseUrl}/chat/completions`;
 
     const controller = new AbortController();
     const timer = setTimeout(
@@ -106,8 +111,8 @@ export class UpstreamAiService {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
-      if (config.routerApiKey) {
-        headers['Authorization'] = `Bearer ${config.routerApiKey}`;
+      if (apiKey) {
+        headers['Authorization'] = `Bearer ${apiKey}`;
       }
 
       const res = await this.fetchImpl(url, {
@@ -150,7 +155,7 @@ export class UpstreamAiService {
       };
     } catch {
       // Retry once on the next model in chain if available
-      if (modelIndex + 1 < config.modelChainFree.length) {
+      if (!byok && modelIndex + 1 < config.modelChainFree.length) {
         return this.callPrompt(systemPrompt, userPrompt, modelIndex + 1);
       }
       throw AppError.upstreamUnavailable(
@@ -218,6 +223,52 @@ export class UpstreamAiService {
     } catch {
       throw AppError.upstreamUnavailable(
         'Không thể đọc hóa đơn lúc này. Vui lòng thử lại.',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Verifies a BYOK provider connection using a minimal completion call without logging the key. */
+  async testByokConnection(byok: ByokConfig): Promise<{ model: string }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const response = await this.fetchImpl(
+        `${byok.baseUrl}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${byok.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: byok.model,
+            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 8,
+            temperature: 0,
+            stream: false,
+          }),
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw AppError.badRequest('API Key bị từ chối bởi AI provider (401/403).');
+        }
+        if (response.status === 404) {
+          throw AppError.badRequest('Không tìm thấy endpoint hoặc model trên AI provider (404).');
+        }
+        throw AppError.upstreamUnavailable(
+          `AI provider trả về mã lỗi ${response.status}.`,
+        );
+      }
+      const data = (await response.json()) as { model?: string };
+      return { model: data.model ?? byok.model };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw AppError.upstreamUnavailable(
+        'Không thể kết nối tới AI provider. Vui lòng kiểm tra Base URL và mạng.',
       );
     } finally {
       clearTimeout(timer);

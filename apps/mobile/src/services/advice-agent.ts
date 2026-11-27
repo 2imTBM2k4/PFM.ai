@@ -16,6 +16,7 @@ import { ingestUserFacts, recordPendingFields } from './fact-ingestion';
 import { runAgentLoop } from './advice-agent-loop';
 import { createAgentTurnTransport } from './agent-http-adapter';
 import { executeTool } from './advice-tools';
+import { getActiveByokHeaders } from '@/features/ai-provider/byok-storage';
 import { readAIAuth, aiAuthHeaders } from './ai-auth';
 import { formatAgentFallbackReply } from './advice-agent-fallback';
 import { readAgentFinalSse, type AgentVerifiedDelta } from './agent-sse-reader';
@@ -301,6 +302,7 @@ async function runCoachTurn(params: {
           Accept: 'text/event-stream',
           'ngrok-skip-browser-warning': 'true',
           ...aiAuthHeaders(await readAIAuth(sessionId)),
+          ...getActiveByokHeaders(),
         },
         body: JSON.stringify({
           requestId: generateId(),
@@ -483,7 +485,7 @@ export async function runAdviceTurn(
     } catch { /* Invalid context is never sent. */ }
   }
   const turnId = generateId();
-  const transport = createAgentTurnTransport({ baseUrl, authHeaders: { 'ngrok-skip-browser-warning': 'true', ...aiAuthHeaders(await readAIAuth(sessionId)) }, fetchFn: input.fetchFn ?? await selectFetch(), turn: { version: 1, turnId, userMessageId: input.userMessageId, sessionId, scenarioId: state?.activeScenario.id ?? null, stateRevision: state?.revision ?? 0, language, currency, ...(context ? { context } : {}), ...refs }, getCurrentMetadata: async () => { const latest = await readConversationState(sessionId); return { stateRevision: latest?.revision ?? 0, scenarioId: latest?.activeScenario.id ?? null }; }, onDelta: input.onDelta });
+  const transport = createAgentTurnTransport({ baseUrl, authHeaders: { 'ngrok-skip-browser-warning': 'true', ...aiAuthHeaders(await readAIAuth(sessionId)), ...getActiveByokHeaders() }, fetchFn: input.fetchFn ?? await selectFetch(), turn: { version: 1, turnId, userMessageId: input.userMessageId, sessionId, scenarioId: state?.activeScenario.id ?? null, stateRevision: state?.revision ?? 0, language, currency, ...(context ? { context } : {}), ...refs }, getCurrentMetadata: async () => { const latest = await readConversationState(sessionId); return { stateRevision: latest?.revision ?? 0, scenarioId: latest?.activeScenario.id ?? null }; }, onDelta: input.onDelta });
   const result = await runAgentLoop({ turnId, sessionId, userMessageId: input.userMessageId, question, state, allowedTools: [...new Set(decision.policy.grants.map((grant) => grant.name))] }, { now, selectTools: (step, signal) => withLinkedSignal(input.signal, signal, (linked) => transport.selectTools(step, linked)), executeTool, readRevision: async (sid) => (await readConversationState(sid))?.revision ?? null, finalize: (step, signal) => withLinkedSignal(input.signal, signal, (linked) => transport.finalize(step, linked)), onTurnEnd: transport.onTurnEnd });
   if (result.status === 'completed') return applyAdviceDisclaimer({ ...reply(result.text ?? ''), incomplete: false, verification: 'passed' }, question);
   if (result.status === 'incomplete') return { ...reply(result.text), incomplete: true, verification: result.verification };

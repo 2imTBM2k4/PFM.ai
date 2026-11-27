@@ -74,7 +74,7 @@ export function StatsView({
   const currentDate = useCurrentDate();
   const previousDate = useRef(currentDate);
   const fontScale = PixelRatio.getFontScale();
-  const { width: viewportWidth } = useResponsiveLayout();
+  const { width: viewportWidth, isWebDesktop } = useResponsiveLayout();
   const { reduceTransparency, increaseContrast } =
     useAccessibilityPreferences();
   const profile = getStatsResponsiveProfile({
@@ -997,7 +997,7 @@ export function StatsView({
   );
 
   return (
-    <Screen title={vi.statsTabTitle} scroll={false} maxWidth={1120}>
+    <Screen title={vi.statsTabTitle} scroll={false} maxWidth={isWebDesktop ? 1160 : undefined}>
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
@@ -1011,7 +1011,7 @@ export function StatsView({
         }}
         contentContainerStyle={{
           gap: 16,
-          paddingBottom: DesignSpacing.bottomTabClearance + insets.bottom,
+          paddingBottom: isWebDesktop ? 24 : DesignSpacing.bottomTabClearance + insets.bottom,
         }}
       >
         {profile.isWide ? (

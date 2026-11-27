@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { config } from '../config';
+import { parseByokHeaders, type ByokConfig } from '../services/byok';
 
 interface AuditState {
   request_id: string;
@@ -17,8 +18,14 @@ interface AuditState {
   modelResponded: boolean;
   admit?: () => void;
   consumeReservedQuota?: () => boolean;
+  byok?: ByokConfig | null;
 }
 export const aiContext = new AsyncLocalStorage<AuditState>();
+
+/** Returns the request-scoped BYOK provider config when present, never persisted or logged. */
+export function getActiveByok(): ByokConfig | null {
+  return aiContext.getStore()?.byok ?? null;
+}
 const auditKeys = [
   'request_id',
   'model',
@@ -97,6 +104,15 @@ export function installAILogging(app: FastifyInstance): void {
       started: performance.now(),
       modelResponded: false,
     };
+    try {
+      audit.byok = parseByokHeaders(
+        request.headers as Record<string, string | string[] | undefined>,
+      );
+    } catch (error) {
+      request.aiAudit = audit;
+      aiContext.run(audit, () => done(error as Error));
+      return;
+    }
     request.aiAudit = audit;
     aiContext.run(audit, done);
   });

@@ -3,6 +3,7 @@ import {
   getCameraClearance,
   getFloatingTabBarLayout,
   isCompactPhoneViewport,
+  isWebDesktopViewport,
   isDuoClosedPortraitViewport,
 } from './responsive-layout';
 
@@ -78,5 +79,15 @@ describe('responsive layout', () => {
     expect(isCompactPhoneViewport(320, 568)).toBe(true);
     expect(isCompactPhoneViewport(390, 844)).toBe(false);
     expect(isCompactPhoneViewport(430, 932)).toBe(false);
+  });
+
+  it('activates Web Desktop dashboard only on web at >= 1024px and never on iOS/Android', () => {
+    expect(isWebDesktopViewport(1440, 'web')).toBe(true);
+    expect(isWebDesktopViewport(1024, 'web')).toBe(true);
+    expect(isWebDesktopViewport(1023, 'web')).toBe(false);
+    expect(isWebDesktopViewport(768, 'web')).toBe(false);
+    expect(isWebDesktopViewport(375, 'web')).toBe(false);
+    expect(isWebDesktopViewport(1366, 'ios')).toBe(false);
+    expect(isWebDesktopViewport(1366, 'android')).toBe(false);
   });
 });

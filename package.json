@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "pnpm --filter @pfm/mobile start",
+    "web": "pnpm --filter @pfm/mobile web",
     "lint": "eslint apps/mobile/src packages",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",

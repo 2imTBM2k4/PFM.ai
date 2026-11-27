@@ -13,6 +13,7 @@ import { coachAdviceRoutes } from './routes/coach-advice';
 import { healthRoutes } from './routes/health';
 import { quotaRoutes } from './routes/quota';
 import { receiptRoutes } from './routes/receipt';
+import { byokRoutes } from './routes/byok';
 import { installAILogging, auditDestination } from './middleware/logging';
 import { installAIRateLimit } from './middleware/rate-limit';
 import { authenticateGoogle } from './middleware/auth';
@@ -49,7 +50,7 @@ export function buildApp(opts: FastifyServerOptions = {}): FastifyInstance {
     );
     reply.header(
       'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-device-id, ngrok-skip-browser-warning',
+      'Content-Type, Authorization, x-device-id, ngrok-skip-browser-warning, x-byok-base-url, x-byok-api-key, x-byok-model',
     );
     if (request.method === 'OPTIONS') {
       return reply.status(204).send();
@@ -73,6 +74,7 @@ export function buildApp(opts: FastifyServerOptions = {}): FastifyInstance {
   app.register(agentAdviceRoutes);
   app.register(coachAdviceRoutes);
   app.register(receiptRoutes);
+  app.register(byokRoutes);
 
   return app;
 }

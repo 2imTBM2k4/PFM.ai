@@ -9,7 +9,9 @@ import { RecurringManager } from '@/features/recurring/recurring-manager';
 import { DebtManager } from '@/features/debts/debt-manager';
 import { CategoryManager } from '@/features/categories/category-manager';
 import { AppearanceSettingsView } from '@/features/settings/appearance-settings-view';
+import { ByokSettingsView } from '@/features/ai-provider/byok-settings-view';
 import { BackupSettingsView } from '@/features/backup/backup-settings-view';
+import { useResponsiveLayout } from '@/constants/responsive-layout';
 import { SecuritySettingsView } from '@/features/lock/security-settings-view';
 import { NotificationSettingsView } from '@/features/notifications/notification-settings-view';
 import { NotificationsView } from '@/features/notifications/notifications-view';
@@ -22,6 +24,7 @@ import { vi } from '@/messages/vi';
 
 /** Keeps primary destinations available while drilling down within a tab. */
 function DetailTabBar({ routeKey }: { routeKey: string }) {
+  const { isWebDesktop } = useResponsiveLayout();
   const router = useRouter();
   const visible = useIsTabBarVisible();
   useEffect(() => {
@@ -33,6 +36,7 @@ function DetailTabBar({ routeKey }: { routeKey: string }) {
     transactions: vi.transactions,
     settings: vi.settings,
   };
+  if (isWebDesktop) return null;
   return (
     <FloatingTabBar
       items={APP_TAB_ITEMS.map((item) => ({
@@ -84,6 +88,8 @@ export default function Detail() {
       <AppearanceSettingsView onClose={onClose} />
     ) : screen === 'backup' ? (
       <BackupSettingsView onClose={onClose} />
+    ) : screen === 'ai-provider' ? (
+      <ByokSettingsView onClose={onClose} />
     ) : screen === 'security' ? (
       <SecuritySettingsView onClose={onClose} />
     ) : screen === 'notifications' ? (

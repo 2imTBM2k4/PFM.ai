@@ -1,3 +1,4 @@
+import { useResponsiveLayout } from '@/constants/responsive-layout';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -176,6 +177,7 @@ export function TransactionManager({
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const palette = useFinancePalette();
+  const { isWebDesktop } = useResponsiveLayout();
   const theme = useDesignTheme();
   const language = usePreferences((state) => state.language);
   const recurringVersion = useApp((state) => state.recurringVersion);
@@ -456,7 +458,7 @@ export function TransactionManager({
       detailRow.kind;
 
     return (
-      <Screen title={vi.txDetailTitle} onBack={back} backDisabled={busy}>
+      <Screen title={vi.txDetailTitle} onBack={back} backDisabled={busy} maxWidth={720}>
         <GlassCard variant="elevated" radius="xl" padding={DesignSpacing.xl}>
           <View style={{ alignItems: 'center', gap: 10 }}>
             <Pill
@@ -600,7 +602,7 @@ export function TransactionManager({
 
   if (mode.type === 'delete')
     return (
-      <Screen title={vi.deleteTransaction} onBack={back} backDisabled={busy}>
+      <Screen title={vi.deleteTransaction} onBack={back} backDisabled={busy} maxWidth={720}>
         <GlassCard variant="elevated" radius="lg" padding={DesignSpacing.lg}>
           <View style={styles.inlineRow}>
             <IconBadge
@@ -734,7 +736,11 @@ export function TransactionManager({
     <Screen title={vi.transactions} scroll={false}>
       <Animated.View
         layout={LinearTransition.duration(220)}
-        style={{ gap: controlsCollapsed ? 8 : 10 }}
+        style={
+          isWebDesktop && !controlsCollapsed
+            ? { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }
+            : { gap: controlsCollapsed ? 8 : 10 }
+        }
       >
         {/* Instant Search Input Bar */}
         {!controlsCollapsed && (
@@ -743,6 +749,7 @@ export function TransactionManager({
             exiting={FadeOut.duration(100)}
             style={[
               localStyles.searchBar,
+              isWebDesktop ? { flex: 1, minWidth: 260, maxWidth: 420 } : undefined,
               {
                 backgroundColor: theme.card.surfaceElevated,
                 borderColor: theme.card.border,

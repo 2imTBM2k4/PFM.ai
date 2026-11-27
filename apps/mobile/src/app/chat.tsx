@@ -1,3 +1,4 @@
+import { useResponsiveLayout } from '@/constants/responsive-layout';
 import { NativeRouteGuard } from '@/components/native-route-guard';
 import MaterialCommunityIcons from '@/components/platform-icon';
 import { uuid } from 'expo';
@@ -214,6 +215,7 @@ export default function Chat({
   const openSwipeIdRef = useRef<string | null>(null);
 
   const palette = useFinancePalette();
+  const { isWebDesktop } = useResponsiveLayout();
   const theme = useDesignTheme();
   const router = useRouter();
   const activeSessionId = useApp((state) => state.chatSessionId);
@@ -706,8 +708,15 @@ export default function Chat({
         <Screen
           title={vi.chat}
           scroll={false}
+          maxWidth={isWebDesktop ? 900 : undefined}
           onBack={
-            historyOpen ? closeHistory : (onClose ?? (() => router.back()))
+            historyOpen
+              ? closeHistory
+              : onClose
+                ? onClose
+                : isWebDesktop
+                  ? undefined
+                  : () => router.back()
           }
           hideHeader={false}
           inModal={isModal}

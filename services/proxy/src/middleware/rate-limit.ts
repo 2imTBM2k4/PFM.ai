@@ -157,6 +157,10 @@ export function installAIRateLimit(app: FastifyInstance): void {
   app.decorate(
     'reserveAgentQuota',
     (request: FastifyRequest, reply: FastifyReply, key: string) => {
+      if (request.aiAudit?.byok) {
+        request.aiAudit.bypass_used = true;
+        return;
+      }
       const permit = reserve(request, reply, key, 'agent-turn');
       const identity =
         request.auth.mode === 'authenticated'
@@ -187,6 +191,10 @@ export function installAIRateLimit(app: FastifyInstance): void {
   app.addHook('preHandler', async (request, reply) => {
     if (!request.aiAudit) return;
     request.aiAudit.admit = () => {
+      if (request.aiAudit?.byok) {
+        request.aiAudit.bypass_used = true;
+        return;
+      }
       if (permits.has(request)) return;
       const body = request.body as Record<string, unknown>;
       const key = createHash('sha256')

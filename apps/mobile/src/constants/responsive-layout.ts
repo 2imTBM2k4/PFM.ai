@@ -1,6 +1,8 @@
-import { useWindowDimensions } from 'react-native';
+import { Platform, useWindowDimensions } from 'react-native';
 
 export const DUO_SIDE_RAIL_WIDTH = 72;
+export const WEB_DESKTOP_BREAKPOINT = 1024;
+export const WEB_SIDEBAR_WIDTH = 248;
 
 export interface FloatingTabBarLayout {
   rowWidth: number;
@@ -62,6 +64,15 @@ export interface ResponsiveLayout {
   height: number;
   isDuoClosedPortrait: boolean;
   isCompactPhone: boolean;
+  isWebDesktop: boolean;
+}
+
+/** Returns true when running on web at desktop width (>= 1024px) where the sidebar dashboard layout applies. */
+export function isWebDesktopViewport(
+  width: number,
+  platform: string = Platform.OS,
+): boolean {
+  return platform === 'web' && width >= WEB_DESKTOP_BREAKPOINT;
 }
 
 /** Detects compact phones such as iPhone SE 3 (375x667) where tighter density improves scanability. */
@@ -112,5 +123,6 @@ export function useResponsiveLayout(): ResponsiveLayout {
     height,
     isDuoClosedPortrait: isDuoClosedPortraitViewport(width, height),
     isCompactPhone: isCompactPhoneViewport(width, height),
+    isWebDesktop: isWebDesktopViewport(width),
   };
 }

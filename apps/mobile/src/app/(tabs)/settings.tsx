@@ -1,7 +1,9 @@
+import { useResponsiveLayout } from '@/constants/responsive-layout';
+import { readByokConfig } from '@/features/ai-provider/byok-storage';
 import { useRouter } from 'expo-router';
 import { useTransientState } from '@/hooks/use-transient-state';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { Divider, Icon, List, Switch, Text } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
 import { GlassCard } from '@/components/ui';
@@ -28,6 +30,8 @@ export default function Settings() {
   const [seedBusy, setSeedBusy] = useState(false);
 
   const palette = useFinancePalette();
+  const { isWebDesktop } = useResponsiveLayout();
+  const byokConfig = Platform.OS === 'web' ? readByokConfig() : null;
   const theme = useDesignTheme();
 
   const seedEnabled = usePreferences((state) => state.seedEnabled);
@@ -53,7 +57,7 @@ export default function Settings() {
   };
 
   return (
-    <Screen title={vi.settings}>
+    <Screen title={vi.settings} maxWidth={isWebDesktop ? 840 : undefined}>
       {[
         [
           {
@@ -98,6 +102,19 @@ export default function Settings() {
               .filter(Boolean)
               .join(' ? '),
           },
+          ...(Platform.OS === 'web'
+            ? [
+                {
+                  screen: 'ai-provider',
+                  title: vi.byokMenuTitle,
+                  icon: 'key-chain-variant',
+                  description:
+                    byokConfig?.enabled && byokConfig.model
+                      ? vi.byokMenuSubtitleActive.replace('{model}', byokConfig.model)
+                      : vi.byokMenuSubtitleDefault,
+                },
+              ]
+            : []),
         ],
       ].map((group, groupIndex) => (
         <GlassCard key={groupIndex} variant="elevated" radius="md" padding={0}>

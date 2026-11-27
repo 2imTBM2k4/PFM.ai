@@ -131,7 +131,7 @@ export function CustomBottomTabBar({
   insets,
 }: ExpoBottomTabBarProps) {
   const router = useRouter();
-  const { isDuoClosedPortrait } = useResponsiveLayout();
+  const { isDuoClosedPortrait, isWebDesktop } = useResponsiveLayout();
   const isTabBarVisible = useIsTabBarVisible();
 
   const activeRoute = state.routes[state.index];
@@ -139,6 +139,9 @@ export function CustomBottomTabBar({
 
   // Preserve the edge-to-edge chat composer except when the closed Duo needs
   // the persistent right-side navigation rail.
+  if (isWebDesktop) {
+    return null;
+  }
   if (activeRouteName === 'chat' && !isDuoClosedPortrait) {
     return null;
   }
