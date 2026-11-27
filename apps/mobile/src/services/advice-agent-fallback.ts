@@ -41,6 +41,13 @@ export function formatAgentFallbackReply(observations: readonly AgentObservation
     } else if (observation.name === 'get_transactions') {
       lines.push(`${s.aiFallbackTransactions}: ${data.transactions.length}${data.truncated ? ` (${s.aiFallbackTruncated})` : ''}.`);
       for (const row of data.transactions) lines.push(`${row.date}: ${money(row.amount, row.currency)}`);
+    } else if (observation.name === 'get_spending_breakdown') {
+      lines.push(`${s.aiFallbackPeriod}: ${data.period.from} – ${data.period.to}; ${s.aiFallbackTotalIncome}: ${money(data.total_income, 'VND')}; ${s.aiFallbackTotalExpense}: ${money(data.total_expense, 'VND')}; ${s.aiFallbackNetCashFlow}: ${money(data.net, 'VND')}.`);
+    } else if (observation.name === 'get_upcoming_obligations') {
+      lines.push(`${s.aiFallbackPeriod}: ${data.as_of} – ${data.through}; ${s.aiFallbackScheduledExpense}: ${money(data.scheduled_due.total_expense, 'VND')}; ${s.aiFallbackBorrowedOutstanding}: ${money(data.debts_summary.borrowed_outstanding, 'VND')}; ${s.aiFallbackLentOutstanding}: ${money(data.debts_summary.lent_outstanding, 'VND')}.`);
+    } else if (observation.name === 'get_savings_goals') {
+      lines.push(`${s.aiFallbackGoalsCount}: ${data.total_count}.`);
+      for (const goal of data.goals) lines.push(`${s.aiFallbackGoal}: ${money(goal.target_amount, 'VND')}; ${s.aiFallbackSaved}: ${money(goal.saved_amount, 'VND')}; ${s.aiFallbackBudgetRemaining}: ${money(goal.remaining_amount, 'VND')}.`);
     }
   }
   return lines.join('\n') || s.aiFallbackUnavailable;

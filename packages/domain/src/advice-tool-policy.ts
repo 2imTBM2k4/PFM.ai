@@ -1,5 +1,5 @@
 import { classifyAdviceScope, type AdviceTopic } from './advice-scope';
-import { validateDate } from './dates';
+import { addDays, validateDate } from './dates';
 import { parseAdviceQuery } from './advice-query';
 import { matchingText, normalizeText } from './parser/text';
 
@@ -32,7 +32,19 @@ export type AdviceToolGrant =
       name: 'calculate_budget_status';
       params: { month: string; budget_id: string | null };
     }
-  | { name: 'plan_savings_goal'; params: Record<string, never> };
+  | { name: 'plan_savings_goal'; params: Record<string, never> }
+  | {
+      name: 'get_spending_breakdown';
+      params: { from: string; to: string };
+    }
+  | {
+      name: 'get_upcoming_obligations';
+      params: { days_ahead: number };
+    }
+  | {
+      name: 'get_savings_goals';
+      params: { include_achieved: boolean };
+    };
 export interface AdviceToolPolicy extends AdviceToolBinding {
   grants: AdviceToolGrant[];
 }
@@ -240,6 +252,62 @@ export function resolveAdviceToolPolicy(
       },
     });
   }
+  if (
+    scope.status === 'allowed' &&
+    !list &&
+    /\b(?:co cau chi tieu|phan tich chi tieu|tieu nhieu nhat|chi nhieu nhat|tong thu chi|dong tien|nhom chi|danh muc chi|chi tieu theo danh muc|chi bao nhieu cho|tieu gi nhieu)\b/.test(
+      text,
+    )
+  ) {
+    const dates = [...text.matchAll(/\b(\d{2})\/(\d{2})\/(\d{4})\b/g)].map(
+      (match) => `${match[3]}-${match[2]}-${match[1]}`,
+    );
+    let range: { from: string; to: string } | null = null;
+    if (dates.length === 2 && /\btu\b/.test(text) && /\bden\b/.test(text))
+      range = { from: dates[0], to: dates[1] };
+    else if (!dates.length) {
+      const query = parseAdviceQuery(text, [], input.today);
+      if (!query.needsClarification) range = query.range;
+    }
+    try {
+      if (!range || range.from > range.to || range.to > addDays(range.from, 365))
+        return clarify(['observationRange']);
+      validateDate(range.from);
+      validateDate(range.to);
+    } catch {
+      return clarify(['observationRange']);
+    }
+    grants.push({
+      name: 'get_spending_breakdown',
+      params: range,
+    });
+  }
+  if (
+    scope.status === 'allowed' &&
+    /\b(?:dinh ky|sap den han|hoa don sap|nghia vu|du no|khoan no|no phai tra|dang no|cho vay|khoan vay)\b/.test(
+      text,
+    )
+  ) {
+    const daysMatch = text.match(/\b(?:trong\s+)?(\d{1,2})\s+ngay(?:\s+toi)?\b/);
+    const daysAhead = daysMatch ? Number(daysMatch[1]) : 30;
+    if (daysAhead < 7 || daysAhead > 31) return clarify(['daysAhead']);
+    grants.push({
+      name: 'get_upcoming_obligations',
+      params: { days_ahead: daysAhead },
+    });
+  }
+  if (
+    scope.status === 'allowed' &&
+    /\b(?:tien do muc tieu|xem (?:cac )?muc tieu|danh sach muc tieu|cac muc tieu|muc tieu hien tai|muc tieu dang co|muc tieu trong app|quy tiet kiem cua toi)\b/.test(
+      text,
+    )
+  ) {
+    const includeAchieved = /\b(?:da dat|hoan thanh|tat ca)\b/.test(text);
+    grants.push({
+      name: 'get_savings_goals',
+      params: { include_achieved: includeAchieved },
+    });
+  }
   const narrowed = input.requestedTools
     ? grants.filter((grant) => input.requestedTools!.includes(grant.name))
     : grants;
@@ -288,6 +356,16 @@ function matchesGrant(grant: AdviceToolGrant, raw: unknown): boolean {
     !Object.hasOwn(params, 'budget_id')
   )
     params.budget_id = null;
+  if (
+    grant.name === 'get_upcoming_obligations' &&
+    !Object.hasOwn(params, 'days_ahead')
+  )
+    params.days_ahead = 30;
+  if (
+    grant.name === 'get_savings_goals' &&
+    !Object.hasOwn(params, 'include_achieved')
+  )
+    params.include_achieved = false;
   if (Object.keys(params).length !== Object.keys(grant.params).length)
     return false;
   for (const [key, expected] of Object.entries(grant.params)) {
@@ -308,6 +386,17 @@ function matchesGrant(grant: AdviceToolGrant, raw: unknown): boolean {
         actual < 1 ||
         actual > grant.params.limit
       )
+        return false;
+    } else if (grant.name === 'get_upcoming_obligations' && key === 'days_ahead') {
+      if (
+        typeof actual !== 'number' ||
+        !Number.isInteger(actual) ||
+        actual < 7 ||
+        actual > grant.params.days_ahead
+      )
+        return false;
+    } else if (grant.name === 'get_savings_goals' && key === 'include_achieved') {
+      if (typeof actual !== 'boolean' || (actual && !grant.params.include_achieved))
         return false;
     } else if (actual !== expected) return false;
   }

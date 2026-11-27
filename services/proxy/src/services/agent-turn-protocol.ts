@@ -208,6 +208,83 @@ const dataSchemas = {
       dataQuality: z.enum(['complete', 'partial', 'insufficient']),
     })
     .strict(),
+  get_spending_breakdown: z
+    .object({
+      period: z.object({ from: date, to: date }).strict(),
+      currency: z.literal('VND'),
+      total_income: nonnegative,
+      total_expense: nonnegative,
+      net: amount,
+      top_categories: z
+        .array(
+          z
+            .object({
+              category_id: id.nullable(),
+              system_key: z.string().trim().min(1).max(64).nullable(),
+              amount: nonnegative,
+            })
+            .strict(),
+        )
+        .max(5),
+      other_amount: nonnegative,
+      uncategorized_amount: nonnegative,
+      transaction_count: nonnegative,
+    })
+    .strict(),
+  get_upcoming_obligations: z
+    .object({
+      as_of: date,
+      through: date,
+      currency: z.literal('VND'),
+      scheduled_due: z
+        .object({
+          total_count: nonnegative,
+          total_expense: nonnegative,
+          total_income: nonnegative,
+          items: z
+            .array(
+              z
+                .object({
+                  kind: z.enum(['expense', 'income', 'transfer']),
+                  amount: nonnegative,
+                  due_on: date,
+                })
+                .strict(),
+            )
+            .max(5),
+        })
+        .strict(),
+      debts_summary: z
+        .object({
+          borrowed_outstanding: nonnegative,
+          lent_outstanding: nonnegative,
+          open_borrowed_count: nonnegative,
+          open_lent_count: nonnegative,
+          nearest_due_on: date.nullable(),
+        })
+        .strict(),
+    })
+    .strict(),
+  get_savings_goals: z
+    .object({
+      currency: z.literal('VND'),
+      total_count: nonnegative,
+      goals: z
+        .array(
+          z
+            .object({
+              id,
+              target_amount: nonnegative,
+              saved_amount: amount,
+              remaining_amount: nonnegative,
+              deadline_on: date.nullable(),
+              status: z.enum(['active', 'achieved']),
+            })
+            .strict(),
+        )
+        .max(10),
+    })
+    .strict(),
 };
 const resultSchema = z.discriminatedUnion('status', [
   z
@@ -300,6 +377,29 @@ function validateResult(
       data.period.from > data.period.to
     )
       throw AppError.badRequest('Chỉ số vượt quyền đã cấp.');
+  }
+  if (call.function.name === 'get_spending_breakdown') {
+    const data = dataSchemas.get_spending_breakdown.parse(parsed.data);
+    if (data.period.from !== params.from || data.period.to !== params.to)
+      throw AppError.badRequest('Khoảng thời gian vượt quyền đã cấp.');
+  }
+  if (call.function.name === 'get_upcoming_obligations') {
+    const data = dataSchemas.get_upcoming_obligations.parse(parsed.data);
+    if (
+      data.as_of > data.through ||
+      data.scheduled_due.items.some(
+        (item) => item.due_on < data.as_of || item.due_on > data.through,
+      )
+    )
+      throw AppError.badRequest('Khoảng nghĩa vụ sắp tới không hợp lệ.');
+  }
+  if (call.function.name === 'get_savings_goals') {
+    const data = dataSchemas.get_savings_goals.parse(parsed.data);
+    if (
+      !params.include_achieved &&
+      data.goals.some((goal) => goal.status === 'achieved')
+    )
+      throw AppError.badRequest('Mục tiêu vượt quyền đã cấp.');
   }
   return result.data;
 }

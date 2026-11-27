@@ -28,6 +28,9 @@ const toolNames = [
   'calculate_budget_status',
   'plan_savings_goal',
   'get_financial_snapshot',
+  'get_spending_breakdown',
+  'get_upcoming_obligations',
+  'get_savings_goals',
 ] as const;
 const toolDefinitions = {
   get_transactions: {
@@ -117,6 +120,53 @@ const toolDefinitions = {
       },
     },
   },
+  get_spending_breakdown: {
+    type: 'function',
+    function: {
+      name: 'get_spending_breakdown',
+      description:
+        'Read aggregated income, expense, net cash flow, and top spending categories in booked VND for a date range up to 366 days.',
+      parameters: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', format: 'date' },
+          to: { type: 'string', format: 'date' },
+        },
+        required: ['from', 'to'],
+        additionalProperties: false,
+      },
+    },
+  },
+  get_upcoming_obligations: {
+    type: 'function',
+    function: {
+      name: 'get_upcoming_obligations',
+      description:
+        'Read upcoming scheduled recurring items within days_ahead (7 to 31 days) and aggregated open debt balances without counterparty names or notes.',
+      parameters: {
+        type: 'object',
+        properties: {
+          days_ahead: { type: 'integer', minimum: 7, maximum: 31, default: 30 },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  get_savings_goals: {
+    type: 'function',
+    function: {
+      name: 'get_savings_goals',
+      description:
+        'Read up to 10 non-archived savings goals with target, saved, remaining amounts, deadline, and status in VND without free-text names.',
+      parameters: {
+        type: 'object',
+        properties: {
+          include_achieved: { type: 'boolean', default: false },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
 };
 
 const ToolCallSchema = z
@@ -194,7 +244,7 @@ const StepSchema = z
     messages: z.array(MessageSchema).min(1).max(32),
     allowedTools: z
       .array(z.enum(toolNames))
-      .max(4)
+      .max(7)
       .refine((names) => new Set(names).size === names.length),
     allowTools: z.boolean(),
     stream: z.boolean(),

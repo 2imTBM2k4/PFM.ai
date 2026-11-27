@@ -197,5 +197,5 @@ export type { CorrectionProposal } from './correction';
 export { AdviceValidationContextSchema, SourceMessageSchema } from './advice-validation-context';
 export type { AdviceValidationContext } from './advice-validation-context';
 export type { ToolErrorCode, ToolResult } from './advice-tools';
-export { AdviceToolContextSchema, GetTransactionsParamsSchema, CalculateBudgetStatusParamsSchema, PlanSavingsGoalParamsSchema, GetFinancialSnapshotParamsSchema } from './advice-tools';
-export type { GetTransactionsParams, CalculateBudgetStatusParams, PlanSavingsGoalParams, GetFinancialSnapshotParams } from './advice-tools';
+export { AdviceToolContextSchema, GetTransactionsParamsSchema, CalculateBudgetStatusParamsSchema, PlanSavingsGoalParamsSchema, GetFinancialSnapshotParamsSchema, GetSpendingBreakdownParamsSchema, GetUpcomingObligationsParamsSchema, GetSavingsGoalsParamsSchema } from './advice-tools';
+export type { GetTransactionsParams, CalculateBudgetStatusParams, PlanSavingsGoalParams, GetFinancialSnapshotParams, GetSpendingBreakdownParams, GetUpcomingObligationsParams, GetSavingsGoalsParams } from './advice-tools';

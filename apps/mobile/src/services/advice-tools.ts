@@ -4,6 +4,9 @@ import {
   CalculateBudgetStatusParamsSchema as BudgetStatusSchema,
   PlanSavingsGoalParamsSchema as SavingsGoalSchema,
   GetFinancialSnapshotParamsSchema as SnapshotSchema,
+  GetSpendingBreakdownParamsSchema as SpendingBreakdownSchema,
+  GetUpcomingObligationsParamsSchema as UpcomingObligationsSchema,
+  GetSavingsGoalsParamsSchema as SavingsGoalsSchema,
   ConversationStateSchema,
   isDurationFact,
   isMoneyFact,
@@ -11,6 +14,9 @@ import {
   type CalculateBudgetStatusParams,
   type PlanSavingsGoalParams,
   type GetFinancialSnapshotParams,
+  type GetSpendingBreakdownParams,
+  type GetUpcomingObligationsParams,
+  type GetSavingsGoalsParams,
   type ConversationState,
   type ToolErrorCode,
   type ToolResult,
@@ -19,6 +25,7 @@ import {
   CALCULATION_VERSION,
   addDays,
   addMonths,
+  nextOccurrence,
   today,
   normalizeAdviceInputs,
   calculateAdviceInputs,
@@ -27,6 +34,10 @@ import { withDatabase } from '@/data/connection';
 import { listTransactions } from '@/data/transactions';
 import { readBudgetMonth } from '@/data/budgets';
 import { readAnalysisSummary } from '@/data/analysis';
+import { readCashFlow } from '@/data/advice-insights';
+import { listRecurringRules, scheduleOf } from '@/data/recurring';
+import { readDebtBalances } from '@/data/debt-balances';
+import { listGoals } from '@/data/goals';
 import { getScenarioFactIds } from './advice-context';
 
 interface ToolContext {
@@ -265,6 +276,189 @@ async function executeGetFinancialSnapshot(
   );
 }
 
+/** Read aggregated income, expense, net cash flow, and top parent categories without free-text names. */
+async function executeGetSpendingBreakdown(
+  params: GetSpendingBreakdownParams,
+  context: ToolContext,
+) {
+  const data = await withDatabase(async (db) => {
+    const cashFlow = await readCashFlow(db, params.from, params.to);
+    const rows = await db.getAllAsync<{
+      category_id: string | null;
+      system_key: string | null;
+      amount: number;
+    }>(
+      `SELECT
+         COALESCE(c.parent_id, c.id) AS category_id,
+         COALESCE(p.system_key, c.system_key) AS system_key,
+         SUM(t.amount) AS amount
+       FROM transactions t
+       LEFT JOIN categories c ON c.id = t.category_id
+       LEFT JOIN categories p ON p.id = c.parent_id
+       WHERE t.kind = 'expense' AND t.occurred_on >= ? AND t.occurred_on <= ?
+       GROUP BY COALESCE(c.parent_id, c.id), COALESCE(p.system_key, c.system_key)
+       ORDER BY amount DESC, category_id ASC`,
+      params.from,
+      params.to,
+    );
+    const uncategorized = await db.getFirstAsync<{ amount: number }>(
+      `SELECT COALESCE(SUM(amount), 0) AS amount
+       FROM transactions
+       WHERE kind = 'expense' AND category_id IS NULL AND occurred_on >= ? AND occurred_on <= ?`,
+      params.from,
+      params.to,
+    );
+    const uncategorizedAmount = uncategorized?.amount ?? 0;
+    if (
+      !Number.isSafeInteger(uncategorizedAmount) ||
+      rows.some((row) => !Number.isSafeInteger(row.amount))
+    )
+      throw new Error('ADVICE_EXPENSE_UNSAFE');
+    const topCategories = rows
+      .filter((row) => row.amount > 0 && row.category_id !== null)
+      .slice(0, 5)
+      .map((row) => ({
+        category_id: row.category_id,
+        system_key: row.system_key,
+        amount: row.amount,
+      }));
+    const topSum = topCategories.reduce((sum, item) => sum + item.amount, 0);
+    return {
+      period: { from: params.from, to: params.to },
+      currency: 'VND' as const,
+      total_income: cashFlow.totalIncome,
+      total_expense: cashFlow.totalExpense,
+      net: cashFlow.net,
+      top_categories: topCategories,
+      other_amount: Math.max(0, cashFlow.totalExpense - topSum),
+      uncategorized_amount: uncategorizedAmount,
+      transaction_count: cashFlow.incomeCount + cashFlow.expenseCount,
+    };
+  });
+  return success(data, context);
+}
+
+/** Read upcoming scheduled recurring items and aggregated open debt totals without PII labels or notes. */
+async function executeGetUpcomingObligations(
+  params: GetUpcomingObligationsParams,
+  context: ToolContext,
+) {
+  const asOf = today({ now: () => new Date(), timeZone: 'Asia/Ho_Chi_Minh' });
+  const through = addDays(asOf, params.days_ahead);
+  const data = await withDatabase(async (db) => {
+    const rules = await listRecurringRules(db);
+    const dueItems: {
+      kind: 'expense' | 'income' | 'transfer';
+      amount: number;
+      due_on: string;
+    }[] = [];
+    for (const rule of rules) {
+      if (!rule.is_active || rule.blocked || (rule.end_on && rule.end_on < asOf))
+        continue;
+      const references = await db.getFirstAsync<{ valid: number }>(
+        `SELECT EXISTS(SELECT 1 FROM wallets WHERE id=? AND is_archived=0)
+         AND (? IS NULL OR EXISTS(SELECT 1 FROM wallets WHERE id=? AND is_archived=0))
+         AND (? IS NULL OR EXISTS(SELECT 1 FROM categories WHERE id=? AND is_archived=0)) AS valid`,
+        rule.wallet_id,
+        rule.to_wallet_id,
+        rule.to_wallet_id,
+        rule.category_id,
+        rule.category_id,
+      );
+      if (!references?.valid) continue;
+      const handledRows = await db.getAllAsync<{ occurred_on: string }>(
+        `SELECT occurred_on FROM transactions WHERE recurring_rule_id=? AND occurred_on<=?
+         UNION SELECT occurred_on FROM recurring_skips WHERE recurring_rule_id=? AND occurred_on<=?`,
+        rule.id,
+        through,
+        rule.id,
+        through,
+      );
+      const handled = new Set(handledRows.map((row) => row.occurred_on));
+      let dueOn = nextOccurrence(
+        scheduleOf(rule),
+        rule.last_generated_on ?? addDays(rule.start_on, -1),
+      );
+      while (dueOn && dueOn <= through && handled.has(dueOn))
+        dueOn = nextOccurrence(scheduleOf(rule), dueOn);
+      if (!dueOn || dueOn > through) continue;
+      dueItems.push({ kind: rule.kind, amount: rule.amount, due_on: dueOn });
+    }
+    dueItems.sort((left, right) => left.due_on.localeCompare(right.due_on));
+    let totalExpense = 0;
+    let totalIncome = 0;
+    for (const item of dueItems) {
+      if (item.kind === 'expense') totalExpense += item.amount;
+      if (item.kind === 'income') totalIncome += item.amount;
+    }
+    const debts = await readDebtBalances(db);
+    let borrowedOutstanding = 0;
+    let lentOutstanding = 0;
+    let openBorrowedCount = 0;
+    let openLentCount = 0;
+    let nearestDueOn: string | null = null;
+    for (const debt of debts) {
+      if (debt.status !== 'open') continue;
+      if (debt.direction === 'borrowed') {
+        borrowedOutstanding += debt.outstanding;
+        openBorrowedCount += 1;
+      } else {
+        lentOutstanding += debt.outstanding;
+        openLentCount += 1;
+      }
+      if (debt.due_on && (nearestDueOn === null || debt.due_on < nearestDueOn))
+        nearestDueOn = debt.due_on;
+    }
+    return {
+      as_of: asOf,
+      through,
+      currency: 'VND' as const,
+      scheduled_due: {
+        total_count: dueItems.length,
+        total_expense: totalExpense,
+        total_income: totalIncome,
+        items: dueItems.slice(0, 5),
+      },
+      debts_summary: {
+        borrowed_outstanding: borrowedOutstanding,
+        lent_outstanding: lentOutstanding,
+        open_borrowed_count: openBorrowedCount,
+        open_lent_count: openLentCount,
+        nearest_due_on: nearestDueOn,
+      },
+    };
+  });
+  return success(data, context);
+}
+
+/** Read bounded non-archived savings goals without exposing free-text goal or wallet names. */
+async function executeGetSavingsGoals(
+  params: GetSavingsGoalsParams,
+  context: ToolContext,
+) {
+  const rows = await withDatabase((db) => listGoals(db));
+  const filtered = rows.filter((row) =>
+    params.include_achieved
+      ? row.status !== 'archived'
+      : row.status === 'active',
+  );
+  return success(
+    {
+      currency: 'VND' as const,
+      total_count: filtered.length,
+      goals: filtered.slice(0, 10).map((row) => ({
+        id: row.id,
+        target_amount: row.target_amount,
+        saved_amount: row.progress,
+        remaining_amount: Math.max(0, row.target_amount - row.progress),
+        deadline_on: row.deadline_on,
+        status: row.status as 'active' | 'achieved',
+      })),
+    },
+    context,
+  );
+}
+
 /** Validate and dispatch one permitted local tool, checking elapsed time without cancelling SQLite. */
 export async function executeTool(
   toolName: string,
@@ -279,6 +473,9 @@ export async function executeTool(
       'calculate_budget_status',
       'plan_savings_goal',
       'get_financial_snapshot',
+      'get_spending_breakdown',
+      'get_upcoming_obligations',
+      'get_savings_goals',
     ].includes(toolName)
   )
     return failure('TOOL_NOT_ALLOWED');
@@ -314,6 +511,27 @@ export async function executeTool(
         const parsed = SnapshotSchema.safeParse(params);
         result = parsed.success
           ? await executeGetFinancialSnapshot(parsed.data, context)
+          : failure('INVALID_PARAMS');
+        break;
+      }
+      case 'get_spending_breakdown': {
+        const parsed = SpendingBreakdownSchema.safeParse(params);
+        result = parsed.success
+          ? await executeGetSpendingBreakdown(parsed.data, context)
+          : failure('INVALID_PARAMS');
+        break;
+      }
+      case 'get_upcoming_obligations': {
+        const parsed = UpcomingObligationsSchema.safeParse(params);
+        result = parsed.success
+          ? await executeGetUpcomingObligations(parsed.data, context)
+          : failure('INVALID_PARAMS');
+        break;
+      }
+      case 'get_savings_goals': {
+        const parsed = SavingsGoalsSchema.safeParse(params);
+        result = parsed.success
+          ? await executeGetSavingsGoals(parsed.data, context)
           : failure('INVALID_PARAMS');
         break;
       }

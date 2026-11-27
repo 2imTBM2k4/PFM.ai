@@ -58,6 +58,67 @@ export type AgentVerifiedToolRecord =
         currency: 'VND' | 'USD';
         dataQuality: 'complete' | 'partial' | 'insufficient';
       };
+    }
+  | {
+      name: 'get_spending_breakdown';
+      params: { from: string; to: string };
+      data: {
+        period: { from: string; to: string };
+        currency: 'VND';
+        total_income: number;
+        total_expense: number;
+        net: number;
+        top_categories: {
+          category_id: string | null;
+          system_key: string | null;
+          amount: number;
+        }[];
+        other_amount: number;
+        uncategorized_amount: number;
+        transaction_count: number;
+      };
+    }
+  | {
+      name: 'get_upcoming_obligations';
+      params: { days_ahead?: number };
+      data: {
+        as_of: string;
+        through: string;
+        currency: 'VND';
+        scheduled_due: {
+          total_count: number;
+          total_expense: number;
+          total_income: number;
+          items: {
+            kind: 'expense' | 'income' | 'transfer';
+            amount: number;
+            due_on: string;
+          }[];
+        };
+        debts_summary: {
+          borrowed_outstanding: number;
+          lent_outstanding: number;
+          open_borrowed_count: number;
+          open_lent_count: number;
+          nearest_due_on: string | null;
+        };
+      };
+    }
+  | {
+      name: 'get_savings_goals';
+      params: { include_achieved?: boolean };
+      data: {
+        currency: 'VND';
+        total_count: number;
+        goals: {
+          id: string;
+          target_amount: number;
+          saved_amount: number;
+          remaining_amount: number;
+          deadline_on: string | null;
+          status: 'active' | 'achieved';
+        }[];
+      };
     };
 export type AgentAnswerContextEvidence = Partial<
   Record<
@@ -117,7 +178,7 @@ export function verifyAgentAnswer(
   )
     add('PII_DETECTED');
   if (
-    /\b(?:monthlyAvailable|requiredMonthlySaving|remainingAfterSaving|goalAmount|savingsForGoal|limit_amount|spent_amount|remaining_amount|overspent_amount|monthly_income_avg|monthly_expense_avg|liquid_balance|months_with_data|stateRevision|calculationVersion|dataQuality)\b/i.test(
+    /\b(?:monthlyAvailable|requiredMonthlySaving|remainingAfterSaving|goalAmount|savingsForGoal|limit_amount|spent_amount|remaining_amount|overspent_amount|monthly_income_avg|monthly_expense_avg|liquid_balance|months_with_data|stateRevision|calculationVersion|dataQuality|total_income|total_expense|top_categories|other_amount|uncategorized_amount|transaction_count|scheduled_due|debts_summary|borrowed_outstanding|lent_outstanding|open_borrowed_count|open_lent_count|nearest_due_on|target_amount|saved_amount|include_achieved|days_ahead)\b/i.test(
       text,
     )
   )
@@ -160,6 +221,44 @@ export function verifyAgentAnswer(
       put('months', tool.params.months);
       for (const [key, value] of Object.entries(tool.data.indicators))
         put(key, value);
+    }
+    if (tool.name === 'get_spending_breakdown') {
+      periods.push(tool.data.period);
+      put('total_income', tool.data.total_income);
+      put('total_expense', tool.data.total_expense);
+      put('net', tool.data.net);
+      put('other_amount', tool.data.other_amount);
+      put('uncategorized_amount', tool.data.uncategorized_amount);
+      put('count', tool.data.transaction_count);
+      for (const item of tool.data.top_categories) put('category', item.amount);
+    }
+    if (tool.name === 'get_upcoming_obligations') {
+      periods.push({ from: tool.data.as_of, to: tool.data.through });
+      put('days', tool.params.days_ahead ?? 30);
+      put('count', tool.data.scheduled_due.total_count);
+      put('total_expense', tool.data.scheduled_due.total_expense);
+      put('total_income', tool.data.scheduled_due.total_income);
+      for (const item of tool.data.scheduled_due.items) put('scheduled', item.amount);
+      put('borrowed_outstanding', tool.data.debts_summary.borrowed_outstanding);
+      put('lent_outstanding', tool.data.debts_summary.lent_outstanding);
+      put('count', tool.data.debts_summary.open_borrowed_count);
+      put('count', tool.data.debts_summary.open_lent_count);
+      if (tool.data.debts_summary.nearest_due_on)
+        periods.push({
+          from: tool.data.debts_summary.nearest_due_on,
+          to: tool.data.debts_summary.nearest_due_on,
+        });
+    }
+    if (tool.name === 'get_savings_goals') {
+      put('count', tool.data.total_count);
+      put('count', tool.data.goals.length);
+      for (const goal of tool.data.goals) {
+        put('target_amount', goal.target_amount);
+        put('saved_amount', goal.saved_amount);
+        put('remaining_amount', goal.remaining_amount);
+        if (goal.deadline_on)
+          periods.push({ from: goal.deadline_on, to: goal.deadline_on });
+      }
     }
   }
   for (const [key, value] of Object.entries(evidence.context ?? {})) {

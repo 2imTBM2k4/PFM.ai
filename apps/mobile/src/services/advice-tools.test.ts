@@ -12,6 +12,9 @@ import { seed, DEFAULT_WALLET_ID } from '@/data/seed';
 import { createTransaction } from '@/data/transactions';
 import { createBudget } from '@/data/budgets';
 import { createWallet } from '@/data/wallets';
+import { saveRecurringRule } from '@/data/recurring';
+import { createDebt } from '@/data/debts';
+import { saveGoal, archiveGoal } from '@/data/goals';
 import { adviceStateFixture } from './advice-context.fixtures';
 import { executeTool } from './advice-tools';
 
@@ -25,6 +28,9 @@ const tools = [
   'calculate_budget_status',
   'plan_savings_goal',
   'get_financial_snapshot',
+  'get_spending_breakdown',
+  'get_upcoming_obligations',
+  'get_savings_goals',
 ];
 const transactionParams = {
   from: '2026-11-01',
@@ -673,6 +679,223 @@ describe('dispatcher', () => {
       status: 'error',
       code: 'DATA_ERROR',
       retryable: false,
+    });
+  });
+});
+
+
+describe('extended read-only advisory tools', () => {
+  it('get_spending_breakdown aggregates cash flow and top categories without leaking custom names or notes', async () => {
+    const food = await db.getFirstAsync<{ id: string; system_key: string | null }>(
+      `SELECT id, system_key FROM categories WHERE kind = 'expense' AND parent_id IS NULL LIMIT 1`,
+    );
+    const salary = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM categories WHERE kind = 'income' AND parent_id IS NULL LIMIT 1`,
+    );
+    await createTransaction(
+      db,
+      'tx-income-1',
+      {
+        kind: 'income',
+        amount: 15_000_000,
+        walletId: DEFAULT_WALLET_ID,
+        categoryId: salary?.id ?? null,
+        occurredOn: '2026-11-05',
+        occurredAt: '2026-11-05T08:00:00.000Z',
+        note: 'Luong bi mat 0901234567',
+      },
+      now,
+    );
+    await createTransaction(
+      db,
+      'tx-exp-1',
+      {
+        kind: 'expense',
+        amount: 2_500_000,
+        walletId: DEFAULT_WALLET_ID,
+        categoryId: food?.id ?? null,
+        occurredOn: '2026-11-10',
+        occurredAt: '2026-11-10T10:00:00.000Z',
+        note: 'An toi voi ban',
+      },
+      now,
+    );
+    const result = await run('get_spending_breakdown', {
+      from: '2026-11-01',
+      to: '2026-11-16',
+    });
+    expect(result).toEqual({
+      status: 'ok',
+      stateRevision: 1,
+      calculationVersion: CALCULATION_VERSION,
+      data: {
+        period: { from: '2026-11-01', to: '2026-11-16' },
+        currency: 'VND',
+        total_income: 15_000_000,
+        total_expense: 2_500_000,
+        net: 12_500_000,
+        top_categories: [
+          { category_id: food?.id ?? null, system_key: food?.system_key ?? null, amount: 2_500_000 },
+        ],
+        other_amount: 0,
+        uncategorized_amount: 0,
+        transaction_count: 2,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('0901234567');
+    expect(JSON.stringify(result)).not.toContain('An toi');
+  });
+
+  it('get_spending_breakdown rejects date ranges exceeding 366 days', async () => {
+    expect(
+      await run('get_spending_breakdown', {
+        from: '2025-01-01',
+        to: '2026-11-16',
+      }),
+    ).toEqual({ status: 'error', code: 'INVALID_PARAMS', retryable: false });
+  });
+
+  it('get_upcoming_obligations returns scheduled due items and debt totals without counterparty labels or notes', async () => {
+    const food = await db.getFirstAsync<{ id: string }>(
+      `SELECT id FROM categories WHERE system_key = 'food'`,
+    );
+    await saveRecurringRule(
+      db,
+      'rec-1',
+      {
+        kind: 'expense',
+        amount: 1_200_000,
+        walletId: DEFAULT_WALLET_ID,
+        toWalletId: null,
+        categoryId: food?.id ?? null,
+        frequency: 'monthly',
+        intervalCount: 1,
+        startOn: '2026-11-25',
+        endOn: null,
+        note: 'Tien nha bi mat',
+      },
+      now,
+      false,
+    );
+    await createDebt(
+      db,
+      randomUUID(),
+      randomUUID(),
+      {
+        counterpartyLabel: 'Nguyen Van A 0912345678',
+        direction: 'borrowed',
+        amount: 5_000_000,
+        walletId: DEFAULT_WALLET_ID,
+        occurredOn: '2026-11-01',
+        dueOn: '2026-12-01',
+        note: 'Vay mua xe',
+      },
+      now,
+    );
+    const result = await run('get_upcoming_obligations', { days_ahead: 30 });
+    expect(result).toEqual({
+      status: 'ok',
+      stateRevision: 1,
+      calculationVersion: CALCULATION_VERSION,
+      data: {
+        as_of: '2026-11-16',
+        through: '2026-12-16',
+        currency: 'VND',
+        scheduled_due: {
+          total_count: 1,
+          total_expense: 1_200_000,
+          total_income: 0,
+          items: [{ kind: 'expense', amount: 1_200_000, due_on: '2026-11-25' }],
+        },
+        debts_summary: {
+          borrowed_outstanding: 5_000_000,
+          lent_outstanding: 0,
+          open_borrowed_count: 1,
+          open_lent_count: 0,
+          nearest_due_on: '2026-12-01',
+        },
+      },
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('Nguyen Van A');
+    expect(serialized).not.toContain('0912345678');
+    expect(serialized).not.toContain('Tien nha');
+  });
+
+  it('get_savings_goals filters archived/achieved goals and omits free-text goal names', async () => {
+    await saveGoal(
+      db,
+      'goal-active',
+      {
+        name: 'Quy mua nha rieng',
+        targetAmount: 100_000_000,
+        manualSavedAmount: 25_000_000,
+        fundingWalletId: null,
+        deadlineOn: '2027-12-31',
+      },
+      now,
+      false,
+    );
+    await saveGoal(
+      db,
+      'goal-achieved',
+      {
+        name: 'Quy du lich Da Lat',
+        targetAmount: 10_000_000,
+        manualSavedAmount: 10_000_000,
+        fundingWalletId: null,
+        deadlineOn: null,
+      },
+      now,
+      false,
+    );
+    await saveGoal(
+      db,
+      'goal-archived',
+      {
+        name: 'Quy cu da luu tru',
+        targetAmount: 5_000_000,
+        manualSavedAmount: 1_000_000,
+        fundingWalletId: null,
+        deadlineOn: null,
+      },
+      now,
+      false,
+    );
+    await archiveGoal(db, 'goal-archived', now);
+
+    const activeOnly = await run('get_savings_goals', { include_achieved: false });
+    expect(activeOnly).toEqual({
+      status: 'ok',
+      stateRevision: 1,
+      calculationVersion: CALCULATION_VERSION,
+      data: {
+        currency: 'VND',
+        total_count: 1,
+        goals: [
+          {
+            id: 'goal-active',
+            target_amount: 100_000_000,
+            saved_amount: 25_000_000,
+            remaining_amount: 75_000_000,
+            deadline_on: '2027-12-31',
+            status: 'active',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(activeOnly)).not.toContain('Quy mua nha');
+
+    const withAchieved = await run('get_savings_goals', { include_achieved: true });
+    expect(withAchieved).toMatchObject({
+      status: 'ok',
+      data: {
+        total_count: 2,
+        goals: [
+          { id: 'goal-achieved', status: 'achieved', remaining_amount: 0 },
+          { id: 'goal-active', status: 'active' },
+        ],
+      },
     });
   });
 });

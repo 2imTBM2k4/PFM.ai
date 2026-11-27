@@ -424,8 +424,12 @@ export async function runAdviceTurn(
   }
   if (decision.status === 'allowed') {
     const onlySavingsGoal =
-      decision.policy.grants.length === 1 &&
-      decision.policy.grants[0].name === 'plan_savings_goal';
+      decision.policy.grants.length > 0 &&
+      decision.policy.grants.every(
+        (grant) =>
+          grant.name === 'plan_savings_goal' ||
+          grant.name === 'get_savings_goals',
+      );
     const text = foldText(input.prompt);
     const isGeneralGoalProgressCheck =
       onlySavingsGoal &&

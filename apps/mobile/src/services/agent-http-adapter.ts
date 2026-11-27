@@ -3,6 +3,9 @@ import {
   CalculateBudgetStatusParamsSchema,
   PlanSavingsGoalParamsSchema,
   GetFinancialSnapshotParamsSchema,
+  GetSpendingBreakdownParamsSchema,
+  GetUpcomingObligationsParamsSchema,
+  GetSavingsGoalsParamsSchema,
   type AdviceValidationContext,
 } from '@pfm/contracts';
 import { checkAdviceToolBatch, type AdviceToolPolicy } from '@pfm/domain';
@@ -62,6 +65,9 @@ const schemas = {
   calculate_budget_status: CalculateBudgetStatusParamsSchema,
   plan_savings_goal: PlanSavingsGoalParamsSchema,
   get_financial_snapshot: GetFinancialSnapshotParamsSchema,
+  get_spending_breakdown: GetSpendingBreakdownParamsSchema,
+  get_upcoming_obligations: GetUpcomingObligationsParamsSchema,
+  get_savings_goals: GetSavingsGoalsParamsSchema,
 };
 
 function normalizeMessages(messages: AgentMessage[]): AgentMessage[] {

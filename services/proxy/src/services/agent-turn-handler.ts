@@ -28,9 +28,12 @@ const schema = z
           'calculate_budget_status',
           'plan_savings_goal',
           'get_financial_snapshot',
+          'get_spending_breakdown',
+          'get_upcoming_obligations',
+          'get_savings_goals',
         ]),
       )
-      .max(4)
+      .max(7)
       .refine((names) => new Set(names).size === names.length),
     allowTools: z.boolean(),
     stream: z.boolean(),

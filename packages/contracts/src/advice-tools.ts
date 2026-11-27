@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { validateDate } from '@pfm/domain';
+import { addDays, validateDate } from '@pfm/domain';
 
 export const AdviceToolContextSchema = z.object({
   sessionId: z.string().trim().min(1).max(64),
@@ -57,6 +57,27 @@ export const GetFinancialSnapshotParamsSchema = z
       .refine((fields) => new Set(fields).size === fields.length),
   })
   .strict();
+export const GetSpendingBreakdownParamsSchema = z
+  .object({
+    from: DateSchema,
+    to: DateSchema,
+  })
+  .strict()
+  .refine(({ from, to }) => from <= to, 'Reversed date range.')
+  .refine(
+    ({ from, to }) => to <= addDays(from, 365),
+    'Date range exceeds 366 days.',
+  );
+export const GetUpcomingObligationsParamsSchema = z
+  .object({
+    days_ahead: z.number().int().min(7).max(31).default(30),
+  })
+  .strict();
+export const GetSavingsGoalsParamsSchema = z
+  .object({
+    include_achieved: z.boolean().default(false),
+  })
+  .strict();
 export type GetTransactionsParams = z.infer<typeof GetTransactionsParamsSchema>;
 export type CalculateBudgetStatusParams = z.infer<
   typeof CalculateBudgetStatusParamsSchema
@@ -65,6 +86,13 @@ export type PlanSavingsGoalParams = z.infer<typeof PlanSavingsGoalParamsSchema>;
 export type GetFinancialSnapshotParams = z.infer<
   typeof GetFinancialSnapshotParamsSchema
 >;
+export type GetSpendingBreakdownParams = z.infer<
+  typeof GetSpendingBreakdownParamsSchema
+>;
+export type GetUpcomingObligationsParams = z.infer<
+  typeof GetUpcomingObligationsParamsSchema
+>;
+export type GetSavingsGoalsParams = z.infer<typeof GetSavingsGoalsParamsSchema>;
 
 export type ToolErrorCode =
   | 'INVALID_PARAMS'

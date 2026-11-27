@@ -730,3 +730,95 @@ describe('advice tool policy', () => {
     });
   });
 });
+
+
+describe('extended advisory tool grants', () => {
+  it('grants get_spending_breakdown for cash flow / top spending questions with explicit range', () => {
+    expect(
+      resolve(
+        'Phân tích cơ cấu chi tiêu từ ngày 01/11/2026 đến ngày 16/11/2026.',
+      ),
+    ).toMatchObject({
+      status: 'allowed',
+      policy: {
+        grants: [
+          {
+            name: 'get_spending_breakdown',
+            params: { from: '2026-11-01', to: '2026-11-16' },
+          },
+        ],
+      },
+    });
+  });
+
+  it('asks for observationRange when get_spending_breakdown exceeds 366 days', () => {
+    expect(
+      resolve(
+        'Phân tích cơ cấu chi tiêu từ ngày 01/01/2025 đến ngày 16/11/2026.',
+      ),
+    ).toEqual({
+      status: 'needs_clarification',
+      fields: ['observationRange'],
+    });
+  });
+
+  it('grants get_upcoming_obligations with default 30 days and custom 14 days', () => {
+    expect(
+      resolve('Tôi có khoản chi định kỳ và dư nợ nào sắp đến hạn không?'),
+    ).toMatchObject({
+      status: 'allowed',
+      policy: {
+        grants: [
+          { name: 'get_upcoming_obligations', params: { days_ahead: 30 } },
+        ],
+      },
+    });
+    expect(
+      resolve('Kiểm tra khoản định kỳ sắp đến hạn trong 14 ngày tới.'),
+    ).toMatchObject({
+      status: 'allowed',
+      policy: {
+        grants: [
+          { name: 'get_upcoming_obligations', params: { days_ahead: 14 } },
+        ],
+      },
+    });
+  });
+
+  it('asks for daysAhead when upcoming obligations horizon is outside 7..31 days', () => {
+    expect(
+      resolve('Kiểm tra khoản định kỳ sắp đến hạn trong 3 ngày tới.'),
+    ).toEqual({
+      status: 'needs_clarification',
+      fields: ['daysAhead'],
+    });
+  });
+
+  it('grants get_savings_goals and blocks escalating include_achieved in batch checks', () => {
+    const decision = resolve('Xem tiến độ các mục tiêu tiết kiệm hiện tại của tôi.');
+    expect(decision.status).toBe('allowed');
+    if (decision.status === 'allowed') {
+      expect(decision.policy.grants).toContainEqual({
+        name: 'get_savings_goals',
+        params: { include_achieved: false },
+      });
+      expect(
+        checkAdviceToolBatch(decision.policy, decision.policy, [
+          { id: 'c1', name: 'get_savings_goals', params: { include_achieved: true } },
+        ]),
+      ).toEqual({
+        allowed: false,
+        code: 'TOOL_NOT_ALLOWED',
+        deniedToolCallIds: ['c1'],
+      });
+    }
+    const allDecision = resolve('Xem tất cả các mục tiêu tiết kiệm đã đạt và đang thực hiện.');
+    expect(allDecision.status).toBe('allowed');
+    if (allDecision.status === 'allowed') {
+      expect(allDecision.policy.grants).toContainEqual({
+        name: 'get_savings_goals',
+        params: { include_achieved: true },
+      });
+    }
+  });
+});
