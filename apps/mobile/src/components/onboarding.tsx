@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import {
   Button,
@@ -26,6 +26,7 @@ import {
   inspectRemoteGoogleDriveBackup,
   restoreFromGoogleDriveBackup,
 } from '@/features/backup/mobile';
+import { preloadBrowserGisOAuth2 } from '@/features/backup/google-auth-web';
 import { isRunningInExpoGo } from 'expo';
 
 const PRESET_BALANCES = [0, 1_500_000, 5_000_000, 10_000_000] as const;
@@ -52,6 +53,12 @@ export function Onboarding() {
   const palette = useFinancePalette();
   const saving = useRef(false);
   const inExpoGo = isRunningInExpoGo();
+
+  useEffect(() => {
+    if (!inExpoGo) {
+      preloadBrowserGisOAuth2();
+    }
+  }, [inExpoGo]);
 
   async function handleInspectDriveBackup() {
     if (driveBusy || isSubmitting || skipping) return;

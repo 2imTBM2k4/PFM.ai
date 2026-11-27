@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createGoogleAuthService, GOOGLE_DRIVE_FILE_SCOPE } from './google-auth';
-import { createWebGoogleSignInDriver } from './google-auth-web';
+import { createWebGoogleSignInDriver, hasValidPersistedWebToken } from './google-auth-web';
 
 function createMemoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -146,5 +146,58 @@ describe('Web Google Sign-In Driver (GIS OAuth2)', () => {
       ok: false,
       reason: 'cancelled',
     });
+  });
+
+  it('invokes requestAccessToken synchronously inside signIn when GIS is already preloaded', async () => {
+    let calledSynchronously = false;
+    const storage = createMemoryStorage();
+    const preloadedOAuth2 = {
+      initTokenClient: ({
+        callback,
+      }: {
+        callback: (r: { access_token: string; expires_in: number; scope: string }) => void;
+      }) => ({
+        requestAccessToken: () => {
+          calledSynchronously = true;
+          callback({
+            access_token: 'ya29.sync-popup-token',
+            expires_in: 3600,
+            scope: `email profile ${GOOGLE_DRIVE_FILE_SCOPE}`,
+          });
+        },
+      }),
+    };
+
+    const driver = createWebGoogleSignInDriver({
+      now: () => 1_000_000,
+      storage,
+      getLoadedGisOAuth2: () => preloadedOAuth2,
+      loadGisOAuth2: async () => {
+        throw new Error('should not await loadGisOAuth2 when preloaded');
+      },
+      fetchImpl: vi.fn(async () =>
+        new Response(JSON.stringify({ email: 'sync@example.com' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ) as unknown as typeof fetch,
+    });
+
+    const auth = createGoogleAuthService({
+      isExpoGo: () => false,
+      getWebClientId: () => 'web-client-123.apps.googleusercontent.com',
+      getIosClientId: () => undefined,
+      loadDriver: () => driver,
+    });
+
+    expect(hasValidPersistedWebToken(storage, () => 1_000_000)).toBe(false);
+    const signInPromise = auth.signIn();
+    expect(calledSynchronously).toBe(true);
+    expect(await signInPromise).toEqual({
+      ok: true,
+      email: 'sync@example.com',
+      accessToken: 'ya29.sync-popup-token',
+    });
+    expect(hasValidPersistedWebToken(storage, () => 1_000_000)).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { LocalTransferSettings } from './local-transfer-settings';
 import { useTransientState } from '@/hooks/use-transient-state';
 import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { isRunningInExpoGo } from 'expo';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Divider, Switch, Text, TextInput } from 'react-native-paper';
 import { IconBadge, Screen, styles } from '@/components/screen';
@@ -17,6 +17,7 @@ import {
 import { vi } from '@/messages/vi';
 import { usePreferences } from '@/state/preferences';
 import type { RemoteBackupMetadata } from './drive-client';
+import { preloadBrowserGisOAuth2 } from './google-auth-web';
 import {
   connectGoogleDriveBackup,
   disconnectGoogleDriveBackup,
@@ -87,6 +88,12 @@ export function BackupSettingsView({ onClose }: { onClose(): void }) {
   const { state, isUploading } = runtime;
 
   const inExpoGo = isRunningInExpoGo() || !runtime.isSupportedRuntime;
+
+  useEffect(() => {
+    if (!inExpoGo) {
+      preloadBrowserGisOAuth2();
+    }
+  }, [inExpoGo]);
   const isConnected = Boolean(state.accountEmail);
 
   const [busy, setBusy] = useState(false);

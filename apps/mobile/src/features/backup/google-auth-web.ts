@@ -83,12 +83,35 @@ interface GisWindow {
 
 export interface WebGoogleSignInDeps {
   loadGisOAuth2?: () => Promise<GisOAuth2Namespace>;
+  getLoadedGisOAuth2?: () => GisOAuth2Namespace | null;
   fetchImpl?: typeof fetch;
   now?: () => number;
   storage?: Storage | null;
 }
 
 let gisLoadPromise: Promise<GisOAuth2Namespace> | null = null;
+
+/** Returns the already-loaded browser GIS OAuth2 namespace without awaiting. */
+export function getLoadedBrowserGisOAuth2(): GisOAuth2Namespace | null {
+  const win = globalThis as unknown as GisWindow;
+  return win.google?.accounts?.oauth2 ?? null;
+}
+
+/** Checks synchronously whether sessionStorage already holds a non-expired web token. */
+export function hasValidPersistedWebToken(
+  storage: Storage | null | undefined =
+    typeof sessionStorage !== 'undefined' ? sessionStorage : null,
+  now: () => number = Date.now,
+): boolean {
+  const stored = readPersistedWebToken(storage);
+  return Boolean(stored && now() + TOKEN_SAFETY_MARGIN_MS < stored.expiresAt);
+}
+
+/** Preloads the GIS script in browser environments so interactive sign-in keeps user gesture activation. */
+export function preloadBrowserGisOAuth2(): void {
+  if (typeof document === 'undefined') return;
+  void loadBrowserGisOAuth2().catch(() => undefined);
+}
 
 /** Loads Google Identity Services script once in browser environments. */
 export function loadBrowserGisOAuth2(): Promise<GisOAuth2Namespace> {
@@ -136,6 +159,9 @@ export function createWebGoogleSignInDriver(
   deps: WebGoogleSignInDeps = {},
 ): NativeGoogleSignInDriver {
   const loadGisOAuth2 = deps.loadGisOAuth2 ?? loadBrowserGisOAuth2;
+  const getLoadedGisOAuth2 =
+    deps.getLoadedGisOAuth2 ??
+    (deps.loadGisOAuth2 ? () => null : getLoadedBrowserGisOAuth2);
   const fetchImpl = deps.fetchImpl ?? globalThis.fetch;
   const now = deps.now ?? Date.now;
   const storage =
@@ -159,7 +185,7 @@ export function createWebGoogleSignInDriver(
     if (!webClientId) {
       throw { code: 'configure', message: 'webClientId was not provided' };
     }
-    const oauth2 = await loadGisOAuth2();
+    const oauth2 = getLoadedGisOAuth2() ?? (await loadGisOAuth2());
     const mergedScopes = Array.from(
       new Set(['email', 'profile', ...configuredScopes, ...scopes]),
     );
@@ -240,6 +266,7 @@ export function createWebGoogleSignInDriver(
   }
 
   return {
+    skipPlayServicesCheck: true,
     configure(options) {
       webClientId = options.webClientId?.trim() || undefined;
       configuredScopes = options.scopes ?? [];

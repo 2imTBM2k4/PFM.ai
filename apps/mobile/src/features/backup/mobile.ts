@@ -23,6 +23,7 @@ import {
   type BackupErrorCode,
   type GoogleAuthErrorReason,
 } from './google-auth';
+import { hasValidPersistedWebToken } from './google-auth-web';
 import { applySnapshot, validateAndPrepareSnapshot } from './restore';
 import { buildSnapshot } from './snapshot';
 import { decideInitialConnectSync, hasMeaningfulLocalData } from './sync-decision';
@@ -277,8 +278,22 @@ export async function inspectRemoteGoogleDriveBackup(options?: {
       error: BackupOperationError;
     }
 > {
+  let prefetchedSignInEmail: string | null = null;
+  if (
+    options?.signInIfNeeded &&
+    typeof window !== 'undefined' &&
+    typeof document !== 'undefined' &&
+    !hasValidPersistedWebToken()
+  ) {
+    const signInRes = await defaultGoogleAuthService.signIn();
+    if (!signInRes.ok) {
+      return { ok: false, error: signInRes.reason };
+    }
+    prefetchedSignInEmail = signInRes.email;
+  }
+
   const current = await withDatabase(readBackupState);
-  let accountEmail = current.accountEmail;
+  let accountEmail = prefetchedSignInEmail ?? current.accountEmail;
 
   if (options?.signInIfNeeded && !accountEmail) {
     const signInRes = await defaultGoogleAuthService.signIn();

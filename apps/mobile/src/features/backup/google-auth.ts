@@ -141,6 +141,7 @@ export async function updateBackupState(
 }
 
 export interface NativeGoogleSignInDriver {
+  skipPlayServicesCheck?: boolean;
   configure(options: {
     scopes?: string[];
     webClientId?: string;
@@ -421,7 +422,9 @@ export function createGoogleAuthService(
       }
       const { driver } = configured;
       try {
-        await driver.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        if (!driver.skipPlayServicesCheck) {
+          await driver.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        }
         const signInResponse = await driver.signIn();
         const { cancelled, email } =
           extractEmailFromSignInResult(signInResponse);
