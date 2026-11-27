@@ -36,6 +36,7 @@ import {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { GradientBackground } from '@/components/ui/gradient-background';
+import { createWebGlassStyle, createWebTransitionStyle } from '@/constants/motion';
 import {
   DUO_SIDE_RAIL_WIDTH,
   getCameraClearance,
@@ -316,7 +317,7 @@ export function Screen({
           behavior={
             Platform.OS === 'ios' ? 'padding' : footer ? 'height' : undefined
           }
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 16 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 32 : 0}
         >
           {scroll ? (
             <ScrollView
@@ -329,7 +330,7 @@ export function Screen({
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+              automaticallyAdjustKeyboardInsets={false}
               contentContainerStyle={[
                 styles.scroll,
                 {
@@ -353,7 +354,7 @@ export function Screen({
                   backgroundColor: designTheme.card.surfaceElevated,
                   borderTopColor: designTheme.card.border,
                   paddingBottom: keyboardVisible
-                    ? DesignSpacing.sm
+                    ? DesignSpacing.md
                     : Math.max(insets.bottom, DesignSpacing.sm),
                 },
               ]}
@@ -404,7 +405,7 @@ export function Screen({
               contentInsetAdjustmentBehavior="automatic"
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+              automaticallyAdjustKeyboardInsets={false}
               onScroll={(e) => {
                 tabBarScroll.onScroll(e);
                 onScroll?.(e);
@@ -435,7 +436,7 @@ export function Screen({
                   backgroundColor: designTheme.card.surfaceElevated,
                   borderTopColor: designTheme.card.border,
                   paddingBottom: keyboardVisible
-                    ? DesignSpacing.sm
+                    ? DesignSpacing.md
                     : Math.max(insets.bottom, DesignSpacing.sm),
                 },
               ]}
@@ -559,6 +560,8 @@ export function QuickTile({
   const palette = useFinancePalette();
   const designTheme = useDesignTheme();
   const reduceMotion = useReducedMotion();
+  const [hovered, setHovered] = useState(false);
+  const isWeb = Platform.OS === 'web';
   return (
     <Animated.View
       layout={reduceMotion ? undefined : LinearTransition.duration(180)}
@@ -574,15 +577,28 @@ export function QuickTile({
         accessibilityState={{ disabled: Boolean(disabled) }}
         disabled={disabled}
         hitSlop={compact ? 6 : undefined}
+        onHoverIn={isWeb && !disabled ? () => setHovered(true) : undefined}
+        onHoverOut={isWeb ? () => setHovered(false) : undefined}
         onPress={onPress}
         style={({ pressed }) => [
           styles.quickTile,
           createSoftShadow(designTheme.mode, 'sm'),
+          createWebGlassStyle(14, 160),
+          createWebTransitionStyle(),
           {
             backgroundColor: designTheme.card.surface,
-            borderColor: designTheme.card.border,
+            borderColor:
+              hovered && !disabled
+                ? designTheme.brand.primaryBorder
+                : designTheme.card.border,
             opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-            transform: [{ scale: pressed && !reduceMotion ? 0.97 : 1 }],
+            transform: [
+              {
+                translateY:
+                  isWeb && hovered && !pressed && !reduceMotion ? -2 : 0,
+              },
+              { scale: pressed && !reduceMotion ? 0.97 : 1 },
+            ],
           },
           style,
           compact && {
@@ -653,6 +669,7 @@ export function EmptyStateCard({
       style={[
         styles.emptyCard,
         createSoftShadow(designTheme.mode, 'sm'),
+        createWebGlassStyle(16, 165),
         {
           backgroundColor: designTheme.card.surface,
           borderColor: designTheme.card.border,

@@ -15,7 +15,6 @@ import {
   ActivityIndicator,
   Button,
   Divider,
-  ProgressBar,
   Text,
   TextInput,
   useTheme,
@@ -27,7 +26,7 @@ import {
   StatusPill,
   styles,
 } from '@/components/screen';
-import { AppleMenuPicker, DateField, MoneyInput } from '@/components/ui';
+import { AppleMenuPicker, DateField, MoneyInput, AnimatedProgressBar } from '@/components/ui';
 import { useFinancePalette, walletKindVisual } from '@/constants/theme';
 import { withDatabase } from '@/data/connection';
 import {
@@ -346,7 +345,7 @@ export function GoalManager({
               </Text>
             </View>
 
-            <ProgressBar
+            <AnimatedProgressBar
               progress={ratio}
               color={progress.achieved ? palette.income : colors.primary}
               style={{ height: 8, borderRadius: 4 }}

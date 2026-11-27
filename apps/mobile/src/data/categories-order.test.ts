@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { orderCategoriesByParent, type CategoryRow } from './categories';
+import {
+  CATEGORY_ICONS,
+  orderCategoriesByParent,
+  resolveCategoryIcon,
+  type CategoryRow,
+} from './categories';
 
 function makeCategory(overrides: Partial<CategoryRow> & { id: string; name: string }): CategoryRow {
   return {
@@ -43,5 +48,42 @@ describe('orderCategoriesByParent', () => {
 
     const ordered = orderCategoriesByParent(categories);
     expect(ordered.map((c) => c.id)).toEqual(['food', 'orphan']);
+  });
+});
+
+describe('resolveCategoryIcon', () => {
+  it('exposes expanded everyday category icons and resolves parent fallback', () => {
+    expect(CATEGORY_ICONS.length).toBeGreaterThanOrEqual(24);
+    expect(CATEGORY_ICONS).toContain('coffee-outline');
+    expect(CATEGORY_ICONS).toContain('airplane');
+    expect(CATEGORY_ICONS).toContain('dumbbell');
+
+    const parent = makeCategory({ id: 'food', name: 'Food', icon: 'food' });
+    const childWithoutIcon = makeCategory({
+      id: 'coffee',
+      name: 'Coffee',
+      parent_id: 'food',
+      icon: null,
+    });
+    const childWithOwnIcon = makeCategory({
+      id: 'tea',
+      name: 'Tea',
+      parent_id: 'food',
+      icon: 'coffee-outline',
+    });
+    const byId = new Map([
+      [parent.id, parent],
+      [childWithoutIcon.id, childWithoutIcon],
+      [childWithOwnIcon.id, childWithOwnIcon],
+    ]);
+
+    expect(resolveCategoryIcon(childWithoutIcon, byId)).toBe('food');
+    expect(resolveCategoryIcon(childWithOwnIcon, byId)).toBe('coffee-outline');
+    expect(
+      resolveCategoryIcon(
+        makeCategory({ id: 'plain', name: 'Plain', icon: null }),
+        byId,
+      ),
+    ).toBe('tag-outline');
   });
 });

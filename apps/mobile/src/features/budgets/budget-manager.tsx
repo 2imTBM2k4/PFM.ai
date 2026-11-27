@@ -35,7 +35,6 @@ import {
   ActivityIndicator,
   Button,
   Divider,
-  ProgressBar,
   Switch,
   Text,
   TextInput,
@@ -54,6 +53,7 @@ import {
   DateField,
   MoneyInput,
   MonthField,
+  AnimatedProgressBar,
   SegmentedOptionPicker,
 } from '@/components/ui';
 import { DesignSpacing, useFinancePalette } from '@/constants/theme';
@@ -612,7 +612,7 @@ const BudgetItem = memo(function BudgetItem({
               )}
             </Text>
           )}
-          <ProgressBar
+          <AnimatedProgressBar
             progress={Math.min(1, row.spent / row.amount)}
             color={
               thresholds.includes(100)

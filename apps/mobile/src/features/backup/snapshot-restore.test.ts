@@ -946,8 +946,59 @@ describe('Snapshot & Restore (B1 & B2)', () => {
     const restoredCount = await targetDb.getFirstAsync<{ c: number }>(
       'SELECT COUNT(*) AS c FROM transactions',
     );
-    expect(restoredCount?.c).toBe(txCount);
-    expect(exportMs).toBeLessThan(5000);
+    expect(restoredCount?.c).toBe(txCount);    expect(exportMs).toBeLessThan(5000);
     expect(restoreMs).toBeLessThan(8000);
   }, 20000);
+
+  it('preserves affects_wallet_balance=0 on debt transactions across snapshot and restore', async () => {
+    const now = '2026-11-27T11:30:00.000Z';
+    await seed(sourceDb, now);
+    const debtId = '11111111-1111-4111-8111-111111111111';
+    const txId = '22222222-2222-4222-8222-222222222222';
+
+    await sourceDb.transaction(async (tx) => {
+      await tx.runAsync(
+        `INSERT INTO debts (id, counterparty_label, direction, due_on, status, note, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        debtId,
+        'Friend',
+        'borrowed',
+        '2026-12-31',
+        'open',
+        'No wallet balance change',
+        now,
+        now,
+      );
+      await tx.runAsync(
+        `INSERT INTO transactions (
+           id, kind, amount, wallet_id, to_wallet_id, category_id, debt_id,
+           occurred_on, occurred_at, note, note_search, source, recurring_rule_id,
+           raw_input, original_currency, original_amount_minor, booking_rate,
+           affects_wallet_balance, created_at, updated_at
+         ) VALUES (?, 'debt_borrow', ?, ?, NULL, NULL, ?, '2026-11-27', ?, ?, ?, 'manual', NULL, NULL, 'VND', ?, NULL, 0, ?, ?)`,
+        txId,
+        1_000_000,
+        DEFAULT_WALLET_ID,
+        debtId,
+        now,
+        'Debt without balance change',
+        'debt without balance change',
+        1_000_000,
+        now,
+        now,
+      );
+    });
+
+    const snapshot = await buildSnapshot(sourceDb, { createdAt: now });
+    expect(snapshot.counts.debts).toBe(1);
+    const exportedTx = snapshot.tables.transactions.find((t) => t.id === txId);
+    expect(exportedTx?.affects_wallet_balance).toBe(0);
+    expect(snapshot.walletBalances[DEFAULT_WALLET_ID]).toBe(0);
+
+    await expect(applySnapshot(targetDb, snapshot)).resolves.toBeDefined();
+    const restoredTx = await targetDb.getFirstAsync<{
+      affects_wallet_balance: number;
+    }>('SELECT affects_wallet_balance FROM transactions WHERE id = ?', txId);
+    expect(restoredTx?.affects_wallet_balance).toBe(0);
+  });
 });

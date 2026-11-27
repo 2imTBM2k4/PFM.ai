@@ -312,6 +312,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
         {vi.recurringAdd}
       </Button>
 
+      {Platform.OS !== 'web' && (
       <View
         style={[
           styles.subtlePanel,
@@ -368,6 +369,7 @@ export function RecurringManager({ onClose }: { onClose(): void }) {
           {vi.recurringEnableNotifications}
         </Button>
       </View>
+      )}
 
       {status.hasMore && (
         <Text variant="bodySmall" style={{ color: palette.warningInk }}>

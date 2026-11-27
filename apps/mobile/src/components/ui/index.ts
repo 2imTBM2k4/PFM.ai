@@ -1,5 +1,10 @@
 export { AIOrb, AIOrb as Orb, type AIOrbProps } from './ai-orb';
 export {
+  AnimatedProgressBar,
+  clampProgress,
+  type AnimatedProgressBarProps,
+} from './animated-progress-bar';
+export {
   FloatingTabBar,
   FloatingTabBar as TabBar,
   type FloatingTabBarProps,
