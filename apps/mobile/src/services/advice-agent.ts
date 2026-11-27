@@ -292,7 +292,7 @@ async function runCoachTurn(params: {
     .filter((item) => item.content.length > 0 && !hasLocalPii(item.content));
   const fetchFn = input.fetchFn ?? (await selectFetch());
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), 25_000);
+  const timer = setTimeout(() => timeout.abort(), 60_000);
   try {
     return await withLinkedSignal(input.signal, timeout.signal, async (signal) => {
       const response = await fetchFn(`${baseUrl.replace(/\/+$/, '')}/v1/advice/coach`, {

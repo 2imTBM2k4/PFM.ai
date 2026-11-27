@@ -62,7 +62,9 @@ export class UpstreamAiService {
     const apiKey = byok ? byok.apiKey : config.routerApiKey;
     const effectiveModel = byok ? byok.model : payload.model;
     const { signal, timeoutMs, ...body } = payload;
-    const timeout = AbortSignal.timeout(timeoutMs ?? this.toolStepTimeoutMs);
+    const timeout = AbortSignal.timeout(
+      timeoutMs ?? (byok ? Math.max(this.toolStepTimeoutMs, 45_000) : this.toolStepTimeoutMs),
+    );
     const response = await this.fetchImpl(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {

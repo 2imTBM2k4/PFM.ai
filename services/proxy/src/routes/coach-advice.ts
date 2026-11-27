@@ -147,7 +147,7 @@ export async function coachAdviceRoutes(app: FastifyInstance): Promise<void> {
     admitModelCall();
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25_000);
+    const timer = setTimeout(() => controller.abort(), 60_000);
     timer.unref();
     let settled = false;
     const finish = (complete: boolean) => {
@@ -187,7 +187,7 @@ export async function coachAdviceRoutes(app: FastifyInstance): Promise<void> {
           stream: true,
           max_tokens: 1500,
           signal: controller.signal,
-          timeoutMs: 25_000,
+          timeoutMs: 60_000,
         }),
         controller.signal,
       );
