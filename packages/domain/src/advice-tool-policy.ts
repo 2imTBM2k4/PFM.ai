@@ -113,8 +113,13 @@ export function resolveAdviceToolPolicy(
     /\btinh lai\b/.test(text);
   if (scope.status !== 'allowed' && !inheritedSavings)
     return clarify(['toolIntent']);
+  const isGoalsReadRequest =
+    scope.status === 'allowed' &&
+    /\b(?:tien do muc tieu|xem (?:danh sach )?(?:cac )?muc tieu|danh sach (?:cac )?muc tieu|cac muc tieu|muc tieu hien tai|muc tieu dang co|muc tieu trong app|quy tiet kiem cua toi)\b/.test(
+      text,
+    );
   if (
-    scope.topic === 'savings_plan' ||
+    (scope.topic === 'savings_plan' && !isGoalsReadRequest) ||
     inheritedSavings ||
     /\bmoi thang (?:can|phai) (?:de )?danh bao nhieu\b/.test(text)
   )
@@ -185,9 +190,13 @@ export function resolveAdviceToolPolicy(
       params: { month, budget_id: matches[0]?.id ?? null },
     });
   }
-  const list = text.match(
-    /\b(?:liet ke|danh sach|(?:xem\s+)?\d+\s+khoan chi)\b/,
-  );
+  const nonTransactionList =
+    /\b(?:danh sach|liet ke)\s+(?:cac\s+)?(?:muc tieu|khoan (?:chi )?dinh ky|khoan no|khoan vay)\b/.test(
+      text,
+    );
+  const list = nonTransactionList
+    ? null
+    : text.match(/\b(?:liet ke|danh sach|(?:xem\s+)?\d+\s+khoan chi)\b/);
   if (list) {
     const segment = text.slice(list.index);
     const count = segment.match(
@@ -279,7 +288,7 @@ export function resolveAdviceToolPolicy(
     }
     grants.push({
       name: 'get_spending_breakdown',
-      params: range,
+      params: { from: range.from, to: range.to },
     });
   }
   if (
@@ -296,12 +305,7 @@ export function resolveAdviceToolPolicy(
       params: { days_ahead: daysAhead },
     });
   }
-  if (
-    scope.status === 'allowed' &&
-    /\b(?:tien do muc tieu|xem (?:cac )?muc tieu|danh sach muc tieu|cac muc tieu|muc tieu hien tai|muc tieu dang co|muc tieu trong app|quy tiet kiem cua toi)\b/.test(
-      text,
-    )
-  ) {
+  if (isGoalsReadRequest) {
     const includeAchieved = /\b(?:da dat|hoan thanh|tat ca)\b/.test(text);
     grants.push({
       name: 'get_savings_goals',

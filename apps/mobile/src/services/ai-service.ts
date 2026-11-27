@@ -205,6 +205,7 @@ export function buildAdviceClarification(
     budgetMonth: strings.aiClarifyBudgetMonth,
     budget_id: strings.aiClarifyBudgetId,
     category_id: strings.aiClarifyCategoryId,
+    daysAhead: strings.aiClarifyDaysAhead,
     transactionLimit: strings.aiClarifyTransactionLimit,
     transactionKind: strings.aiClarifyTransactionKind,
     toolIntent: strings.aiReplyAmbiguous,

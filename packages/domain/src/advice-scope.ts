@@ -156,6 +156,8 @@ const SPENDING_PATTERNS: RegExp[] = [
   /(thang nay|tuan nay|hom nay|hom qua) .*(chi|tieu|thu) .*bao nhieu/i,
   /(tong chi|tong thu|phan tich chi tieu|phan tich ty trong chi tieu|ty trong chi tieu|co cau chi tieu)/i,
   /(thong ke chi tieu|bao cao chi tieu|lich su chi tieu)/i,
+  /(tieu nhieu nhat|chi nhieu nhat|tieu gi nhieu|nhom chi|danh muc chi)/i,
+  /(khoan (?:chi )?dinh ky|hoa don sap den han|sap den han)/i,
   /\bthu nhap\s+cua\s+toi\s+(den tu dau|tu dau|the nao)\b/i,
   // Category questions: "tôi tiêu gì nhiều", "chi vào đâu nhiều nhất".
   /(tieu|chi|mua)\s+(gi|nhung gi|vao dau|khoan nao)\s+(nhieu|nhieu nhat)/i,

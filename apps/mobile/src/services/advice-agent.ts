@@ -129,6 +129,17 @@ function isExplicitToolReadWithMissingParams(
     return true;
   }
   if (
+    decisionFields.includes('observationRange') &&
+    /\b(?:co cau chi tieu|phan tich chi tieu|tong thu chi|dong tien|tieu nhieu nhat|chi nhieu nhat|nhom chi|danh muc chi)\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (decisionFields.includes('daysAhead')) {
+    return true;
+  }
+  if (
     decisionFields.includes('budget_id') &&
     /\bngan sach\s+.+?\bthang\s+\d{1,2}\/\d{4}\b/.test(text)
   ) {

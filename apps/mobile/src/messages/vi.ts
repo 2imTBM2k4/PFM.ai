@@ -941,6 +941,7 @@ export const viMessages = {
   aiClarifyBudgetMonth: 'Bạn muốn xem ngân sách tháng nào?',
   aiClarifyBudgetId: 'Bạn muốn xem ngân sách nào?',
   aiClarifyCategoryId: 'Bạn muốn xem danh mục nào?',
+  aiClarifyDaysAhead: 'Bạn muốn kiểm tra các khoản sắp đến hạn trong bao nhiêu ngày tới (từ 7 đến 31 ngày)?',
   aiClarifyTransactionLimit: 'Bạn muốn xem tối đa bao nhiêu giao dịch?',
   aiClarifyTransactionKind: 'Bạn muốn xem giao dịch thu hay chi?',
   aiReplyIncompleteBadge: 'Câu trả lời chưa hoàn chỉnh',

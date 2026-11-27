@@ -880,6 +880,7 @@ export const en: Record<keyof typeof viMessages, string> = {
   aiClarifyBudgetMonth: 'Which month should the budget cover?',
   aiClarifyBudgetId: 'Which budget would you like to see?',
   aiClarifyCategoryId: 'Which category would you like to see?',
+  aiClarifyDaysAhead: 'How many days ahead would you like to check (between 7 and 31 days)?',
   aiClarifyTransactionLimit: 'How many transactions would you like to see at most?',
   aiClarifyTransactionKind: 'Would you like income or expense transactions?',
   aiReplyIncompleteBadge: 'Incomplete response',

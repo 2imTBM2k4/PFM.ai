@@ -821,4 +821,48 @@ describe('extended advisory tool grants', () => {
       });
     }
   });
+
+  it('grants get_spending_breakdown with clean {from, to} for natural month question', () => {
+    const decision = resolve('Tháng này tôi tiêu nhiều nhất vào nhóm chi nào?');
+    expect(decision).toMatchObject({
+      status: 'allowed',
+      policy: {
+        grants: [
+          {
+            name: 'get_spending_breakdown',
+            params: { from: '2026-11-01', to: '2026-11-16' },
+          },
+        ],
+      },
+    });
+    if (decision.status === 'allowed') {
+      expect(Object.keys(decision.policy.grants[0].params)).toEqual(['from', 'to']);
+      expect(
+        checkAdviceToolBatch(decision.policy, decision.policy, [
+          {
+            id: 'c-sb',
+            name: 'get_spending_breakdown',
+            params: { from: '2026-11-01', to: '2026-11-16' },
+          },
+        ]),
+      ).toEqual({ allowed: true });
+    }
+  });
+
+  it('does not hijack danh sach muc tieu into get_transactions', () => {
+    const decision = resolve('Xem danh sách các mục tiêu tiết kiệm hiện tại của tôi');
+    expect(decision.status).toBe('allowed');
+    if (decision.status === 'allowed') {
+      expect(decision.policy.grants).toContainEqual({
+        name: 'get_savings_goals',
+        params: { include_achieved: false },
+      });
+      expect(
+        decision.policy.grants.some((grant) => grant.name === 'get_transactions'),
+      ).toBe(false);
+      expect(
+        decision.policy.grants.some((grant) => grant.name === 'plan_savings_goal'),
+      ).toBe(false);
+    }
+  });
 });

@@ -21,6 +21,7 @@ In the final savings answer, state monthlyAvailable, requiredMonthlySaving and r
 For a budget's remaining allowance, explicitly state the returned value (including zero) as remaining within that budget, never as an account balance.
 Do not propose new horizons or alternative schedules unless that scenario has already been calculated in a tool result. Optional suggestions may omit numbers; fewer than three suggestions, including none, is acceptable.
 A category or budget label in the supplied context does not prove that a budget exists, that a category is flexible, or that it is the only budget or flexible category. Make no claims about budget status, habits or uniqueness without supporting tool results.
+For get_spending_breakdown, get_upcoming_obligations, and get_savings_goals, report only the returned totals, dates, counts, and statuses; never invent counterparty names, custom goal names, or category labels not provided in context.
 Format the final answer as clean plain text for a mobile chat bubble without Markdown syntax (no **bold**, ### headings, or |---| tables); use short paragraphs and "- " bullets instead.`;
 
 const toolNames = [
